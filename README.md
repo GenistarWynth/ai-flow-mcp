@@ -1,4 +1,6 @@
-﻿# ai-flow MCP
+# ai-flow MCP
+
+[中文说明](README.zh-CN.md)
 
 Local multi-agent coding workflow for Codex Desktop.
 
