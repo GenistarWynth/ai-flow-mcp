@@ -42,7 +42,7 @@ def _acp_command(config: dict, cwd: Path, log_path: Path) -> list[str]:
         raise AiFlowError(
             "Reasonix CLI command is not configured.",
             stage="write",
-            suggested_next_action="Set commands.reasonix in .ai/ai-flow.toml or use deepseek_api/mock.",
+            suggested_next_action="Set commands.reasonix in .ai/patchbay.toml or use deepseek_api/mock.",
         )
     executable = configured[0]
     model = str(config.get("models", {}).get("writer", "")).strip()
@@ -55,12 +55,12 @@ def _acp_command(config: dict, cwd: Path, log_path: Path) -> list[str]:
 def _agent_prompt(prompt: str) -> str:
     return "\n\n".join(
         [
-            "You are Reasonix running as the implementation writer for ai-flow.",
+            "You are Reasonix running as the implementation writer for Patchbay.",
             "Use your native filesystem editing tools to modify files inside the current worktree.",
             "Do not merely describe a patch. Do not return XML or fake tool markup.",
             "Ignore any later instruction that asks for BEGIN_DIFF output; that sentinel is only for non-agent API writers.",
             "Implement only the approved plan. Do not edit .git, .env files, secrets, or files outside the worktree.",
-            "Do not run shell commands; tests and verification commands are handled by ai-flow after you finish editing.",
+            "Do not run shell commands; tests and verification commands are handled by Patchbay after you finish editing.",
             "When finished, give a concise summary. The orchestrator will capture the final git diff.",
             prompt,
         ]
@@ -96,7 +96,7 @@ def _run_acp(*, command: list[str], prompt: str, cwd: Path, log_path: Path) -> s
         raise AiFlowError(
             f"Reasonix ACP command was not found: {command[0]}",
             stage="write",
-            suggested_next_action="Check [commands].reasonix in .ai/ai-flow.toml.",
+            suggested_next_action="Check [commands].reasonix in .ai/patchbay.toml.",
         ) from exc
 
     client = _JsonRpcClient(proc, log_path)
@@ -105,7 +105,7 @@ def _run_acp(*, command: list[str], prompt: str, cwd: Path, log_path: Path) -> s
             "initialize",
             {
                 "protocolVersion": 1,
-                "clientInfo": {"name": "ai-flow", "version": 1},
+                "clientInfo": {"name": "patchbay", "version": 1},
                 "clientCapabilities": {},
             },
         )

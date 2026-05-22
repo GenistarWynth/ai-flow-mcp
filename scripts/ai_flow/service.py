@@ -76,16 +76,16 @@ def _load_run(root: Path, run_id: str) -> tuple[Path, dict[str, Any]]:
 def _base_commit(root: Path) -> str | None:
     if not git_utils.is_repo(root):
         raise GitError(
-            "ai-flow requires a git repository so runs can record BASE_COMMIT and create worktrees.",
+            "Patchbay requires a git repository so runs can record BASE_COMMIT and create worktrees.",
             stage="plan",
-            suggested_next_action="Run ai-flow inside a git repository.",
+            suggested_next_action="Run Patchbay inside a git repository.",
         )
     commit = git_utils.current_commit(root)
     if not commit:
         raise GitError(
             "Could not resolve HEAD for BASE_COMMIT.",
             stage="plan",
-            suggested_next_action="Create an initial commit before running ai-flow.",
+            suggested_next_action="Create an initial commit before running Patchbay.",
         )
     return commit
 
@@ -188,11 +188,11 @@ def _reasonix_agent_prompt(
 ) -> str:
     plan = read_json(run_path / "plan.json")
     parts = [
-        "# ai-flow Reasonix Agent Task",
+        "# Patchbay Reasonix Agent Task",
         "",
         "You are the implementation writer. Use your native filesystem tools to edit the isolated worktree.",
-        "Implement only the approved plan. Do not emit a patch; ai-flow will capture the final git diff.",
-        "Do not run tests or shell commands. ai-flow handles test, lint, typecheck, review, and apply stages.",
+        "Implement only the approved plan. Do not emit a patch; Patchbay will capture the final git diff.",
+        "Do not run tests or shell commands. Patchbay handles test, lint, typecheck, review, and apply stages.",
         "Do not modify `.git`, `.env*`, secret-like files, CI secrets, or files outside the worktree.",
         "# TASK.md",
         read_text(run_path / "TASK.md").rstrip(),
@@ -365,7 +365,7 @@ def init_project(cwd: Path) -> dict[str, str]:
     example = example_config_path(root)
     if not example.exists():
         write_text(example, EXAMPLE_TOML)
-    docs_path = root / "docs" / "ai-flow.md"
+    docs_path = root / "docs" / "patchbay.md"
     if not docs_path.exists():
         write_text(docs_path, DOCS_MD)
     agents_path = root / "AGENTS.md"
@@ -373,7 +373,15 @@ def init_project(cwd: Path) -> dict[str, str]:
         write_text(agents_path, AGENTS_MD)
     gitignore_path = root / ".gitignore"
     existing = read_text(gitignore_path, default="")
-    additions = [".ai/runs/", ".ai/logs/", ".ai/worktrees/"]
+    additions = [
+        ".ai/runs/",
+        ".ai/logs/",
+        ".ai/worktrees/",
+        ".ai/patchbay.toml",
+        ".ai/ai-flow.toml",
+        ".patchbay-worktrees/",
+        ".ai-flow-worktrees/",
+    ]
     missing = [line for line in additions if line not in existing.splitlines()]
     if missing:
         suffix = "" if existing.endswith("\n") or not existing else "\n"
@@ -464,10 +472,10 @@ def write(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 raise GitError(
                     "write requires a git repository because it creates an isolated worktree.",
                     stage="write",
-                    suggested_next_action="Run ai-flow inside a git repository.",
+                    suggested_next_action="Run Patchbay inside a git repository.",
                 )
             cfg = load_config(root)
-            branch_prefix = str(cfg.get("workflow", {}).get("default_branch_prefix", "ai-flow")).strip("/")
+            branch_prefix = str(cfg.get("workflow", {}).get("default_branch_prefix", "patchbay")).strip("/")
             worktree_root = configured_worktree_root(root, cfg)
             worktree_path = worktree_root / run_id
             branch_name = f"{branch_prefix}/{run_id}"
@@ -518,7 +526,7 @@ def test(cwd: Path, run_id: str) -> dict[str, Any]:
                     raise AiFlowError(
                         f"Test command failed: {command}",
                         stage="test",
-                        suggested_next_action="Run `scripts/ai-flow fix <run_id>` after inspecting TEST.log.",
+                        suggested_next_action="Run `scripts/patchbay fix <run_id>` after inspecting TEST.log.",
                     )
             return set_status(run_path, TESTED, tests_passed=True)
     except Exception as exc:
@@ -770,8 +778,8 @@ api_key_env = "DEEPSEEK_API_KEY"
 
 [workflow]
 require_plan_approval = true
-default_branch_prefix = "ai-flow"
-worktree_root = "../.ai-flow-worktrees"
+default_branch_prefix = "patchbay"
+worktree_root = "../.patchbay-worktrees"
 fail_on_dirty_workspace = true
 apply_to_current_workspace_only_after_review_pass = true
 
@@ -796,14 +804,14 @@ AGENTS_MD = """# Multi-Agent Workflow
 - “用 Claude 规划，DeepSeek 实现，Codex 审查”
 - “multi-agent workflow”
 
-你必须使用 `scripts/ai-flow`，不要直接改代码。
+你必须使用 `scripts/patchbay`，不要直接改代码。旧入口 `scripts/ai-flow` 仍可兼容使用，但新文档优先使用 Patchbay 名称。
 
-如果 Codex Desktop 已配置 `ai_flow_*` MCP 工具，可以用 MCP 调用同一套 ai-flow 编排器；仍然必须遵守下面的阶段顺序和确认门禁。
+如果当前 MCP host 已配置 `patchbay_*` MCP 工具，可以用 MCP 调用同一套 Patchbay 编排器；旧的 `ai_flow_*` 工具名也保留为兼容别名。无论入口是什么，仍然必须遵守下面的阶段顺序和确认门禁。
 
 流程：
 
 1. 运行：
-   `scripts/ai-flow plan --task "<用户任务>"`
+   `scripts/patchbay plan --task "<用户任务>"`
 
 2. 阅读并展示：
    `.ai/runs/<run_id>/PLAN.md`
@@ -811,27 +819,27 @@ AGENTS_MD = """# Multi-Agent Workflow
 3. 等待用户明确确认。
 
 4. 用户确认后运行：
-   `scripts/ai-flow approve <run_id>`
-   `scripts/ai-flow write <run_id>`
-   `scripts/ai-flow test <run_id>`
-   `scripts/ai-flow review <run_id>`
+   `scripts/patchbay approve <run_id>`
+   `scripts/patchbay write <run_id>`
+   `scripts/patchbay test <run_id>`
+   `scripts/patchbay review <run_id>`
 
 5. 如果 review 是 CHANGES_REQUESTED：
    最多运行两轮：
-   `scripts/ai-flow fix <run_id>`
-   `scripts/ai-flow test <run_id>`
-   `scripts/ai-flow review <run_id>`
+   `scripts/patchbay fix <run_id>`
+   `scripts/patchbay test <run_id>`
+   `scripts/patchbay review <run_id>`
 
 6. 只有 review PASS 且测试通过后，才询问用户是否 apply。
 
 7. 未经用户确认，不要运行：
-   `scripts/ai-flow apply <run_id>`
+   `scripts/patchbay apply <run_id>`
 """
 
 
-DOCS_MD = """# ai-flow
+DOCS_MD = """# Patchbay
 
-`ai-flow` 是 Codex Desktop 驱动的本地多模型编排器：Claude 只读规划，Reasonix/DeepSeek 实现，Codex 审查。
+Patchbay 是一个本地补丁编排器：任意支持 MCP 的客户端都可以作为入口，默认把规划、实现、测试、审查和应用拆成可审计阶段。当前默认角色绑定是 Claude 规划，Reasonix/DeepSeek 实现，Codex 审查；后续可以把这些槽位换成别的工具。
 
 ## 环境准备
 
@@ -844,74 +852,74 @@ DOCS_MD = """# ai-flow
 运行：
 
 ```bash
-scripts/ai-flow init
-cp .ai/ai-flow.example.toml .ai/ai-flow.toml
+scripts/patchbay init
+cp .ai/patchbay.example.toml .ai/patchbay.toml
 ```
 
-按需编辑 `.ai/ai-flow.toml`，尤其是 writer provider、命令路径和测试 allowlist。
+按需编辑 `.ai/patchbay.toml`，尤其是 writer provider、命令路径和测试 allowlist。
 
 Writer 有两种实现入口：
 
-- `reasonix_cli`：调用 Reasonix ACP coding agent（`reasonix acp`），由 Reasonix 自己的文件系统工具修改独立 worktree，ai-flow 只负责审批权限并捕获最终 `git diff`。
+- `reasonix_cli`：调用 Reasonix ACP coding agent（`reasonix acp`），由 Reasonix 自己的文件系统工具修改独立 worktree，Patchbay 只负责审批权限并捕获最终 `git diff`。
 - `deepseek_api`：直接调用 OpenAI-compatible Chat Completions API，要求模型按 sentinel 返回 unified diff；这是 API fallback，不等同于 Agent。
 
 ## 常用命令
 
 ```bash
-scripts/ai-flow plan --task "..."
-scripts/ai-flow approve <run_id>
-scripts/ai-flow write <run_id>
-scripts/ai-flow test <run_id>
-scripts/ai-flow review <run_id>
-scripts/ai-flow fix <run_id>
-scripts/ai-flow status <run_id>
-scripts/ai-flow diff <run_id>
-scripts/ai-flow apply <run_id>
-scripts/ai-flow cleanup <run_id>
+scripts/patchbay plan --task "..."
+scripts/patchbay approve <run_id>
+scripts/patchbay write <run_id>
+scripts/patchbay test <run_id>
+scripts/patchbay review <run_id>
+scripts/patchbay fix <run_id>
+scripts/patchbay status <run_id>
+scripts/patchbay diff <run_id>
+scripts/patchbay apply <run_id>
+scripts/patchbay cleanup <run_id>
 ```
 
 mock 模式：
 
 ```bash
-scripts/ai-flow plan --task "..." --mock
-scripts/ai-flow write <run_id> --mock
-scripts/ai-flow review <run_id> --mock
+scripts/patchbay plan --task "..." --mock
+scripts/patchbay write <run_id> --mock
+scripts/patchbay review <run_id> --mock
 ```
 
-## Codex Desktop 使用方式
+## MCP 使用方式
 
 当用户要求“走多模型流程”时，先运行 plan 并展示 `.ai/runs/<run_id>/PLAN.md`。只有用户确认计划后，才能 approve/write/test/review。未经用户确认，不要 apply。
 
-如果在带网络沙箱的 Codex Desktop 中运行真实模型阶段，`plan`、`write`、`review` 需要允许子进程访问对应上游。默认 `worktree_root = "../.ai-flow-worktrees"` 时，`write`、`test`、`review` 还需要能访问仓库兄弟目录里的 worktree。若 Claude 日志里出现 `ConnectionRefused`、`duration_api_ms: 0` 或上游没有请求记录，通常是编排器子进程没有网络权限，而不是 key/base URL 本身不可用。
+如果在带网络沙箱的 MCP host 中运行真实模型阶段，`plan`、`write`、`review` 需要允许子进程访问对应上游。默认 `worktree_root = "../.patchbay-worktrees"` 时，`write`、`test`、`review` 还需要能访问仓库兄弟目录里的 worktree。若 Claude 日志里出现 `ConnectionRefused`、`duration_api_ms: 0` 或上游没有请求记录，通常是编排器子进程没有网络权限，而不是 key/base URL 本身不可用。
 
 ## MCP
 
-CLI 跑通后可以把同一套流程作为 MCP 工具暴露给 Codex：
+CLI 跑通后可以把同一套流程作为 MCP 工具暴露给任意 MCP host：
 
 ```bash
-codex mcp add ai-flow -- python scripts/ai_flow/mcp_server.py
+codex mcp add patchbay -- python scripts/patchbay_mcp_server.py
 ```
 
-MCP 只调用 `scripts.ai_flow.service` 中已有函数，不复制业务逻辑。若当前 Codex Desktop 暂不可用 MCP，继续使用 CLI 命令即可。
+MCP 只调用 `scripts.ai_flow.service` 中已有函数，不复制业务逻辑。新工具名使用 `patchbay_*`，旧的 `ai_flow_*` 作为兼容别名保留。
 
 ## 故障排查
 
 - Claude CLI 不存在：检查 `[commands].claude`，或用 `--mock` 验证流程。
 - Codex CLI 不存在：检查 `[commands].codex`，或用 `--mock` 验证审查流程。
 - DeepSeek API key 缺失：设置 `DEEPSEEK_API_KEY` 或切换 writer provider。
-- Reasonix 只聊天不改文件：确认 `[writer].provider = "reasonix_cli"`，且 `[commands].reasonix` 指向 `reasonix.cmd`/`reasonix`。ai-flow 会自动使用 `reasonix acp`，不要把 `deepseek_api` 当作 Reasonix Agent。
-- Claude 输出空 result 但其实已生成计划：ai-flow 会从 `stream-json` assistant event 和 Claude transcript 中恢复计划文本；查看 `claude-planner.log` 确认恢复路径。
+- Reasonix 只聊天不改文件：确认 `[writer].provider = "reasonix_cli"`，且 `[commands].reasonix` 指向 `reasonix.cmd`/`reasonix`。Patchbay 会自动使用 `reasonix acp`，不要把 `deepseek_api` 当作 Reasonix Agent。
+- Claude 输出空 result 但其实已生成计划：Patchbay 会从 `stream-json` assistant event 和 Claude transcript 中恢复计划文本；查看 `claude-planner.log` 确认恢复路径。
 - patch apply 失败：检查 `writer.log` 和 `FINAL.diff`。
-- test command 不在 allowlist：把确认安全的命令加入 `.ai/ai-flow.toml` 的 `commands_allowlist.test`。
-- Windows PowerShell 拒绝运行 `.ps1` 脚本：优先使用 `codex.cmd` 与 `reasonix.cmd`（以及 `scripts/ai-flow.cmd`）等 `.cmd` 入口，避免修改系统 ExecutionPolicy。
+- test command 不在 allowlist：把确认安全的命令加入 `.ai/patchbay.toml` 的 `commands_allowlist.test`。
+- Windows PowerShell 拒绝运行 `.ps1` 脚本：优先使用 `codex.cmd` 与 `reasonix.cmd`（以及 `scripts/patchbay.cmd`）等 `.cmd` 入口，避免修改系统 ExecutionPolicy。
 
 ## 安全说明
 
-ai-flow 拒绝修改 repo 外路径、`.git/`、`.env*`、secret-like 文件、绝对路径 patch、路径穿越 patch，并要求测试命令在 allowlist 中。
+Patchbay 拒绝修改 repo 外路径、`.git/`、`.env*`、secret-like 文件、绝对路径 patch、路径穿越 patch，并要求测试命令在 allowlist 中。
 
 ## 清理 worktree
 
 ```bash
-scripts/ai-flow cleanup <run_id>
+scripts/patchbay cleanup <run_id>
 ```
 """

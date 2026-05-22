@@ -111,5 +111,5 @@ def require_status(data: dict[str, Any], allowed: set[str], command: str) -> Non
         raise StateError(
             f"`{command}` cannot run while status is {current}; expected one of: {allowed_text}",
             stage=command,
-            suggested_next_action="Run `scripts/ai-flow status <run_id>` and continue from the valid next command.",
+            suggested_next_action="Run `scripts/patchbay status <run_id>` and continue from the valid next command.",
         )

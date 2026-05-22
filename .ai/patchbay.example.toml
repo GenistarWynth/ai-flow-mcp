@@ -6,7 +6,7 @@ reviewer = "gpt-5.5"
 [commands]
 claude = "claude"
 codex = "codex"
-reasonix = "" # reasonix_cli 时填 reasonix/reasonix.cmd；ai-flow 会调用 reasonix acp
+reasonix = "" # reasonix_cli 时填 reasonix/reasonix.cmd；Patchbay 会调用 reasonix acp
 
 [writer]
 provider = "deepseek_api" # 可选：reasonix_cli / deepseek_api
@@ -20,8 +20,8 @@ api_key_env = "DEEPSEEK_API_KEY"
 
 [workflow]
 require_plan_approval = true
-default_branch_prefix = "ai-flow"
-worktree_root = "../.ai-flow-worktrees"
+default_branch_prefix = "patchbay"
+worktree_root = "../.patchbay-worktrees"
 fail_on_dirty_workspace = true
 apply_to_current_workspace_only_after_review_pass = true
 

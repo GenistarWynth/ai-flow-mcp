@@ -11,8 +11,10 @@ from typing import Any
 from .artifacts import ai_dir
 
 
-EXAMPLE_CONFIG_NAME = "ai-flow.example.toml"
-CONFIG_NAME = "ai-flow.toml"
+EXAMPLE_CONFIG_NAME = "patchbay.example.toml"
+CONFIG_NAME = "patchbay.toml"
+LEGACY_EXAMPLE_CONFIG_NAME = "ai-flow.example.toml"
+LEGACY_CONFIG_NAME = "ai-flow.toml"
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -38,8 +40,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "workflow": {
         "require_plan_approval": True,
-        "default_branch_prefix": "ai-flow",
-        "worktree_root": "../.ai-flow-worktrees",
+        "default_branch_prefix": "patchbay",
+        "worktree_root": "../.patchbay-worktrees",
         "fail_on_dirty_workspace": True,
         "apply_to_current_workspace_only_after_review_pass": True,
     },
@@ -81,9 +83,17 @@ def load_config(root: Path) -> dict[str, Any]:
     if path.exists():
         with path.open("rb") as handle:
             return deep_merge(DEFAULT_CONFIG, tomllib.load(handle))
+    legacy_path = ai_dir(root) / LEGACY_CONFIG_NAME
+    if legacy_path.exists():
+        with legacy_path.open("rb") as handle:
+            return deep_merge(DEFAULT_CONFIG, tomllib.load(handle))
     example = example_config_path(root)
     if example.exists():
         with example.open("rb") as handle:
+            return deep_merge(DEFAULT_CONFIG, tomllib.load(handle))
+    legacy_example = ai_dir(root) / LEGACY_EXAMPLE_CONFIG_NAME
+    if legacy_example.exists():
+        with legacy_example.open("rb") as handle:
             return deep_merge(DEFAULT_CONFIG, tomllib.load(handle))
     return deepcopy(DEFAULT_CONFIG)
 
@@ -127,7 +137,7 @@ def split_command(command: str | list[str] | tuple[str, ...]) -> list[str]:
 
 
 def configured_worktree_root(root: Path, cfg: dict[str, Any]) -> Path:
-    raw = str(cfg.get("workflow", {}).get("worktree_root") or "../.ai-flow-worktrees")
+    raw = str(cfg.get("workflow", {}).get("worktree_root") or "../.patchbay-worktrees")
     candidate = Path(raw)
     if not candidate.is_absolute():
         candidate = root / candidate

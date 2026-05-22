@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 class AiFlowError(RuntimeError):
-    """Base class for expected ai-flow errors."""
+    """Base class for expected Patchbay errors."""
 
     def __init__(
         self,

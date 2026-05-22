@@ -67,5 +67,5 @@ def ensure_command_allowed(command: str, allowlist: set[str]) -> None:
         raise SafetyError(
             f"Test command is not allowlisted: {command}",
             stage="test",
-            suggested_next_action="Add the command to .ai/ai-flow.toml commands_allowlist.test after reviewing it.",
+            suggested_next_action="Add the command to .ai/patchbay.toml commands_allowlist.test after reviewing it.",
         )

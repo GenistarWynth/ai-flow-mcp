@@ -1,7 +1,9 @@
-﻿.ai/runs/
+.ai/runs/
 .ai/logs/
 .ai/worktrees/
+.ai/patchbay.toml
 .ai/ai-flow.toml
+.patchbay-worktrees/
 .ai-flow-worktrees/
 __pycache__/
 *.pyc

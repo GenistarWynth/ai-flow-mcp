@@ -39,7 +39,7 @@ def run_mock_planner(task: str, context: str) -> str:
             "",
             f"Task: {task}",
             "",
-            "1. Create `AI_FLOW_MOCK_OUTPUT.md` in the isolated worktree.",
+            "1. Create `PATCHBAY_MOCK_OUTPUT.md` in the isolated worktree.",
             "2. Write the task text and a deterministic marker.",
             "3. Review the resulting diff and pass in mock mode.",
         ]

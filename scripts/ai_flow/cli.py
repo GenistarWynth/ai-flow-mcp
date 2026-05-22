@@ -29,7 +29,10 @@ def _add_json(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="ai-flow", description="Codex-orchestrated multi-agent workflow.")
+    parser = argparse.ArgumentParser(
+        prog="patchbay",
+        description="MCP-friendly patch orchestration across interchangeable coding agents.",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     init = sub.add_parser("init", help="Create config, ignored artifact dirs, and docs skeleton.")

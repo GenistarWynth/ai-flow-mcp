@@ -47,7 +47,7 @@ def empty_plan(task: str) -> dict[str, Any]:
         "assumptions": ["Mock mode is being used; no external model was called."],
         "affected_files": [
             {
-                "path": "AI_FLOW_MOCK_OUTPUT.md",
+                "path": "PATCHBAY_MOCK_OUTPUT.md",
                 "operation": "create",
                 "reason": "Provide a deterministic mock implementation artifact.",
             }
@@ -56,7 +56,7 @@ def empty_plan(task: str) -> dict[str, Any]:
             {
                 "id": "S1",
                 "description": "Create a deterministic mock output file.",
-                "files": ["AI_FLOW_MOCK_OUTPUT.md"],
+                "files": ["PATCHBAY_MOCK_OUTPUT.md"],
                 "verification": ["Confirm the file exists and contains the task text."],
             }
         ],

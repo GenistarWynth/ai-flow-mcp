@@ -1,4 +1,4 @@
-"""Local multi-agent workflow orchestrator."""
+"""Patchbay local multi-agent patch orchestrator."""
 
 __all__ = ["__version__"]
 

@@ -18,6 +18,7 @@ from scripts.ai_flow.adapters.claude_planner import (
 )
 from scripts.ai_flow.adapters.codex_reviewer import _read_verdict_file
 from scripts.ai_flow.adapters.reasonix_writer import _acp_command, _preferred_permission_option
+from scripts.ai_flow.config import load_config
 from scripts.ai_flow.errors import SafetyError, StateError
 from scripts.ai_flow.parsing import parse_planner_output, parse_writer_output
 from scripts.ai_flow.plan_schema import empty_plan
@@ -42,15 +43,18 @@ def run(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
 
 class AiFlowTestCase(unittest.TestCase):
     def setUp(self) -> None:
-        self.tempdir = Path(tempfile.mkdtemp(prefix="ai-flow-test-"))
+        self.tempdir = Path(tempfile.mkdtemp(prefix="patchbay-test-"))
         self.repo = self.tempdir / "repo"
         self.repo.mkdir()
-        self.script = PROJECT_ROOT / "scripts" / "ai-flow"
+        self.script = PROJECT_ROOT / "scripts" / "patchbay"
         run(["git", "init"], self.repo)
-        run(["git", "config", "user.email", "ai-flow@example.test"], self.repo)
-        run(["git", "config", "user.name", "ai-flow tests"], self.repo)
+        run(["git", "config", "user.email", "patchbay@example.test"], self.repo)
+        run(["git", "config", "user.name", "Patchbay tests"], self.repo)
         (self.repo / "README.md").write_text("# Test Repo\n", encoding="utf-8")
-        (self.repo / ".gitignore").write_text(".ai/runs/\n.ai/logs/\n.ai/worktrees/\n", encoding="utf-8")
+        (self.repo / ".gitignore").write_text(
+            ".ai/runs/\n.ai/logs/\n.ai/worktrees/\n.ai/patchbay.toml\n.patchbay-worktrees/\n",
+            encoding="utf-8",
+        )
         run(["git", "add", "README.md", ".gitignore"], self.repo)
         run(["git", "commit", "-m", "initial"], self.repo)
 
@@ -120,7 +124,7 @@ class ParsingTests(unittest.TestCase):
         self.assertEqual(_extract_stream_json_plan(output), text)
 
     def test_claude_transcript_plan_fallback_reads_assistant_text(self) -> None:
-        path = Path(tempfile.mkdtemp(prefix="ai-flow-transcript-")) / "session.jsonl"
+        path = Path(tempfile.mkdtemp(prefix="patchbay-transcript-")) / "session.jsonl"
         try:
             marker = "E:/repo/.ai/runs/current/claude-planner.prompt.md"
             text = "BEGIN_AI_FLOW_PLAN_JSON\n{}\nEND_AI_FLOW_PLAN_JSON\n\n# Plan"
@@ -175,7 +179,7 @@ END_DIFF
         self.assertIn("diff --git", parsed.diff or "")
 
     def test_codex_reviewer_detects_complete_verdict_file(self) -> None:
-        tempdir = Path(tempfile.mkdtemp(prefix="ai-flow-codex-output-"))
+        tempdir = Path(tempfile.mkdtemp(prefix="patchbay-codex-output-"))
         try:
             output = tempdir / "codex-reviewer.output.md"
             output.write_text("PASS\n\nSummary:\nDone.\n", encoding="utf-8")
@@ -272,36 +276,56 @@ END_DIFF
 class McpServerTests(unittest.TestCase):
     def test_initialize_and_tools_list(self) -> None:
         init = mcp_server.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
-        self.assertEqual(init["result"]["serverInfo"]["name"], "ai-flow")
+        self.assertEqual(init["result"]["serverInfo"]["name"], "patchbay")
         tools = mcp_server.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
         names = {tool["name"] for tool in tools["result"]["tools"]}
         for name in (
-            "ai_flow_plan",
-            "ai_flow_approve",
-            "ai_flow_write",
-            "ai_flow_test",
-            "ai_flow_review",
-            "ai_flow_fix",
-            "ai_flow_status",
-            "ai_flow_diff",
-            "ai_flow_apply",
+            "patchbay_plan",
+            "patchbay_approve",
+            "patchbay_write",
+            "patchbay_test",
+            "patchbay_review",
+            "patchbay_fix",
+            "patchbay_status",
+            "patchbay_diff",
+            "patchbay_apply",
         ):
+            self.assertIn(name, names)
+        for name in ("ai_flow_plan", "ai_flow_status", "ai_flow_apply"):
             self.assertIn(name, names)
 
     def test_tools_call_wraps_result_as_text_content(self) -> None:
+        original = dict(mcp_server.TOOLS)
+        try:
+            mcp_server.TOOLS["patchbay_status"] = lambda run_id: {"run_id": run_id, "status": "OK"}
+            response = mcp_server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 3,
+                    "method": "tools/call",
+                    "params": {"name": "patchbay_status", "arguments": {"run_id": "r1"}},
+                }
+            )
+            payload = json.loads(response["result"]["content"][0]["text"])
+            self.assertEqual(payload, {"run_id": "r1", "status": "OK"})
+        finally:
+            mcp_server.TOOLS.clear()
+            mcp_server.TOOLS.update(original)
+
+    def test_legacy_tool_alias_still_calls_canonical_handler(self) -> None:
         original = dict(mcp_server.TOOLS)
         try:
             mcp_server.TOOLS["ai_flow_status"] = lambda run_id: {"run_id": run_id, "status": "OK"}
             response = mcp_server.handle(
                 {
                     "jsonrpc": "2.0",
-                    "id": 3,
+                    "id": 6,
                     "method": "tools/call",
-                    "params": {"name": "ai_flow_status", "arguments": {"run_id": "r1"}},
+                    "params": {"name": "ai_flow_status", "arguments": {"run_id": "legacy"}},
                 }
             )
             payload = json.loads(response["result"]["content"][0]["text"])
-            self.assertEqual(payload, {"run_id": "r1", "status": "OK"})
+            self.assertEqual(payload, {"run_id": "legacy", "status": "OK"})
         finally:
             mcp_server.TOOLS.clear()
             mcp_server.TOOLS.update(original)
@@ -323,13 +347,13 @@ class McpServerTests(unittest.TestCase):
             def boom(run_id: str) -> dict:
                 raise RuntimeError(f"bad run {run_id}")
 
-            mcp_server.TOOLS["ai_flow_status"] = boom
+            mcp_server.TOOLS["patchbay_status"] = boom
             response = mcp_server.handle(
                 {
                     "jsonrpc": "2.0",
                     "id": 5,
                     "method": "tools/call",
-                    "params": {"name": "ai_flow_status", "arguments": {"run_id": "r2"}},
+                    "params": {"name": "patchbay_status", "arguments": {"run_id": "r2"}},
                 }
             )
             self.assertTrue(response["result"]["isError"])
@@ -340,6 +364,18 @@ class McpServerTests(unittest.TestCase):
 
 
 class WorkflowTests(AiFlowTestCase):
+    def test_legacy_config_name_is_still_loaded(self) -> None:
+        legacy = self.repo / ".ai" / "ai-flow.toml"
+        legacy.parent.mkdir(parents=True, exist_ok=True)
+        legacy.write_text(
+            """[workflow]
+default_branch_prefix = "legacy-prefix"
+""",
+            encoding="utf-8",
+        )
+        cfg = load_config(self.repo)
+        self.assertEqual(cfg["workflow"]["default_branch_prefix"], "legacy-prefix")
+
     def test_status_transitions_and_artifacts(self) -> None:
         run_id = self.create_planned_run()
         status = self.cli_json("status", run_id)
@@ -363,16 +399,16 @@ class WorkflowTests(AiFlowTestCase):
         self.cli_json("test", run_id)
         self.cli_json("review", run_id, "--mock")
         self.cli_json("apply", run_id)
-        self.assertTrue((self.repo / "AI_FLOW_MOCK_OUTPUT.md").exists())
+        self.assertTrue((self.repo / "PATCHBAY_MOCK_OUTPUT.md").exists())
 
     def test_worktree_creation_failure_records_error(self) -> None:
         run_id = self.create_planned_run()
         self.cli_json("approve", run_id)
-        cfg = self.repo / ".ai" / "ai-flow.toml"
+        cfg = self.repo / ".ai" / "patchbay.toml"
         cfg.write_text(
             """[workflow]
 worktree_root = ".ai/preexisting"
-default_branch_prefix = "ai-flow"
+default_branch_prefix = "patchbay"
 fail_on_dirty_workspace = true
 
 [commands_allowlist]

@@ -13,67 +13,86 @@ else:
 
 
 ROOT = Path.cwd()
+SERVER_NAME = "patchbay"
+SERVER_VERSION = "0.1.0"
 
 
-def ai_flow_plan(task: str) -> dict[str, Any]:
+def patchbay_plan(task: str) -> dict[str, Any]:
     return service.plan(ROOT, task=task)
 
 
-def ai_flow_approve(run_id: str) -> dict[str, Any]:
+def patchbay_approve(run_id: str) -> dict[str, Any]:
     return service.approve(ROOT, run_id)
 
 
-def ai_flow_write(run_id: str) -> dict[str, Any]:
+def patchbay_write(run_id: str) -> dict[str, Any]:
     return service.write(ROOT, run_id)
 
 
-def ai_flow_test(run_id: str) -> dict[str, Any]:
+def patchbay_test(run_id: str) -> dict[str, Any]:
     return service.test(ROOT, run_id)
 
 
-def ai_flow_review(run_id: str) -> dict[str, Any]:
+def patchbay_review(run_id: str) -> dict[str, Any]:
     return service.review(ROOT, run_id)
 
 
-def ai_flow_fix(run_id: str) -> dict[str, Any]:
+def patchbay_fix(run_id: str) -> dict[str, Any]:
     return service.fix(ROOT, run_id)
 
 
-def ai_flow_status(run_id: str) -> dict[str, Any]:
+def patchbay_status(run_id: str) -> dict[str, Any]:
     return service.status(ROOT, run_id)
 
 
-def ai_flow_diff(run_id: str) -> dict[str, str]:
+def patchbay_diff(run_id: str) -> dict[str, str]:
     return {"diff": service.diff(ROOT, run_id)}
 
 
-def ai_flow_apply(run_id: str) -> dict[str, Any]:
+def patchbay_apply(run_id: str) -> dict[str, Any]:
     return service.apply(ROOT, run_id)
 
 
-TOOLS: dict[str, Callable[..., Any]] = {
-    "ai_flow_plan": ai_flow_plan,
-    "ai_flow_approve": ai_flow_approve,
-    "ai_flow_write": ai_flow_write,
-    "ai_flow_test": ai_flow_test,
-    "ai_flow_review": ai_flow_review,
-    "ai_flow_fix": ai_flow_fix,
-    "ai_flow_status": ai_flow_status,
-    "ai_flow_diff": ai_flow_diff,
-    "ai_flow_apply": ai_flow_apply,
+CANONICAL_TOOLS: dict[str, Callable[..., Any]] = {
+    "patchbay_plan": patchbay_plan,
+    "patchbay_approve": patchbay_approve,
+    "patchbay_write": patchbay_write,
+    "patchbay_test": patchbay_test,
+    "patchbay_review": patchbay_review,
+    "patchbay_fix": patchbay_fix,
+    "patchbay_status": patchbay_status,
+    "patchbay_diff": patchbay_diff,
+    "patchbay_apply": patchbay_apply,
 }
+
+LEGACY_TOOLS: dict[str, Callable[..., Any]] = {
+    "ai_flow_plan": patchbay_plan,
+    "ai_flow_approve": patchbay_approve,
+    "ai_flow_write": patchbay_write,
+    "ai_flow_test": patchbay_test,
+    "ai_flow_review": patchbay_review,
+    "ai_flow_fix": patchbay_fix,
+    "ai_flow_status": patchbay_status,
+    "ai_flow_diff": patchbay_diff,
+    "ai_flow_apply": patchbay_apply,
+}
+
+TOOLS: dict[str, Callable[..., Any]] = {**CANONICAL_TOOLS, **LEGACY_TOOLS}
 
 
 def _tool_schema(name: str) -> dict[str, Any]:
-    if name == "ai_flow_plan":
+    if name.endswith("_plan"):
         properties = {"task": {"type": "string"}}
         required = ["task"]
     else:
         properties = {"run_id": {"type": "string"}}
         required = ["run_id"]
+    description = name.replace("_", " ")
+    if name in LEGACY_TOOLS:
+        description += " (legacy ai-flow alias)"
     return {
         "name": name,
-        "description": name.replace("_", " "),
+        "description": description,
         "inputSchema": {
             "type": "object",
             "properties": properties,
@@ -100,7 +119,7 @@ def handle(message: dict[str, Any]) -> dict[str, Any] | None:
             {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "ai-flow", "version": "0.1.0"},
+                "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
             },
         )
     if method == "notifications/initialized":
