@@ -36,3 +36,45 @@ test = [
   "go test ./...",
   "cargo test"
 ]
+
+# ---------------------------------------------------------------------------
+# Per-phase executors (host-agnostic).
+# Uncomment any section to override the default provider / model for that phase.
+# Supported providers per phase:
+#   plan:   claude_cli | codex_cli | gemini_cli | mock
+#   write:  reasonix_cli | deepseek_api | mock
+#   review: codex_cli | claude_cli | gemini_cli | mock
+#   fix:    (defaults to write provider) reasonix_cli | deepseek_api | mock
+#   test:   no LLM executor (command allowlist only)
+#   apply:  no LLM executor (git apply only)
+# ---------------------------------------------------------------------------
+
+# [phases.plan]
+# provider = "claude_cli"      # claude_cli | codex_cli | gemini_cli | mock
+# model = "claude-opus-4-7"
+# command_key = "claude"       # lookup key in [commands] for the CLI binary
+# timeout = 900
+
+# [phases.write]
+# provider = "deepseek_api"    # reasonix_cli | deepseek_api | mock
+# model = "deepseek-v4-pro"
+# command_key = "reasonix"     # only used when provider = reasonix_cli
+# timeout = 900
+
+# [phases.review]
+# provider = "codex_cli"       # codex_cli | claude_cli | gemini_cli | mock
+# model = "gpt-5.5"
+# command_key = "codex"        # lookup key in [commands] for the CLI binary
+# timeout = 900
+
+# [phases.fix]
+# provider = ""                # defaults to phases.write.provider
+# model = ""                   # defaults to phases.write.model
+# timeout = 900
+
+# [phases.test]
+# commands = []              # optional ordered test commands; every command must be in commands_allowlist.test
+# timeout = 900              # per-command timeout in seconds
+
+# [phases.apply]
+# # no LLM executor; Patchbay applies the reviewed FINAL.diff via git after tests and review pass

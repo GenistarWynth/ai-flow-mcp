@@ -10,7 +10,7 @@ from typing import Any
 from ..artifacts import append_text
 from ..config import split_command
 from ..errors import AiFlowError
-from ..runner import redact
+from ..runner import merged_env, redact
 from ..safety import validate_repo_relative_path
 
 
@@ -20,9 +20,12 @@ def run_reasonix_writer(
     config: dict,
     cwd: Path,
     log_path: Path,
+    command_key: str = "reasonix",
+    timeout: int = 900,
+    env: dict[str, str] | None = None,
 ) -> str:
-    command = _acp_command(config, cwd, log_path)
-    transcript = _run_acp(command=command, prompt=_agent_prompt(prompt), cwd=cwd, log_path=log_path)
+    command = _acp_command(config, cwd, log_path, command_key=command_key)
+    transcript = _run_acp(command=command, prompt=_agent_prompt(prompt), cwd=cwd, log_path=log_path, timeout=timeout, env=env)
     return "\n".join(
         [
             "BEGIN_WRITER_SUMMARY",
@@ -36,13 +39,13 @@ def run_reasonix_writer(
     ) + "\n"
 
 
-def _acp_command(config: dict, cwd: Path, log_path: Path) -> list[str]:
-    configured = split_command(config.get("commands", {}).get("reasonix", ""))
+def _acp_command(config: dict, cwd: Path, log_path: Path, *, command_key: str = "reasonix") -> list[str]:
+    configured = split_command(config.get("commands", {}).get(command_key, ""))
     if not configured:
         raise AiFlowError(
-            "Reasonix CLI command is not configured.",
+            f"{command_key} command is not configured.",
             stage="write",
-            suggested_next_action="Set commands.reasonix in .ai/patchbay.toml or use deepseek_api/mock.",
+            suggested_next_action=f"Set commands.{command_key} in .ai/patchbay.toml or use deepseek_api/mock.",
         )
     executable = configured[0]
     model = str(config.get("models", {}).get("writer", "")).strip()
@@ -67,7 +70,8 @@ def _agent_prompt(prompt: str) -> str:
     ).rstrip()
 
 
-def _run_acp(*, command: list[str], prompt: str, cwd: Path, log_path: Path) -> str:
+def _run_acp(*, command: list[str], prompt: str, cwd: Path, log_path: Path, timeout: int = 900, env: dict[str, str] | None = None) -> str:
+    effective_env = merged_env(env)
     append_text(
         log_path,
         "\n".join(
@@ -91,6 +95,7 @@ def _run_acp(*, command: list[str], prompt: str, cwd: Path, log_path: Path) -> s
             encoding="utf-8",
             errors="replace",
             bufsize=1,
+            env=effective_env,
         )
     except FileNotFoundError as exc:
         raise AiFlowError(
@@ -117,7 +122,7 @@ def _run_acp(*, command: list[str], prompt: str, cwd: Path, log_path: Path) -> s
                 "sessionId": session_id,
                 "prompt": [{"type": "text", "text": prompt}],
             },
-            timeout=900,
+            timeout=timeout,
         )
         client.close()
         exit_code = _terminate_process(proc)

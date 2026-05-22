@@ -7,7 +7,7 @@
 
 你必须使用 `scripts/patchbay`，不要直接改代码。旧入口 `scripts/ai-flow` 仍可兼容使用，但新文档优先使用 Patchbay 名称。
 
-如果当前 MCP host 已配置 `patchbay_*` MCP 工具，可以用 MCP 调用同一套 Patchbay 编排器；旧的 `ai_flow_*` 工具名也保留为兼容别名。无论入口是什么，仍然必须遵守下面的阶段顺序和确认门禁。
+Patchbay 支持任意 MCP host 作为交互入口（Claude Code、Claude Desktop、Codex CLI、Codex Desktop、Gemini CLI 等），流程和门禁完全一致。如果当前 MCP host 已配置 `patchbay_*` MCP 工具，可以用 MCP 调用同一套 Patchbay 编排器；旧的 `ai_flow_*` 工具名也保留为兼容别名。每个阶段（plan/write/review/fix）的 provider 和模型可以通过 `.ai/patchbay.toml` 的 `[phases.<phase>]` 独立配置。无论入口是什么，仍然必须遵守下面的阶段顺序和确认门禁。
 
 流程：
 

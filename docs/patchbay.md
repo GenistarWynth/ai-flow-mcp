@@ -1,12 +1,15 @@
 # Patchbay
 
-Patchbay 是一个本地补丁编排器：任意支持 MCP 的客户端都可以作为入口，默认把规划、实现、测试、审查和应用拆成可审计阶段。当前默认角色绑定是 Claude 规划，Reasonix/DeepSeek 实现，Codex 审查；后续可以把这些槽位换成别的工具。
+Patchbay 是一个本地补丁编排器：任意支持 MCP 的客户端都可以作为入口（Claude Code、Claude Desktop、Codex CLI、Codex Desktop、Gemini CLI 等），默认把规划、实现、测试、审查和应用拆成可审计阶段。默认角色绑定是 Claude 规划、Reasonix/DeepSeek 实现、Codex 审查；每个阶段都可以通过配置换成其他工具。
 
 ## 环境准备
 
-- 登录 Claude Code，并确保 `claude` CLI 可用。
-- 登录 Codex CLI，并确保 `codex` CLI 可用。
+- 确保所需 CLI 已登录并可调用（按你要用的 provider 准备）：
+  - Planner：`claude`（Claude Code）、`codex`（Codex CLI）或 `gemini`（Gemini CLI）
+  - Writer：Reasonix CLI（`reasonix` / `reasonix.cmd`）或 DeepSeek API
+  - Reviewer：`codex`（Codex CLI）、`claude`（Claude Code）或 `gemini`（Gemini CLI）
 - 使用 DeepSeek API 时，设置 `DEEPSEEK_API_KEY`。
+- 使用 Reasonix CLI 时，确保 `reasonix acp` 可用。
 
 ## 配置
 
@@ -16,6 +19,33 @@ cp .ai/patchbay.example.toml .ai/patchbay.toml
 ```
 
 按需编辑 `.ai/patchbay.toml`，尤其是 writer provider、命令路径和测试 allowlist。
+
+### 按阶段绑定 provider
+
+每个工作流阶段可以独立配置 provider 和模型：
+
+```toml
+[phases.plan]
+provider = "claude_cli"      # claude_cli | codex_cli | gemini_cli | mock
+model = "claude-opus-4-7"
+
+[phases.write]
+provider = "reasonix_cli"    # reasonix_cli | deepseek_api | mock
+model = "deepseek-v4-pro"
+
+[phases.review]
+provider = "codex_cli"       # codex_cli | claude_cli | gemini_cli | mock
+model = "gpt-5.5"
+
+[phases.test]
+commands = ["python -m unittest discover -s tests -v"]
+timeout = 900
+
+[phases.fix]
+# 默认跟随 phases.write 的 provider 和 model
+```
+
+旧配置节 `[models]`、`[commands]` 和 `[writer].provider` 继续有效，作为未设置 phase 时的默认值。
 
 Writer 有两种实现入口：
 
@@ -53,13 +83,20 @@ scripts/patchbay review <run_id> --mock
 
 ## MCP
 
-CLI 跑通后可以把同一套流程作为 MCP 工具暴露给任意 MCP host：
+CLI 跑通后可以把同一套流程作为 MCP 工具暴露给任意 MCP host。以下为常见 host 的注册命令：
 
 ```bash
+# Codex CLI / Codex Desktop
 codex mcp add patchbay -- python scripts/patchbay_mcp_server.py
+
+# Claude Code
+claude mcp add patchbay -- python scripts/patchbay_mcp_server.py
+
+# Claude Desktop: 编辑 claude_desktop_config.json，在 mcpServers 中添加
+# Gemini CLI: 使用对应的 MCP server 注册方式
 ```
 
-MCP 只调用 `scripts.ai_flow.service` 中已有函数，不复制业务逻辑。新工具名使用 `patchbay_*`，旧的 `ai_flow_*` 作为兼容别名保留。
+MCP 只调用 `scripts.ai_flow.service` 中已有函数，不复制业务逻辑。新工具名使用 `patchbay_*`，旧的 `ai_flow_*` 作为兼容别名保留。无论通过哪个 host 调用，流程和门禁保持一致。
 
 ## 故障排查
 
@@ -81,3 +118,11 @@ Patchbay 拒绝修改 repo 外路径、`.git/`、`.env*`、secret-like 文件、
 ```bash
 scripts/patchbay cleanup <run_id>
 ```
+
+## Phase Command Notes
+
+CLI phases can use `command_key` to reference `[commands]` or `command` for an inline command. `[phases.test].commands` overrides selected test commands, with each command still checked against `commands_allowlist.test`; `[phases.test].timeout` controls the per-command timeout. `apply` has no model executor and only applies the reviewed `FINAL.diff` after tests and review pass.
+
+## Provider Safety Notes
+
+Claude and Codex CLI providers request their native read-only/plan execution modes. Gemini CLI does not expose the same sandbox control, so Patchbay enforces safety for Gemini plan/review phases by comparing repository/worktree state before and after the provider runs, including failure paths.

@@ -26,6 +26,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "commands": {
         "claude": "claude",
         "codex": "codex",
+        "gemini": "gemini",
         "reasonix": "",
     },
     "writer": {
@@ -56,6 +57,50 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "go test ./...",
             "cargo test",
         ],
+    },
+    "phases": {
+        "plan": {
+            "provider": "",
+            "model": "",
+            "command_key": "",
+            "env": {},
+            "timeout": 900,
+        },
+        "write": {
+            "provider": "",
+            "model": "",
+            "command_key": "",
+            "env": {},
+            "timeout": 900,
+        },
+        "review": {
+            "provider": "",
+            "model": "",
+            "command_key": "",
+            "env": {},
+            "timeout": 900,
+        },
+        "fix": {
+            "provider": "",
+            "model": "",
+            "command_key": "",
+            "env": {},
+            "timeout": 900,
+        },
+        "test": {
+            "provider": "",
+            "model": "",
+            "command_key": "",
+            "env": {},
+            "timeout": 900,
+        },
+        "apply": {
+            "provider": "",
+            "model": "",
+            "command_key": "",
+            "env": {},
+            "timeout": 900,
+        },
     },
 }
 
@@ -147,3 +192,128 @@ def configured_worktree_root(root: Path, cfg: dict[str, Any]) -> Path:
 def allowlisted_test_commands(cfg: dict[str, Any]) -> set[str]:
     values = cfg.get("commands_allowlist", {}).get("test", [])
     return {str(value).strip() for value in values if str(value).strip()}
+
+
+# ---------------------------------------------------------------------------
+# Per-phase resolver: user [phases.<x>] > legacy [models]/[commands]/[writer] > DEFAULT_CONFIG
+# ---------------------------------------------------------------------------
+
+_PHASE_PROVIDER_DEFAULTS: dict[str, str] = {
+    "plan": "claude_cli",
+    "write": "deepseek_api",
+    "review": "codex_cli",
+    "fix": "",
+    "test": "",
+    "apply": "",
+}
+
+_PHASE_COMMAND_KEY_DEFAULTS: dict[str, str] = {
+    "plan": "claude",
+    "write": "reasonix",
+    "review": "codex",
+    "fix": "reasonix",
+    "test": "",
+    "apply": "",
+}
+
+_PROVIDER_COMMAND_KEY_DEFAULTS: dict[str, str] = {
+    "claude_cli": "claude",
+    "codex_cli": "codex",
+    "gemini_cli": "gemini",
+    "reasonix_cli": "reasonix",
+    "deepseek_api": "",
+    "mock": "",
+}
+
+_PROVIDER_MODEL_DEFAULTS: dict[str, str] = {
+    "claude_cli": "claude-opus-4-7",
+    "codex_cli": "gpt-5.5",
+    "gemini_cli": "gemini-2.5-pro",
+    "reasonix_cli": "deepseek-v4-pro",
+    "deepseek_api": "deepseek-v4-pro",
+    "mock": "mock",
+}
+
+
+def resolve_phase(cfg: dict[str, Any], phase: str) -> dict[str, Any]:
+    """Return effective {provider, model, command_key, env, timeout} for *phase*.
+
+    Precedence:
+    1. ``[phases.<phase>]`` in the user config (already deep-merged over DEFAULT_CONFIG).
+    2. Legacy keys: ``[models]``, ``[commands]``, ``[writer].provider``.
+    3. Hard-coded per-phase defaults.
+
+    The ``fix`` phase defaults its provider and model to whatever *write* resolves to.
+    """
+    phases_cfg = cfg.get("phases", {})
+    phase_cfg = dict(phases_cfg.get(phase, {}))
+    inherited_write_phase = resolve_phase(cfg, "write") if phase == "fix" else None
+
+    # -- provider --
+    provider = str(phase_cfg.get("provider", "")).strip()
+    if not provider:
+        if phase == "write":
+            provider = str(cfg.get("writer", {}).get("provider", "deepseek_api")).strip()
+        elif phase == "fix":
+            provider = str(inherited_write_phase.get("provider", "") if inherited_write_phase else "")
+        else:
+            provider = _PHASE_PROVIDER_DEFAULTS.get(phase, "")
+    phase_cfg["provider"] = provider
+
+    # -- model --
+    model = str(phase_cfg.get("model", "")).strip()
+    if not model:
+        if phase == "plan":
+            if provider == _PHASE_PROVIDER_DEFAULTS["plan"]:
+                model = str(cfg.get("models", {}).get("planner", "claude-opus-4-7"))
+            else:
+                model = _PROVIDER_MODEL_DEFAULTS.get(provider, "")
+        elif phase == "write":
+            legacy_provider = str(cfg.get("writer", {}).get("provider", "deepseek_api")).strip()
+            if provider == legacy_provider:
+                model = str(cfg.get("models", {}).get("writer", "deepseek-v4-pro"))
+            else:
+                model = _PROVIDER_MODEL_DEFAULTS.get(provider, "")
+        elif phase == "fix":
+            model = str(inherited_write_phase.get("model", "") if inherited_write_phase else "")
+        elif phase == "review":
+            if provider == _PHASE_PROVIDER_DEFAULTS["review"]:
+                model = str(cfg.get("models", {}).get("reviewer", "gpt-5.5"))
+            else:
+                model = _PROVIDER_MODEL_DEFAULTS.get(provider, "")
+    phase_cfg["model"] = model
+
+    # -- command_key --
+    command = str(phase_cfg.get("command", "")).strip()
+    command_key = str(phase_cfg.get("command_key", "")).strip()
+    if command:
+        command_key = f"phase_{phase}"
+        cfg.setdefault("commands", {})[command_key] = command
+    if not command_key:
+        if phase == "fix":
+            command_key = str(inherited_write_phase.get("command_key", "") if inherited_write_phase else "")
+        if not command_key:
+            command_key = _PROVIDER_COMMAND_KEY_DEFAULTS.get(provider, "")
+        if not command_key:
+            command_key = _PHASE_COMMAND_KEY_DEFAULTS.get(phase, "")
+    phase_cfg["command_key"] = command_key
+
+    raw_env = phase_cfg.get("env", {})
+    if phase == "fix" and isinstance(raw_env, dict) and not raw_env and inherited_write_phase:
+        merged_env = dict(inherited_write_phase.get("env") or os.environ)
+    else:
+        merged_env = dict(os.environ)
+    if isinstance(raw_env, dict) and not (phase == "fix" and not raw_env and inherited_write_phase):
+        merged_env.update({str(key): str(value) for key, value in raw_env.items()})
+    phase_cfg["env"] = merged_env
+    if (
+        phase == "fix"
+        and inherited_write_phase
+        and phase_cfg.get("timeout", DEFAULT_CONFIG["phases"]["fix"]["timeout"])
+        == DEFAULT_CONFIG["phases"]["fix"]["timeout"]
+    ):
+        phase_cfg["timeout"] = inherited_write_phase.get("timeout", 900)
+    else:
+        phase_cfg.setdefault("timeout", 900)
+
+    return phase_cfg

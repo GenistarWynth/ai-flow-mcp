@@ -1,33 +1,35 @@
+"""Claude Code planner provider.
+
+Uses ``claude -p --output-format stream-json`` with plan permission mode,
+plus Claude-specific transcript / plans-dir recovery fallbacks.
+"""
+
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
-from ..artifacts import append_text, read_text, write_text
+from .cli_planner import (
+    build_planner_prompt,
+    extract_stream_json_plan,
+    failure_detail,
+    has_plan_json_block,
+    is_retryable_connection_failure,
+)
+
+from ..artifacts import append_text, write_text
 from ..config import split_command
 from ..errors import AiFlowError
 from ..plan_schema import empty_plan
 from ..runner import run_logged
 
 
-def _prompt_template() -> str:
-    return read_text(Path(__file__).resolve().parents[1] / "prompts" / "planner.md")
+# ---------------------------------------------------------------------------
+# Public entry points (also referenced by the provider registry)
+# ---------------------------------------------------------------------------
 
 
-def build_planner_prompt(task: str, context: str) -> str:
-    return "\n\n".join(
-        [
-            _prompt_template().rstrip(),
-            "# User Task",
-            task,
-            "# Repository Context",
-            context,
-        ]
-    ).rstrip() + "\n"
-
-
-def run_mock_planner(task: str, context: str) -> str:
+def run_mock_planner(task: str, context: str, **kwargs: object) -> str:
     plan = empty_plan(task)
     return "\n".join(
         [
@@ -53,10 +55,13 @@ def run_claude_planner(
     config: dict,
     cwd: Path,
     log_path: Path,
+    command_key: str = "claude",
+    timeout: int = 900,
+    env: dict[str, str] | None = None,
 ) -> str:
-    command = split_command(config.get("commands", {}).get("claude", "claude"))
+    command = split_command(config.get("commands", {}).get(command_key, command_key))
     if not command:
-        raise AiFlowError("Claude command is not configured.", stage="plan")
+        raise AiFlowError(f"{command_key} command is not configured.", stage="plan")
     model = str(config.get("models", {}).get("planner", "claude-opus-4-7"))
     prompt = build_planner_prompt(task, context)
     prompt_file = log_path.parent / "claude-planner.prompt.md"
@@ -81,10 +86,11 @@ def run_claude_planner(
             _claude_print_command(command, short_prompt, model),
             cwd=cwd,
             log_path=log_path,
-            timeout=900,
+            timeout=timeout,
+            env=env,
         )
-        stream_text = _extract_stream_json_plan(result.stdout)
-        if stream_text or result.ok or not _is_retryable_connection_failure(result.stdout, result.stderr):
+        stream_text = extract_stream_json_plan(result.stdout)
+        if stream_text or result.ok or not is_retryable_connection_failure(result.stdout, result.stderr):
             break
     assert result is not None
     if stream_text:
@@ -99,7 +105,7 @@ def run_claude_planner(
         if transcript_text:
             append_text(log_path, "\nRecovered planner output from Claude transcript.\n")
             return transcript_text
-        detail = _failure_detail(result.stdout, result.stderr)
+        detail = failure_detail(result.stdout, result.stderr)
         suggested = "Check Claude Code login/configuration or rerun with --mock."
         if "ConnectionRefused" in detail or "Unable to connect to API" in detail:
             suggested = (
@@ -111,7 +117,7 @@ def run_claude_planner(
             stage="plan",
             suggested_next_action=suggested,
         )
-    if not _has_plan_json_block(result.stdout):
+    if not has_plan_json_block(result.stdout):
         plan_text = _read_newest_plan(plans_dir, after=before)
         if not plan_text:
             plan_text = _read_latest_plan(plans_dir)
@@ -130,6 +136,11 @@ def run_claude_planner(
     return result.stdout
 
 
+# ---------------------------------------------------------------------------
+# Claude-specific helpers
+# ---------------------------------------------------------------------------
+
+
 def _claude_print_command(command: list[str], prompt: str, model: str) -> list[str]:
     return [
         *command,
@@ -144,58 +155,6 @@ def _claude_print_command(command: list[str], prompt: str, model: str) -> list[s
         "stream-json",
         "--verbose",
     ]
-
-
-def _failure_detail(stdout: str, stderr: str) -> str:
-    stream_error = _extract_stream_json_error(stdout)
-    if stream_error:
-        return stream_error
-    detail = (stdout or stderr or "no error output").strip()
-    return detail.splitlines()[0] if detail else "no error output"
-
-
-def _is_retryable_connection_failure(stdout: str, stderr: str) -> bool:
-    detail = _failure_detail(stdout, stderr)
-    return "ConnectionRefused" in detail or "Unable to connect to API" in detail
-
-
-def _extract_stream_json_plan(output: str) -> str | None:
-    best: str | None = None
-    for line in output.splitlines():
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(event.get("result"), str) and _has_plan_json_block(event["result"]):
-            best = event["result"].strip()
-        if event.get("type") != "assistant":
-            continue
-        message = event.get("message")
-        if not isinstance(message, dict):
-            continue
-        text = _message_text(message)
-        if text and _has_plan_json_block(text):
-            best = text
-    return best
-
-
-def _extract_stream_json_error(output: str) -> str | None:
-    best: str | None = None
-    for line in output.splitlines():
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if event.get("type") == "result" and event.get("is_error") and isinstance(event.get("result"), str):
-            best = event["result"].strip()
-        if event.get("type") != "assistant" or not event.get("error"):
-            continue
-        message = event.get("message")
-        if isinstance(message, dict):
-            text = _message_text(message)
-            if text:
-                best = text
-    return best
 
 
 def _claude_project_dirs(cwd: Path) -> list[Path]:
@@ -243,28 +202,18 @@ def _read_transcript_plan(path: Path, *, prompt_marker: str) -> str | None:
         message = event.get("message")
         if not isinstance(message, dict):
             continue
-        text = _message_text(message)
-        if text and _has_plan_json_block(text):
+        text = _transcript_message_text(message)
+        if text and has_plan_json_block(text):
             best = text
     return best
 
 
-def _message_text(message: dict) -> str:
+def _transcript_message_text(message: dict) -> str:
     parts: list[str] = []
     for item in message.get("content", []):
         if isinstance(item, dict) and item.get("type") == "text" and isinstance(item.get("text"), str):
             parts.append(item["text"])
     return "\n".join(parts).strip()
-
-
-def _has_plan_json_block(text: str) -> bool:
-    return bool(
-        re.search(
-            r"(?m)^BEGIN_AI_FLOW_PLAN_JSON\s*$.*?^END_AI_FLOW_PLAN_JSON\s*$",
-            text,
-            flags=re.DOTALL | re.MULTILINE,
-        )
-    )
 
 
 def _latest_plan_mtime(plans_dir: Path) -> float:
@@ -292,3 +241,14 @@ def _read_latest_plan(plans_dir: Path) -> str | None:
         return None
     newest = max(candidates, key=lambda path: path.stat().st_mtime)
     return newest.read_text(encoding="utf-8", errors="replace")
+
+
+# ---------------------------------------------------------------------------
+# Backward-compatible re-exports from cli_planner (keep existing test imports working)
+# ---------------------------------------------------------------------------
+
+_extract_stream_json_plan = extract_stream_json_plan
+_failure_detail = failure_detail
+_is_retryable_connection_failure = is_retryable_connection_failure
+
+from .cli_planner import extract_stream_json_error as _extract_stream_json_error  # noqa: E402

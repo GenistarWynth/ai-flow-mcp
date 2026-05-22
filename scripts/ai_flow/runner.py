@@ -55,6 +55,14 @@ def format_command(command: str | Iterable[str]) -> str:
     return " ".join(str(part) for part in command)
 
 
+def merged_env(env: dict[str, str] | None = None) -> dict[str, str] | None:
+    if env is None:
+        return None
+    result = dict(os.environ)
+    result.update({str(key): str(value) for key, value in env.items()})
+    return result
+
+
 def run_logged(
     command: str | list[str],
     *,
@@ -66,6 +74,7 @@ def run_logged(
     env: dict[str, str] | None = None,
 ) -> CommandResult:
     command_text = format_command(command)
+    effective_env = merged_env(env)
     append_text(
         log_path,
         "\n".join(
@@ -73,7 +82,7 @@ def run_logged(
                 f"## Command {now_iso()}",
                 "",
                 f"cwd: {cwd}",
-                f"command: {redact(command_text, env)}",
+                f"command: {redact(command_text, effective_env)}",
                 "",
             ]
         ),
@@ -89,7 +98,7 @@ def run_logged(
             errors="replace",
             shell=shell,
             timeout=timeout,
-            env=env,
+            env=effective_env,
             check=False,
         )
         result = CommandResult(
@@ -118,11 +127,11 @@ def run_logged(
                 "",
                 "### stdout",
                 "",
-                redact(result.stdout, env).rstrip(),
+                redact(result.stdout, effective_env).rstrip(),
                 "",
                 "### stderr",
                 "",
-                redact(result.stderr, env).rstrip(),
+                redact(result.stderr, effective_env).rstrip(),
                 "",
             ]
         ),

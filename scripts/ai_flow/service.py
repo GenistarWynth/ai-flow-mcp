@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 from pathlib import Path
 from typing import Any
 
 from . import git_utils
 from .adapters import (
-    run_claude_planner,
+    PLANNERS,
+    REVIEWERS,
+    WRITERS,
     run_codex_reviewer,
     run_deepseek_writer,
     run_mock_planner,
@@ -32,6 +35,7 @@ from .config import (
     example_config_path,
     find_project_root,
     load_config,
+    resolve_phase,
 )
 from .context import build_context
 from .errors import AiFlowError, GitError, SafetyError, StateError
@@ -90,7 +94,11 @@ def _base_commit(root: Path) -> str | None:
     return commit
 
 
-def _selected_test_commands(root: Path, cfg: dict[str, Any], plan: dict[str, Any]) -> list[str]:
+def _selected_test_commands(root: Path, cfg: dict[str, Any], plan: dict[str, Any], test_phase: dict[str, Any] | None = None) -> list[str]:
+    if test_phase:
+        phase_commands = [str(command).strip() for command in test_phase.get("commands", []) if str(command).strip()]
+        if phase_commands:
+            return phase_commands
     plan_commands: list[str] = []
     for key in ("test_commands", "lint_commands", "typecheck_commands"):
         plan_commands.extend(str(command).strip() for command in plan.get(key, []) if str(command).strip())
@@ -216,6 +224,13 @@ def _reasonix_agent_prompt(
     return "\n\n".join(parts).rstrip() + "\n"
 
 
+def _phase_config(cfg: dict[str, Any], *, role: str, model: str | None) -> dict[str, Any]:
+    phase_cfg = deepcopy(cfg)
+    if model:
+        phase_cfg.setdefault("models", {})[role] = model
+    return phase_cfg
+
+
 def _call_writer(
     *,
     root: Path,
@@ -232,7 +247,9 @@ def _call_writer(
     raw = ""
     summary = ""
     for attempt in range(max_attempts):
-        provider = str(cfg.get("writer", {}).get("provider", "deepseek_api"))
+        write_phase = resolve_phase(cfg, "write" if not repair else "fix")
+        adapter_cfg = _phase_config(cfg, role="writer", model=write_phase.get("model"))
+        provider = write_phase["provider"]
         if (not mock) and provider == "reasonix_cli":
             prompt = _reasonix_agent_prompt(root=root, run_path=run_path, repair=repair)
         else:
@@ -244,14 +261,24 @@ def _call_writer(
                 extra_files=extra_files,
             )
         append_text(log_path, f"\n## Writer attempt {attempt + 1}\n\n")
-        if mock:
+        p_command_key = write_phase.get("command_key", "reasonix")
+        p_timeout = write_phase.get("timeout", 900)
+        p_env = write_phase.get("env") or None
+        if mock or provider == "mock":
             iteration = int(status.get("fix_iterations") or 0) if repair else 0
-            raw = run_mock_writer(task=task, repair=repair, iteration=iteration)
+            raw = WRITERS["mock"](task=task, repair=repair, iteration=iteration)
         else:
             worktree = Path(status["worktree_path"])
+            writer = WRITERS.get(provider)
+            if writer is None:
+                raise AiFlowError(
+                    f"Unknown writer provider: {provider}",
+                    stage="write",
+                    suggested_next_action="Set [phases.write].provider or [writer].provider to reasonix_cli, deepseek_api, or mock.",
+                )
             try:
                 if provider == "reasonix_cli":
-                    raw = run_reasonix_writer(prompt=prompt, config=cfg, cwd=worktree, log_path=log_path)
+                    raw = writer(prompt=prompt, config=adapter_cfg, cwd=worktree, log_path=log_path, command_key=p_command_key, timeout=p_timeout, env=p_env)
                     append_text(log_path, raw + "\n")
                     parsed = parse_writer_output(raw)
                     summary = parsed.summary
@@ -262,7 +289,7 @@ def _call_writer(
                     validate_patch_safety(final_diff)
                     return final_diff, summary
                 elif provider == "deepseek_api":
-                    raw = run_deepseek_writer(prompt=prompt, config=cfg, log_path=log_path)
+                    raw = writer(prompt=prompt, config=adapter_cfg, log_path=log_path, command_key=p_command_key, timeout=p_timeout, env=p_env)
                 else:
                     raise AiFlowError(f"Unknown writer provider: {provider}", stage="write")
             except AiFlowError:
@@ -417,22 +444,38 @@ def plan(cwd: Path, *, task: str, mock: bool = False) -> dict[str, str]:
         write_text(run_path / "FIXES.md", "")
         max_context = int(cfg.get("writer", {}).get("max_context_files", 30))
         context = build_context(root, max_files=max_context)
+        plan_phase = resolve_phase(cfg, "plan")
+        adapter_cfg = _phase_config(cfg, role="planner", model=plan_phase.get("model"))
         if mock:
-            raw = run_mock_planner(task, context)
+            raw = PLANNERS["mock"](task=task, context=context)
             write_text(run_path / "claude-planner.log", "mock planner used\n")
         else:
-            raw = run_claude_planner(
+            planner = PLANNERS.get(plan_phase["provider"])
+            if planner is None:
+                raise AiFlowError(
+                    f"Unknown plan provider: {plan_phase['provider']}",
+                    stage="plan",
+                    suggested_next_action="Set [phases.plan].provider to claude_cli, codex_cli, gemini_cli, or mock.",
+                )
+            raw = planner(
                 task=task,
                 context=context,
-                config=cfg,
+                config=adapter_cfg,
                 cwd=root,
                 log_path=run_path / "claude-planner.log",
+                command_key=plan_phase.get("command_key", "claude"),
+                timeout=plan_phase.get("timeout", 900),
+                env=plan_phase.get("env") or None,
             )
-        parsed = parse_planner_output(raw)
-        validate_plan_json(parsed.plan_json)
-        write_text(run_path / "PLAN.md", parsed.markdown)
-        write_json(run_path / "plan.json", parsed.plan_json)
-        _assert_plan_read_only(root, run_path, before_workspace)
+        try:
+            parsed = parse_planner_output(raw)
+            validate_plan_json(parsed.plan_json)
+            write_text(run_path / "PLAN.md", parsed.markdown)
+            write_json(run_path / "plan.json", parsed.plan_json)
+            _assert_plan_read_only(root, run_path, before_workspace)
+        except Exception:
+            _assert_plan_read_only(root, run_path, before_workspace)
+            raise
         set_status(run_path, PLANNED)
         return {
             "run_id": run_id,
@@ -484,7 +527,7 @@ def write(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
             write_text(run_path / "WORKTREE_PATH", str(worktree_path) + "\n")
             set_status(run_path, IMPLEMENTING, worktree_path=str(worktree_path))
             patch, summary = _call_writer(root=root, run_path=run_path, cfg=cfg, mock=mock)
-            if _writer_edits_worktree(cfg, mock):
+            if _writer_edits_worktree(cfg, mock, repair=False):
                 final_diff = patch
             else:
                 final_diff = _apply_writer_diff(worktree_path, patch)
@@ -506,8 +549,10 @@ def test(cwd: Path, run_id: str) -> dict[str, Any]:
             worktree = Path(status["worktree_path"])
             cfg = load_config(root)
             plan_json = read_json(run_path / "plan.json")
-            commands = _selected_test_commands(worktree, cfg, plan_json)
+            test_phase = resolve_phase(cfg, "test")
+            commands = _selected_test_commands(worktree, cfg, plan_json, test_phase)
             allowlist = allowlisted_test_commands(cfg)
+            timeout = int(test_phase.get("timeout") or 900)
             set_status(run_path, TESTING)
             write_text(run_path / "TEST.log", "")
             if not commands:
@@ -520,7 +565,8 @@ def test(cwd: Path, run_id: str) -> dict[str, Any]:
                     cwd=worktree,
                     log_path=run_path / "TEST.log",
                     shell=True,
-                    timeout=900,
+                    timeout=timeout,
+                    env=test_phase.get("env") or None,
                 )
                 if not result.ok:
                     raise AiFlowError(
@@ -556,7 +602,10 @@ def review(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
     run_path, status = _load_run(root, run_id)
     try:
         with git_utils.log_to(run_path / "git.log"):
-            cached_output = run_path / "codex-reviewer.output.md"
+            cfg = load_config(root)
+            review_phase = resolve_phase(cfg, "review")
+            output_command_key = str(review_phase.get("command_key") or "codex")
+            cached_output = run_path / f"{output_command_key}-reviewer.output.md"
             can_recover_cached = status.get("status") == REVIEWING or (
                 status.get("status") == FAILED and status.get("stage") == "review"
             )
@@ -573,6 +622,8 @@ def review(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                         REVIEWED_CHANGES_REQUESTED,
                         review_result="CHANGES_REQUESTED",
                     )
+            elif cached_output.exists():
+                cached_output.unlink()
             allowed_statuses = {TESTED}
             if (
                 status.get("status") == FAILED
@@ -583,38 +634,38 @@ def review(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 allowed_statuses.add(FAILED)
             require_status(status, allowed_statuses, "review")
             worktree = Path(status["worktree_path"])
-            cfg = load_config(root)
             set_status(run_path, REVIEWING)
             before = git_utils.diff(worktree)
             before_status = git_utils.status_porcelain(worktree)
             prompt = _review_prompt(run_path)
-            if not mock and cached_output.exists():
-                cached = read_text(cached_output).strip()
-                if cached.startswith("PASS") or cached.startswith("CHANGES_REQUESTED"):
-                    raw = cached
-                    after = git_utils.diff(worktree)
-                    after_status = git_utils.status_porcelain(worktree)
-                    if after != before or after_status != before_status:
-                        raise SafetyError("Reviewer modified files in the worktree.", stage="review")
-                    verdict = review_verdict(raw)
-                    write_text(run_path / "REVIEW.md", raw.rstrip() + "\n")
-                    if verdict == "PASS":
-                        return set_status(run_path, REVIEWED_PASS, review_result="PASS")
-                    return set_status(
-                        run_path,
-                        REVIEWED_CHANGES_REQUESTED,
-                        review_result="CHANGES_REQUESTED",
+            adapter_cfg = _phase_config(cfg, role="reviewer", model=review_phase.get("model"))
+            try:
+                if mock:
+                    raw = REVIEWERS["mock"](prompt=prompt)
+                    write_text(run_path / "codex-reviewer.log", "mock reviewer used\n")
+                else:
+                    reviewer = REVIEWERS.get(review_phase["provider"])
+                    if reviewer is None:
+                        raise AiFlowError(
+                            f"Unknown review provider: {review_phase['provider']}",
+                            stage="review",
+                            suggested_next_action="Set [phases.review].provider to codex_cli, claude_cli, gemini_cli, or mock.",
+                        )
+                    raw = reviewer(
+                        prompt=prompt,
+                        config=adapter_cfg,
+                        cwd=worktree,
+                        log_path=run_path / "codex-reviewer.log",
+                        command_key=review_phase.get("command_key", "codex"),
+                        timeout=review_phase.get("timeout", 900),
+                        env=review_phase.get("env") or None,
                     )
-            if mock:
-                raw = run_mock_reviewer(prompt=prompt)
-                write_text(run_path / "codex-reviewer.log", "mock reviewer used\n")
-            else:
-                raw = run_codex_reviewer(
-                    prompt=prompt,
-                    config=cfg,
-                    cwd=worktree,
-                    log_path=run_path / "codex-reviewer.log",
-                )
+            except Exception:
+                after = git_utils.diff(worktree)
+                after_status = git_utils.status_porcelain(worktree)
+                if after != before or after_status != before_status:
+                    raise SafetyError("Reviewer modified files in the worktree.", stage="review")
+                raise
             after = git_utils.diff(worktree)
             after_status = git_utils.status_porcelain(worktree)
             if after != before or after_status != before_status:
@@ -669,7 +720,7 @@ def fix(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
             worktree = Path(status["worktree_path"])
             set_status(run_path, FIXING)
             patch, summary = _call_writer(root=root, run_path=run_path, cfg=cfg, mock=mock, repair=True)
-            if _writer_edits_worktree(cfg, mock):
+            if _writer_edits_worktree(cfg, mock, repair=True):
                 final_diff = patch
             else:
                 final_diff = _apply_writer_diff(worktree, patch)
@@ -688,8 +739,11 @@ def fix(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
         raise
 
 
-def _writer_edits_worktree(cfg: dict[str, Any], mock: bool) -> bool:
-    return (not mock) and str(cfg.get("writer", {}).get("provider", "deepseek_api")) == "reasonix_cli"
+def _writer_edits_worktree(cfg: dict[str, Any], mock: bool, *, repair: bool = False) -> bool:
+    if mock:
+        return False
+    phase = "fix" if repair else "write"
+    return resolve_phase(cfg, phase)["provider"] == "reasonix_cli"
 
 
 def status(cwd: Path, run_id: str) -> dict[str, Any]:
@@ -713,6 +767,21 @@ def diff(cwd: Path, run_id: str) -> str:
     return ""
 
 
+def _ensure_apply_has_no_executor(apply_phase: dict[str, Any]) -> None:
+    disallowed = []
+    for key in ("provider", "model", "command", "command_key"):
+        if str(apply_phase.get(key, "")).strip():
+            disallowed.append(key)
+    if disallowed:
+        raise AiFlowError(
+            "Apply phase does not support model/tool executors; Patchbay applies the reviewed FINAL.diff via git. "
+            "Remove phases.apply provider/model/command/command_key and keep only timeout/env if needed. "
+            f"Configured executor fields: {', '.join(disallowed)}",
+            stage="apply",
+            suggested_next_action="Remove executor fields from [phases.apply] or use plan/write/review/fix phase overrides.",
+        )
+
+
 def apply(cwd: Path, run_id: str) -> dict[str, Any]:
     root = resolve_root(cwd)
     run_path, status = _load_run(root, run_id)
@@ -722,6 +791,8 @@ def apply(cwd: Path, run_id: str) -> dict[str, Any]:
             if not status.get("tests_passed"):
                 raise StateError("Cannot apply because tests_passed is false.", stage="apply")
             cfg = load_config(root)
+            apply_phase = resolve_phase(cfg, "apply")
+            _ensure_apply_has_no_executor(apply_phase)
             if cfg.get("workflow", {}).get("fail_on_dirty_workspace", True):
                 git_utils.ensure_clean(root)
             patch = read_text(run_path / "FINAL.diff")
@@ -764,6 +835,7 @@ reviewer = "gpt-5.5"
 [commands]
 claude = "claude"
 codex = "codex"
+gemini = "gemini"
 reasonix = ""
 
 [writer]
@@ -794,6 +866,41 @@ test = [
   "go test ./...",
   "cargo test"
 ]
+
+# ---------------------------------------------------------------------------
+# Per-phase executors (host-agnostic).
+# Uncomment any section to override the default provider / model for that phase.
+# Supported providers per phase:
+#   plan:   claude_cli | codex_cli | gemini_cli | mock
+#   write:  reasonix_cli | deepseek_api | mock
+#   review: codex_cli | claude_cli | gemini_cli | mock
+#   fix:    (defaults to write provider) reasonix_cli | deepseek_api | mock
+#   test:   no LLM executor (command allowlist only)
+#   apply:  no LLM executor (git apply only)
+# ---------------------------------------------------------------------------
+
+# [phases.plan]
+# provider = "claude_cli"      # claude_cli | codex_cli | gemini_cli | mock
+# model = "claude-opus-4-7"
+
+# [phases.write]
+# provider = "deepseek_api"    # reasonix_cli | deepseek_api | mock
+# model = "deepseek-v4-pro"
+
+# [phases.review]
+# provider = "codex_cli"       # codex_cli | claude_cli | gemini_cli | mock
+# model = "gpt-5.5"
+
+# [phases.fix]
+# provider = ""                # defaults to phases.write.provider
+# model = ""                   # defaults to phases.write.model
+
+# [phases.test]
+# commands = []                # optional ordered test commands; every command must be in commands_allowlist.test
+# timeout = 900                # per-command timeout in seconds
+
+# [phases.apply]
+# # no LLM executor; Patchbay applies the reviewed FINAL.diff via git after tests and review pass
 """
 
 
@@ -806,7 +913,7 @@ AGENTS_MD = """# Multi-Agent Workflow
 
 你必须使用 `scripts/patchbay`，不要直接改代码。旧入口 `scripts/ai-flow` 仍可兼容使用，但新文档优先使用 Patchbay 名称。
 
-如果当前 MCP host 已配置 `patchbay_*` MCP 工具，可以用 MCP 调用同一套 Patchbay 编排器；旧的 `ai_flow_*` 工具名也保留为兼容别名。无论入口是什么，仍然必须遵守下面的阶段顺序和确认门禁。
+Patchbay 支持任意 MCP host 作为交互入口（Claude Code、Claude Desktop、Codex CLI、Codex Desktop、Gemini CLI 等），流程和门禁完全一致。如果当前 MCP host 已配置 `patchbay_*` MCP 工具，可以用 MCP 调用同一套 Patchbay 编排器；旧的 `ai_flow_*` 工具名也保留为兼容别名。每个阶段（plan/write/review/fix）的 provider 和模型可以通过 `.ai/patchbay.toml` 的 `[phases.<phase>]` 独立配置。无论入口是什么，仍然必须遵守下面的阶段顺序和确认门禁。
 
 流程：
 

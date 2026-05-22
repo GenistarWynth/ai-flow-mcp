@@ -87,9 +87,21 @@ def _tool_schema(name: str) -> dict[str, Any]:
     else:
         properties = {"run_id": {"type": "string"}}
         required = ["run_id"]
-    description = name.replace("_", " ")
+
+    descriptions: dict[str, str] = {
+        "patchbay_plan": "Run the planning phase (host-agnostic — provider configurable via [phases.plan] in .ai/patchbay.toml).",
+        "patchbay_approve": "Approve the plan so the writer phase can proceed.",
+        "patchbay_write": "Run the implementation phase (provider configurable via [phases.write] / [writer].provider).",
+        "patchbay_test": "Run test commands from the plan or allowlist inside the isolated worktree.",
+        "patchbay_review": "Run the review phase (provider configurable via [phases.review]).",
+        "patchbay_fix": "Run the fix phase after a CHANGES_REQUESTED review (provider defaults to write).",
+        "patchbay_status": "Return current run status and artifacts.",
+        "patchbay_diff": "Return the current FINAL.diff for the run.",
+        "patchbay_apply": "Apply the reviewed patch to the original repository (no LLM executor).",
+    }
+    description = descriptions.get(name, name.replace("_", " "))
     if name in LEGACY_TOOLS:
-        description += " (legacy ai-flow alias)"
+        description += " (legacy ai-flow alias — use patchbay_* names for new integrations)"
     return {
         "name": name,
         "description": description,

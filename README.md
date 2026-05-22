@@ -6,6 +6,33 @@ Patchbay is a local patch orchestration server for teams of coding agents. Any M
 
 The default workflow uses Claude Code as the read-only planner, Reasonix ACP or a DeepSeek-compatible API as the writer, local test commands as factual verification, and Codex CLI as the read-only reviewer. Those role bindings are configuration, not the product boundary.
 
+## Per-Phase Executors
+
+Each workflow phase can be independently bound to a provider and model in `.ai/patchbay.toml`:
+
+```toml
+[phases.plan]
+provider = "claude_cli"       # claude_cli | codex_cli | gemini_cli | mock
+model = "claude-opus-4-7"
+
+[phases.write]
+provider = "reasonix_cli"     # reasonix_cli | deepseek_api | mock
+model = "deepseek-v4-pro"
+
+[phases.review]
+provider = "codex_cli"        # codex_cli | claude_cli | gemini_cli | mock
+model = "gpt-5.5"
+
+[phases.fix]
+# defaults to write provider and model
+
+[phases.test]
+commands = ["python -m unittest discover -s tests -v"]
+timeout = 900
+```
+
+Legacy `[models]`, `[commands]`, and `[writer].provider` keys remain supported as defaults. Each CLI phase may use either `command_key` to reference `[commands]` or `command` for an inline command. `apply` has no model executor; it applies the reviewed `FINAL.diff` only after tests and review pass.
+
 ## What It Provides
 
 - CLI workflow: `plan`, `approve`, `write`, `test`, `review`, `fix`, `status`, `diff`, `apply`, `cleanup`.
@@ -71,6 +98,7 @@ Supported writer providers:
 - Writer patches are rejected for `.git`, `.env*`, secret-like paths, absolute paths, and path traversal.
 - Reasonix ACP execute permissions are rejected; unknown permission requests are conservative.
 - Reviewer runs read-only and Patchbay checks that review did not mutate the worktree.
+- Claude and Codex CLI providers request their native read-only/plan modes; Gemini CLI has no equivalent sandbox flag, so Patchbay treats repository mutation detection before/after plan and review as the enforcement boundary for Gemini.
 - Logs redact environment-derived secrets and adapter-known API keys.
 
 ## Tests

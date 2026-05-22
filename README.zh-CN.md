@@ -6,6 +6,33 @@ Patchbay 是一个本地代码补丁编排器：任意支持 MCP 的客户端都
 
 默认流程是 Claude Code 只读规划，Reasonix ACP 或 DeepSeek 兼容 API 负责实现，本地测试命令负责事实验证，Codex CLI 负责只读审查。但这些只是默认角色绑定，不是边界；后续可以把 plan/write/review/test 槽位接到不同工具上。
 
+## 按阶段配置执行器
+
+每个工作流阶段可以独立绑定 provider 和模型，写在 `.ai/patchbay.toml`：
+
+```toml
+[phases.plan]
+provider = "claude_cli"       # claude_cli | codex_cli | gemini_cli | mock
+model = "claude-opus-4-7"
+
+[phases.write]
+provider = "reasonix_cli"     # reasonix_cli | deepseek_api | mock
+model = "deepseek-v4-pro"
+
+[phases.review]
+provider = "codex_cli"        # codex_cli | claude_cli | gemini_cli | mock
+model = "gpt-5.5"
+
+[phases.test]
+commands = ["python -m unittest discover -s tests -v"]
+timeout = 900
+
+[phases.fix]
+# 默认跟随 write 的 provider 和 model
+```
+
+旧的 `[models]`、`[commands]` 和 `[writer].provider` 键仍然作为默认值保留。
+
 ## 功能概览
 
 - CLI 流程：`plan`、`approve`、`write`、`test`、`review`、`fix`、`status`、`diff`、`apply`、`cleanup`。
@@ -208,3 +235,7 @@ python -m unittest discover -s tests -v
 ## License
 
 MIT
+
+## Phase Command Notes
+
+CLI phases can use `command_key` to reference `[commands]` or `command` for an inline command. `[phases.test].commands` overrides selected test commands, with each command still checked against `commands_allowlist.test`; `[phases.test].timeout` controls the per-command timeout. `apply` has no model executor and only applies the reviewed `FINAL.diff` after tests and review pass.

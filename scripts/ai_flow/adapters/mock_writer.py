@@ -27,7 +27,7 @@ def _new_file_diff(path: str, content: str) -> str:
     ).rstrip() + "\n"
 
 
-def run_mock_writer(*, task: str, repair: bool = False, iteration: int = 0) -> str:
+def run_mock_writer(*, task: str, repair: bool = False, iteration: int = 0, **kwargs: object) -> str:
     path = "PATCHBAY_MOCK_OUTPUT.md" if not repair else f"PATCHBAY_MOCK_FIX_{iteration + 1}.md"
     title = "Mock Implementation" if not repair else "Mock Repair"
     content = "\n".join(

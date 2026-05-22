@@ -8,7 +8,7 @@ from pathlib import Path
 
 from ..errors import AiFlowError
 from ..artifacts import append_text
-from ..runner import redact
+from ..runner import merged_env, redact
 
 
 def run_deepseek_writer(
@@ -16,10 +16,15 @@ def run_deepseek_writer(
     prompt: str,
     config: dict,
     log_path: Path,
+    command_key: str = "",
+    timeout: int = 900,
+    env: dict[str, str] | None = None,
 ) -> str:
+    _ = command_key  # unused — deepseek_api is HTTP, not CLI
     deepseek_cfg = config.get("deepseek", {})
     key_env = str(deepseek_cfg.get("api_key_env", "DEEPSEEK_API_KEY"))
-    api_key = os.environ.get(key_env)
+    effective_env = merged_env(env) or os.environ
+    api_key = effective_env.get(key_env)
     reasonix_config = _read_reasonix_config()
     if not api_key:
         api_key = reasonix_config.get("apiKey")
@@ -54,7 +59,7 @@ def run_deepseek_writer(
     secrets = [api_key]
     append_text(log_path, f"POST {base_url}/chat/completions model={model}\n")
     try:
-        with urllib.request.urlopen(request, timeout=900) as response:
+        with urllib.request.urlopen(request, timeout=max(timeout, 10)) as response:
             raw = response.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
