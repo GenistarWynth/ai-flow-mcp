@@ -264,8 +264,8 @@ END_DIFF
         self.assertEqual(option, "reject")
 
     def test_redact_accepts_extra_sensitive_values(self) -> None:
-        text = redact("api said sk-test-secret-value is invalid", extra_values=["sk-test-secret-value"])
-        self.assertNotIn("sk-test-secret-value", text)
+        text = redact("api said sensitive-token-value is invalid", extra_values=["sensitive-token-value"])
+        self.assertNotIn("sensitive-token-value", text)
         self.assertIn("***REDACTED***", text)
 
 
