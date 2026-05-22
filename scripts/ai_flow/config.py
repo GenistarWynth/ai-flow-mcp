@@ -30,7 +30,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "reasonix": "",
     },
     "writer": {
-        "provider": "deepseek_api",
+        "provider": "reasonix_cli",
         "max_context_files": 30,
         "max_patch_attempts": 3,
         "max_repair_iterations": 2,
@@ -200,7 +200,7 @@ def allowlisted_test_commands(cfg: dict[str, Any]) -> set[str]:
 
 _PHASE_PROVIDER_DEFAULTS: dict[str, str] = {
     "plan": "claude_cli",
-    "write": "deepseek_api",
+    "write": "reasonix_cli",
     "review": "codex_cli",
     "fix": "",
     "test": "",
@@ -253,7 +253,7 @@ def resolve_phase(cfg: dict[str, Any], phase: str) -> dict[str, Any]:
     provider = str(phase_cfg.get("provider", "")).strip()
     if not provider:
         if phase == "write":
-            provider = str(cfg.get("writer", {}).get("provider", "deepseek_api")).strip()
+            provider = str(cfg.get("writer", {}).get("provider", "reasonix_cli")).strip()
         elif phase == "fix":
             provider = str(inherited_write_phase.get("provider", "") if inherited_write_phase else "")
         else:
@@ -269,7 +269,7 @@ def resolve_phase(cfg: dict[str, Any], phase: str) -> dict[str, Any]:
             else:
                 model = _PROVIDER_MODEL_DEFAULTS.get(provider, "")
         elif phase == "write":
-            legacy_provider = str(cfg.get("writer", {}).get("provider", "deepseek_api")).strip()
+            legacy_provider = str(cfg.get("writer", {}).get("provider", "reasonix_cli")).strip()
             if provider == legacy_provider:
                 model = str(cfg.get("models", {}).get("writer", "deepseek-v4-pro"))
             else:

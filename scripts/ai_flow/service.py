@@ -839,7 +839,7 @@ gemini = "gemini"
 reasonix = ""
 
 [writer]
-provider = "deepseek_api" # 可选：reasonix_cli / deepseek_api
+provider = "reasonix_cli" # Reasonix agent (默认); deepseek_api 为 API fallback
 max_context_files = 30
 max_patch_attempts = 3
 max_repair_iterations = 2
@@ -884,8 +884,9 @@ test = [
 # model = "claude-opus-4-7"
 
 # [phases.write]
-# provider = "deepseek_api"    # reasonix_cli | deepseek_api | mock
+# provider = "reasonix_cli"    # reasonix_cli | deepseek_api | mock (默认)
 # model = "deepseek-v4-pro"
+# command_key = "reasonix"     # 仅 provider = reasonix_cli 时有效
 
 # [phases.review]
 # provider = "codex_cli"       # codex_cli | claude_cli | gemini_cli | mock
@@ -946,7 +947,7 @@ Patchbay 支持任意 MCP host 作为交互入口（Claude Code、Claude Desktop
 
 DOCS_MD = """# Patchbay
 
-Patchbay 是一个本地补丁编排器：任意支持 MCP 的客户端都可以作为入口，默认把规划、实现、测试、审查和应用拆成可审计阶段。当前默认角色绑定是 Claude 规划，Reasonix/DeepSeek 实现，Codex 审查；后续可以把这些槽位换成别的工具。
+Patchbay 是一个本地补丁编排器：任意支持 MCP 的客户端都可以作为入口，默认把规划、实现、测试、审查和应用拆成可审计阶段。当前默认角色绑定是 Claude 规划，Reasonix (默认 Agent) 实现，Codex 审查，DeepSeek API 作为显式 fallback；后续可以把这些槽位换成别的工具。
 
 ## 环境准备
 

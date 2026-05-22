@@ -4,7 +4,7 @@
 
 Patchbay is a local patch orchestration server for teams of coding agents. Any MCP-capable client can be the front door: Codex Desktop, Claude Desktop, Claude Code, Codex CLI, Gemini CLI, or another host that can call MCP tools.
 
-The default workflow uses Claude Code as the read-only planner, Reasonix ACP or a DeepSeek-compatible API as the writer, local test commands as factual verification, and Codex CLI as the read-only reviewer. Those role bindings are configuration, not the product boundary.
+The default workflow uses Claude Code as the read-only planner, Reasonix ACP as the default Agent writer, with a DeepSeek-compatible API as an explicit fallback, local test commands as factual verification, and Codex CLI as the read-only reviewer. Those role bindings are configuration, not the product boundary.
 
 ## Per-Phase Executors
 

@@ -1,12 +1,12 @@
 # Patchbay
 
-Patchbay 是一个本地补丁编排器：任意支持 MCP 的客户端都可以作为入口（Claude Code、Claude Desktop、Codex CLI、Codex Desktop、Gemini CLI 等），默认把规划、实现、测试、审查和应用拆成可审计阶段。默认角色绑定是 Claude 规划、Reasonix/DeepSeek 实现、Codex 审查；每个阶段都可以通过配置换成其他工具。
+Patchbay 是一个本地补丁编排器：任意支持 MCP 的客户端都可以作为入口（Claude Code、Claude Desktop、Codex CLI、Codex Desktop、Gemini CLI 等），默认把规划、实现、测试、审查和应用拆成可审计阶段。默认角色绑定是 Claude 规划、Reasonix (默认 Agent) 实现、Codex 审查，DeepSeek API 作为显式 fallback；每个阶段都可以通过配置换成其他工具。
 
 ## 环境准备
 
 - 确保所需 CLI 已登录并可调用（按你要用的 provider 准备）：
   - Planner：`claude`（Claude Code）、`codex`（Codex CLI）或 `gemini`（Gemini CLI）
-  - Writer：Reasonix CLI（`reasonix` / `reasonix.cmd`）或 DeepSeek API
+  - Writer：Reasonix CLI（`reasonix` / `reasonix.cmd`，默认 Agent）；DeepSeek API 作为显式 API fallback
   - Reviewer：`codex`（Codex CLI）、`claude`（Claude Code）或 `gemini`（Gemini CLI）
 - 使用 DeepSeek API 时，设置 `DEEPSEEK_API_KEY`。
 - 使用 Reasonix CLI 时，确保 `reasonix acp` 可用。

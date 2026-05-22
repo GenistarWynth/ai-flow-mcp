@@ -4,7 +4,7 @@
 
 Patchbay 是一个本地代码补丁编排器：任意支持 MCP 的客户端都可以作为交互入口，例如 Codex Desktop、Claude Desktop、Claude Code、Codex CLI、Gemini CLI，或者其他 MCP host。
 
-默认流程是 Claude Code 只读规划，Reasonix ACP 或 DeepSeek 兼容 API 负责实现，本地测试命令负责事实验证，Codex CLI 负责只读审查。但这些只是默认角色绑定，不是边界；后续可以把 plan/write/review/test 槽位接到不同工具上。
+默认流程是 Claude Code 只读规划，Reasonix ACP (默认 Agent writer) 负责实现，DeepSeek 兼容 API 作为显式 fallback，本地测试命令负责事实验证，Codex CLI 负责只读审查。但这些只是默认角色绑定，不是边界；后续可以把 plan/write/review/test 槽位接到不同工具上。
 
 ## 按阶段配置执行器
 
@@ -155,7 +155,7 @@ codex = "codex"
 reasonix = ""
 
 [writer]
-provider = "deepseek_api"
+provider = "reasonix_cli" # 默认 Agent writer；deepseek_api 为 API fallback
 
 [deepseek]
 base_url = "https://api.deepseek.com"
@@ -171,15 +171,14 @@ api_key_env = "DEEPSEEK_API_KEY"
 - `reasonix_cli`：调用 `reasonix acp`，让 Reasonix 作为真正的 coding agent 在隔离 worktree 中改文件。Patchbay 负责审批权限、捕获最终 diff，并拒绝不安全操作。
 - `deepseek_api`：直接调用 OpenAI-compatible Chat Completions API，让模型按约定返回 unified diff。这是 API fallback，不等同于 agent。
 
-如果你要使用 Reasonix agent，请把配置改成：
+Reasonix agent 是默认 writer。确保 `[commands].reasonix` 指向你的 Reasonix 可执行文件：
 
 ```toml
 [commands]
 reasonix = "reasonix"
-
-[writer]
-provider = "reasonix_cli"
 ```
+
+如果要切换到 DeepSeek API fallback，设置 `[writer] provider = "deepseek_api"` 和 `DEEPSEEK_API_KEY` 环境变量。
 
 Windows 上如果 `reasonix` 是 `.cmd` 入口，可以写成：
 

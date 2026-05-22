@@ -1064,12 +1064,12 @@ class PhaseResolverTests(unittest.TestCase):
         phase = resolve_phase(cfg, "write")
         self.assertEqual(phase["provider"], "reasonix_cli")
 
-    def test_legacy_writer_provider_falls_back_to_deepseek(self) -> None:
+    def test_legacy_writer_provider_falls_back_to_reasonix_cli(self) -> None:
         cfg = dict(self.default_cfg)
         cfg.pop("phases", None)
         cfg.pop("writer", None)
         phase = resolve_phase(cfg, "write")
-        self.assertEqual(phase["provider"], "deepseek_api")
+        self.assertEqual(phase["provider"], "reasonix_cli")
 
     def test_phases_plan_override_provider(self) -> None:
         cfg = dict(self.default_cfg)
@@ -1172,7 +1172,7 @@ class PhaseResolverTests(unittest.TestCase):
         }
         write_phase = resolve_phase(cfg, "write")
         phase = resolve_phase(cfg, "fix")
-        self.assertEqual(write_phase["provider"], "deepseek_api")
+        self.assertEqual(write_phase["provider"], "reasonix_cli")
         self.assertEqual(write_phase["model"], "custom-writer-model")
         self.assertEqual(phase["provider"], write_phase["provider"])
         self.assertEqual(phase["model"], write_phase["model"])
@@ -1186,6 +1186,28 @@ class PhaseResolverTests(unittest.TestCase):
         cfg.setdefault("phases", {})["fix"] = {"provider": "deepseek_api"}
         phase = resolve_phase(cfg, "fix")
         self.assertEqual(phase["provider"], "deepseek_api")
+
+    def test_default_config_resolves_write_to_reasonix_cli(self) -> None:
+        """With no overrides, DEFAULT_CONFIG write provider is reasonix_cli."""
+        cfg = dict(self.default_cfg)
+        phase = resolve_phase(cfg, "write")
+        self.assertEqual(phase["provider"], "reasonix_cli")
+        self.assertEqual(phase["command_key"], "reasonix")
+        self.assertEqual(phase["model"], "deepseek-v4-pro")
+
+    def test_explicit_deepseek_api_writer_still_resolves(self) -> None:
+        """Setting [writer].provider='deepseek_api' must still dispatch correctly."""
+        cfg = dict(self.default_cfg)
+        cfg.setdefault("writer", {})["provider"] = "deepseek_api"
+        phase = resolve_phase(cfg, "write")
+        self.assertEqual(phase["provider"], "deepseek_api")
+        self.assertEqual(phase["model"], "deepseek-v4-pro")
+
+    def test_example_toml_does_not_advertise_deepseek_as_default_writer(self) -> None:
+        """EXAMPLE_TOML should default to reasonix_cli, not deepseek_api."""
+        from scripts.ai_flow.service import EXAMPLE_TOML
+        self.assertIn('provider = "reasonix_cli"', EXAMPLE_TOML)
+        self.assertNotIn('provider = "deepseek_api"', EXAMPLE_TOML)
 
     def test_test_phase_has_no_provider_by_default(self) -> None:
         cfg = dict(self.default_cfg)

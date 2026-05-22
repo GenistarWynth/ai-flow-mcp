@@ -45,7 +45,11 @@ def _acp_command(config: dict, cwd: Path, log_path: Path, *, command_key: str = 
         raise AiFlowError(
             f"{command_key} command is not configured.",
             stage="write",
-            suggested_next_action=f"Set commands.{command_key} in .ai/patchbay.toml or use deepseek_api/mock.",
+            suggested_next_action=(
+                f"Set commands.{command_key} in .ai/patchbay.toml to your Reasonix executable "
+                f"(reasonix or reasonix.cmd). Or explicitly configure "
+                f"[writer].provider='deepseek_api' as an API fallback."
+            ),
         )
     executable = configured[0]
     model = str(config.get("models", {}).get("writer", "")).strip()
