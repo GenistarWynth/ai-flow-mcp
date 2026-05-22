@@ -20,19 +20,54 @@ def _strip_diff_prefix(path: str) -> str:
 
 
 def paths_from_patch(patch: str) -> list[str]:
-    paths: list[str] = []
+    """Extract file paths from a git-framed unified diff.
+
+    Only ``diff --git`` sections are parsed.  Within each section the *header
+    region* (before the first ``@@ `` hunk header) the ``diff --git`` line and any
+    ``rename from`` / ``rename to`` lines are inspected for paths.  ``---`` / ``+++``
+    header lines are skipped — in git-framed diffs they always repeat the
+    ``diff --git`` paths.  Lines inside hunks are never treated as path-bearing,
+    even if their body text happens to look like diff headers.
+    Bare unified diffs (no ``diff --git``) return an empty list.
+    """
+    result: list[str] = []
+    seen: set[str] = set()
+    in_section = False
+    in_header = False
+
+    def _add(path: str) -> None:
+        if path and path not in {"/dev/null", "dev/null"} and path not in seen:
+            seen.add(path)
+            result.append(path)
+
     for raw_line in patch.splitlines():
-        line = raw_line.strip()
-        if line.startswith("diff --git "):
-            parts = line.split()
+        # ── section start ──────────────────────────────────────────────
+        if raw_line.startswith("diff --git "):
+            in_section = True
+            in_header = True
+            parts = raw_line.split()
             if len(parts) >= 4:
-                paths.extend([_strip_diff_prefix(parts[2]), _strip_diff_prefix(parts[3])])
-        elif line.startswith("--- ") or line.startswith("+++ "):
-            value = line[4:].split("\t", 1)[0]
-            paths.append(_strip_diff_prefix(value))
-        elif line.startswith("rename from ") or line.startswith("rename to "):
-            paths.append(_strip_diff_prefix(line.split(" ", 2)[2]))
-    return [path for path in paths if path and path not in {"/dev/null", "dev/null"}]
+                _add(_strip_diff_prefix(parts[2]))
+                _add(_strip_diff_prefix(parts[3]))
+            continue
+
+        if not in_section:
+            continue
+
+        # ── transition from header region to hunk body ─────────────────
+        if in_header and raw_line.startswith("@@ "):
+            in_header = False
+            continue
+
+        # ── header-region path lines ───────────────────────────────────
+        # In git-framed diffs the --- / +++ lines are always redundant
+        # with the ``diff --git a/X b/X`` line, so we skip them and only
+        # collect rename source/target which add genuinely new paths.
+        if in_header:
+            if raw_line.startswith("rename from ") or raw_line.startswith("rename to "):
+                _add(_strip_diff_prefix(raw_line.split(" ", 2)[2]))
+
+    return result
 
 
 def validate_repo_relative_path(path: str) -> None:
@@ -54,6 +89,30 @@ def validate_repo_relative_path(path: str) -> None:
 def validate_patch_safety(patch: str) -> None:
     if not patch.strip():
         raise SafetyError("Patch is empty.", stage="safety")
+
+    # Reject bare unified diffs that lack a ``diff --git`` header.
+    # Patchbay writer prompts and git output always emit git-framed diffs,
+    # so bare ``---``/``+++`` headers are ambiguous and unsupported.
+    has_diffgit = False
+    has_bare_header = False
+    for raw_line in patch.splitlines():
+        if raw_line.startswith("diff --git "):
+            has_diffgit = True
+            break
+        if raw_line.startswith("--- ") or raw_line.startswith("+++ "):
+            has_bare_header = True
+    if not has_diffgit and has_bare_header:
+        raise SafetyError(
+            "Patch must be a git-framed unified diff (starting with 'diff --git'). "
+            "Bare unified diffs with only ---/+++ file headers are ambiguous "
+            "and not supported. Regenerate the patch as a git-framed diff.",
+            stage="safety",
+            suggested_next_action=(
+                "Use 'git diff' or 'git format-patch' to produce a git-framed diff "
+                "that includes 'diff --git' headers, or ask Patchbay to regenerate the patch."
+            ),
+        )
+
     paths = paths_from_patch(patch)
     if not paths:
         raise SafetyError("Patch does not contain recognizable git diff paths.", stage="safety")
