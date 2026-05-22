@@ -1,0 +1,7 @@
+﻿.ai/runs/
+.ai/logs/
+.ai/worktrees/
+.ai/ai-flow.toml
+.ai-flow-worktrees/
+__pycache__/
+*.pyc
