@@ -2,6 +2,25 @@
 
 Patchbay 是一个本地补丁编排器：任意支持 MCP 的客户端都可以作为入口（Claude Code、Claude Desktop、Codex CLI、Codex Desktop、Gemini CLI 等），默认把规划、实现、测试、审查和应用拆成可审计阶段。默认角色绑定是 Claude 规划、Reasonix (默认 Agent) 实现、Codex 审查；每个阶段都可以通过配置换成其他工具。
 
+## 快速安装
+
+```bash
+# npx 风格（推荐）
+uvx patchbay init                    # 或: pipx run patchbay init
+uvx patchbay plan --task "..."       # 或: pipx run patchbay plan ...
+
+# 交互式配置（无需手动编辑 TOML）
+patchbay config                      # 交互式向导
+patchbay config set models.planner claude-opus-4-7   # 单键设置
+patchbay doctor                      # 验证配置
+
+# MCP 注册（无需手动编辑 JSON）
+patchbay mcp install codex           # Codex CLI / Codex Desktop
+patchbay mcp install claude          # Claude Code
+patchbay mcp install claude-desktop  # Claude Desktop
+patchbay mcp install gemini          # Gemini CLI
+```
+
 ## 环境准备
 
 - 确保所需 CLI 已登录并可调用（按你要用的 provider 准备）：
@@ -50,6 +69,20 @@ Writer 实现入口：
 
 - `reasonix_cli`：调用 Reasonix ACP coding agent（`reasonix acp`），由 Reasonix 自己的文件系统工具修改独立 worktree，Patchbay 只负责审批权限并捕获最终 `git diff`。
 
+## 跨阶段可见性
+
+任何 MCP host 都可以查看其他 agent/阶段做了什么或正在做什么：
+
+```bash
+# CLI
+scripts/patchbay events <run_id>           # 展示完整事件日志
+scripts/patchbay events <run_id> --phase plan  # 按阶段筛选
+scripts/patchbay events <run_id> --since 5     # 从第 5 条事件开始
+scripts/patchbay status <run_id>           # status 现在包含 latest_event 和 event_count
+```
+
+MCP 工具 `patchbay_events` 和 `patchbay_status` 提供相同数据。每条事件记录包含 `phase`、`provider`、`model`、`action`、`status`、`timestamp` 和 `detail`。
+
 ## 常用命令
 
 ```bash
@@ -60,6 +93,7 @@ scripts/patchbay test <run_id>
 scripts/patchbay review <run_id>
 scripts/patchbay fix <run_id>
 scripts/patchbay status <run_id>
+scripts/patchbay events <run_id>
 scripts/patchbay diff <run_id>
 scripts/patchbay apply <run_id>
 scripts/patchbay cleanup <run_id>
@@ -81,7 +115,18 @@ scripts/patchbay review <run_id> --mock
 
 ## MCP
 
-CLI 跑通后可以把同一套流程作为 MCP 工具暴露给任意 MCP host。以下为常见 host 的注册命令：
+CLI 跑通后可以把同一套流程作为 MCP 工具暴露给任意 MCP host。Patchbay 提供了自动化注册命令：
+
+```bash
+# 自动化 — 无需手动编辑 JSON/TOML
+patchbay mcp install codex          # Codex CLI / Codex Desktop
+patchbay mcp install claude         # Claude Code
+patchbay mcp install claude-desktop # Claude Desktop（直接编辑配置文件）
+patchbay mcp install gemini         # Gemini CLI
+patchbay mcp doctor                 # 验证服务器可达
+```
+
+手动注册：
 
 ```bash
 # Codex CLI / Codex Desktop
@@ -94,7 +139,7 @@ claude mcp add patchbay -- python scripts/patchbay_mcp_server.py
 # Gemini CLI: 使用对应的 MCP server 注册方式
 ```
 
-MCP 只调用 `scripts.ai_flow.service` 中已有函数，不复制业务逻辑。新工具名使用 `patchbay_*`，旧的 `ai_flow_*` 作为兼容别名保留。无论通过哪个 host 调用，流程和门禁保持一致。
+MCP 只调用 `scripts.ai_flow.service` 中已有函数，不复制业务逻辑。工具名使用 `patchbay_*`（包括新增的 `patchbay_events`），旧的 `ai_flow_*` 作为兼容别名保留。无论通过哪个 host 调用，流程和门禁保持一致。
 
 ## 故障排查
 

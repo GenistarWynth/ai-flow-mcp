@@ -7,7 +7,55 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import service
+from .config_wizard import run_config_wizard
 from .errors import AiFlowError
+from .mcp_install import run_mcp_install, run_mcp_doctor
+
+
+def config_wizard_run(cwd: Path, args: argparse.Namespace) -> Any:
+    config_command = getattr(args, "config_command", "")
+    if config_command == "show":
+        return run_config_wizard(cwd, show=True)
+    if config_command == "phase":
+        return run_config_wizard(
+            cwd,
+            phase=args.phase,
+            provider=args.provider,
+            model=args.model,
+            command_key=args.command_key,
+        )
+    if config_command == "command":
+        return run_config_wizard(cwd, command_key_name=args.key, command_value=args.value)
+    if config_command == "test":
+        return run_config_wizard(cwd, test_command=args.test_command)
+    if config_command == "provider":
+        return run_config_wizard(
+            cwd,
+            provider_id=args.provider_id,
+            provider_roles=args.roles,
+            provider_command=args.command,
+            provider_args=args.args,
+            prompt_mode=args.prompt_mode,
+            output_contract=args.output_contract,
+        )
+    return run_config_wizard(
+        cwd,
+        set_key=args.set_key,
+        set_value=args.set_value,
+        doctor=args.doctor,
+    )
+
+
+def mcp_dispatch(cwd: Path, args: argparse.Namespace) -> Any:
+    mcp_cmd = getattr(args, "mcp_command", "")
+    if mcp_cmd == "install":
+        return run_mcp_install(cwd, args.host, dry_run=bool(getattr(args, "dry_run", False)))
+    if mcp_cmd == "doctor":
+        return run_mcp_doctor(cwd)
+    raise AiFlowError(
+        "Missing MCP subcommand. Try: patchbay mcp install codex  or  patchbay mcp doctor",
+        stage="config",
+    )
 
 
 def _print_result(data: Any, *, as_json: bool = False) -> None:
@@ -41,6 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
     plan = sub.add_parser("plan", help="Run read-only Claude planner.")
     plan.add_argument("--task", required=True, help="Task to plan.")
     plan.add_argument("--mock", action="store_true", help="Use mock planner.")
+    plan.add_argument("--background", action="store_true", help="Run this phase in the background.")
     _add_json(plan)
 
     approve = sub.add_parser("approve", help="Approve a planned run.")
@@ -50,25 +99,101 @@ def build_parser() -> argparse.ArgumentParser:
     write = sub.add_parser("write", help="Create worktree and run writer.")
     write.add_argument("run_id")
     write.add_argument("--mock", action="store_true", help="Use mock writer.")
+    write.add_argument("--background", action="store_true", help="Run this phase in the background.")
     _add_json(write)
 
     test = sub.add_parser("test", help="Run selected allowlisted test commands in worktree.")
     test.add_argument("run_id")
+    test.add_argument("--background", action="store_true", help="Run this phase in the background.")
     _add_json(test)
 
     review = sub.add_parser("review", help="Run read-only Codex reviewer.")
     review.add_argument("run_id")
     review.add_argument("--mock", action="store_true", help="Use mock reviewer.")
+    review.add_argument("--background", action="store_true", help="Run this phase in the background.")
     _add_json(review)
 
     fix = sub.add_parser("fix", help="Run bounded fix loop for review/test failures.")
     fix.add_argument("run_id")
     fix.add_argument("--mock", action="store_true", help="Use mock repair writer.")
+    fix.add_argument("--background", action="store_true", help="Run this phase in the background.")
     _add_json(fix)
 
     status = sub.add_parser("status", help="Show run status.")
     status.add_argument("run_id")
+    status.add_argument("--watch", action="store_true", help="Poll status until terminal.")
     _add_json(status)
+
+    events = sub.add_parser("events", help="Show run event log (JSONL stream).")
+    events.add_argument("run_id")
+    events.add_argument("--since", type=int, default=0, help="Return events after index N.")
+    events.add_argument("--phase", type=str, default=None, help="Filter by phase.")
+    events.add_argument("--follow", action="store_true", help="Poll until new events stop arriving.")
+    _add_json(events)
+
+    runs = sub.add_parser("runs", help="List recent Patchbay runs.")
+    runs.add_argument("--limit", type=int, default=20)
+    _add_json(runs)
+
+    artifact = sub.add_parser("artifact", help="Read a run artifact file.")
+    artifact.add_argument("run_id")
+    artifact.add_argument("artifact")
+    artifact.add_argument("--tail", type=int, default=None)
+    _add_json(artifact)
+
+    config = sub.add_parser("config", help="Interactive config wizard (no args), set key=value, or doctor.")
+    config.add_argument("--set-key", type=str, default="", metavar="KEY", help="Set a config key (dotted form).")
+    config.add_argument("--set-value", type=str, default="", metavar="VALUE", help="Value for --set-key.")
+    config.add_argument("--doctor", action="store_true", help="Validate resolved phase configuration.")
+    config_sub = config.add_subparsers(dest="config_command")
+
+    config_show = config_sub.add_parser("show", help="Show resolved config.")
+    _add_json(config_show)
+
+    config_phase = config_sub.add_parser("phase", help="Update phase configuration.")
+    phase_sub = config_phase.add_subparsers(dest="phase_command", required=True)
+    phase_set = phase_sub.add_parser("set", help="Set a phase provider/model/command key.")
+    phase_set.add_argument("phase")
+    phase_set.add_argument("--provider", required=True)
+    phase_set.add_argument("--model", default="")
+    phase_set.add_argument("--command-key", default="")
+    _add_json(phase_set)
+
+    config_command = config_sub.add_parser("command", help="Update command aliases.")
+    command_sub = config_command.add_subparsers(dest="command_command", required=True)
+    command_set = command_sub.add_parser("set", help="Set a command alias.")
+    command_set.add_argument("key")
+    command_set.add_argument("value")
+    _add_json(command_set)
+
+    config_test = config_sub.add_parser("test", help="Update test allowlist.")
+    test_sub = config_test.add_subparsers(dest="test_command_name", required=True)
+    test_add = test_sub.add_parser("add", help="Add an allowlisted test command.")
+    test_add.add_argument("test_command")
+    _add_json(test_add)
+
+    config_provider = config_sub.add_parser("provider", help="Update custom providers.")
+    provider_sub = config_provider.add_subparsers(dest="provider_command_name", required=True)
+    provider_add = provider_sub.add_parser("add-cli", help="Add a custom CLI provider.")
+    provider_add.add_argument("provider_id")
+    provider_add.add_argument("--roles", nargs="+", required=True)
+    provider_add.add_argument("--command", required=True)
+    provider_add.add_argument("--args", nargs="*", default=[])
+    provider_add.add_argument("--prompt-mode", choices=["stdin", "arg", "file"], default="stdin")
+    provider_add.add_argument("--output-contract", choices=["plan_json", "review_verdict", "worktree_diff", "writer_diff"], required=True)
+    _add_json(provider_add)
+    _add_json(config)
+
+    mcp = sub.add_parser("mcp", help="MCP host registration helpers.")
+    mcp_sub = mcp.add_subparsers(dest="mcp_command")
+
+    mcp_install = mcp_sub.add_parser("install", help="Register Patchbay MCP server for a host.")
+    mcp_install.add_argument("host", help="Host name: codex, claude, claude-desktop, gemini.")
+    mcp_install.add_argument("--dry-run", action="store_true", help="Print the command without running it.")
+    _add_json(mcp_install)
+
+    mcp_doctor = mcp_sub.add_parser("doctor", help="Validate MCP server reachability.")
+    _add_json(mcp_doctor)
 
     diff = sub.add_parser("diff", help="Print run final diff.")
     diff.add_argument("run_id")
@@ -112,13 +237,18 @@ def dispatch(args: argparse.Namespace, cwd: Path) -> Any:
     command = args.command.replace("-", "_")
     handlers: dict[str, Callable[[argparse.Namespace, Path], Any]] = {
         "init": lambda a, c: service.init_project(c),
-        "plan": lambda a, c: service.plan(c, task=a.task, mock=a.mock),
+        "plan": lambda a, c: service.start_background_phase(c, "plan", task=a.task) if a.background else service.plan(c, task=a.task, mock=a.mock),
         "approve": lambda a, c: service.approve(c, a.run_id),
-        "write": lambda a, c: service.write(c, a.run_id, mock=a.mock),
-        "test": lambda a, c: service.test(c, a.run_id),
-        "review": lambda a, c: service.review(c, a.run_id, mock=a.mock),
-        "fix": lambda a, c: service.fix(c, a.run_id, mock=a.mock),
+        "write": lambda a, c: service.start_background_phase(c, "write", run_id=a.run_id) if a.background else service.write(c, a.run_id, mock=a.mock),
+        "test": lambda a, c: service.start_background_phase(c, "test", run_id=a.run_id) if a.background else service.test(c, a.run_id),
+        "review": lambda a, c: service.start_background_phase(c, "review", run_id=a.run_id) if a.background else service.review(c, a.run_id, mock=a.mock),
+        "fix": lambda a, c: service.start_background_phase(c, "fix", run_id=a.run_id) if a.background else service.fix(c, a.run_id, mock=a.mock),
         "status": lambda a, c: service.status(c, a.run_id),
+        "events": lambda a, c: service.events(c, a.run_id, since=getattr(a, "since", 0), phase=getattr(a, "phase", None)),
+        "runs": lambda a, c: service.runs(c, limit=a.limit),
+        "artifact": lambda a, c: service.artifact(c, a.run_id, a.artifact, tail=a.tail),
+        "config": lambda a, c: config_wizard_run(c, a),
+        "mcp": lambda a, c: mcp_dispatch(c, a),
         "diff": lambda a, c: service.diff(c, a.run_id),
         "apply": lambda a, c: service.apply(c, a.run_id),
         "cleanup": lambda a, c: service.cleanup(c, a.run_id),

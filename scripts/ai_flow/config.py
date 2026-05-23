@@ -123,20 +123,27 @@ def load_config(root: Path) -> dict[str, Any]:
     path = config_path(root)
     if path.exists():
         with path.open("rb") as handle:
-            return deep_merge(DEFAULT_CONFIG, tomllib.load(handle))
+            return _finalize_config(deep_merge(DEFAULT_CONFIG, tomllib.load(handle)))
     legacy_path = ai_dir(root) / LEGACY_CONFIG_NAME
     if legacy_path.exists():
         with legacy_path.open("rb") as handle:
-            return deep_merge(DEFAULT_CONFIG, tomllib.load(handle))
+            return _finalize_config(deep_merge(DEFAULT_CONFIG, tomllib.load(handle)))
     example = example_config_path(root)
     if example.exists():
         with example.open("rb") as handle:
-            return deep_merge(DEFAULT_CONFIG, tomllib.load(handle))
+            return _finalize_config(deep_merge(DEFAULT_CONFIG, tomllib.load(handle)))
     legacy_example = ai_dir(root) / LEGACY_EXAMPLE_CONFIG_NAME
     if legacy_example.exists():
         with legacy_example.open("rb") as handle:
-            return deep_merge(DEFAULT_CONFIG, tomllib.load(handle))
-    return deepcopy(DEFAULT_CONFIG)
+            return _finalize_config(deep_merge(DEFAULT_CONFIG, tomllib.load(handle)))
+    return _finalize_config(deepcopy(DEFAULT_CONFIG))
+
+
+def _finalize_config(cfg: dict[str, Any]) -> dict[str, Any]:
+    from .adapters import register_custom_providers
+
+    register_custom_providers(cfg)
+    return cfg
 
 
 def is_git_repo(start: Path) -> bool:
@@ -309,5 +316,17 @@ def resolve_phase(cfg: dict[str, Any], phase: str) -> dict[str, Any]:
         phase_cfg["timeout"] = inherited_write_phase.get("timeout", 900)
     else:
         phase_cfg.setdefault("timeout", 900)
+
+    # -- validate provider supports this phase role --
+    if provider:
+        from .adapters import provider_supports_phase as _check_role
+        if not _check_role(provider, phase):
+            from .errors import AiFlowError
+            raise AiFlowError(
+                f"Provider '{provider}' does not support the '{phase}' phase role. "
+                f"Check that the provider advertises the required capability.",
+                stage=phase,
+                suggested_next_action=f"Pick a provider that supports the '{phase}' role or add a [providers.<id>] entry.",
+            )
 
     return phase_cfg

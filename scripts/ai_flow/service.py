@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +23,7 @@ from .artifacts import (
     append_text,
     ensure_layout,
     list_run_artifacts,
+    runs_dir,
     new_run_id,
     read_json,
     read_text,
@@ -38,6 +42,7 @@ from .config import (
 )
 from .context import build_context
 from .errors import AiFlowError, GitError, SafetyError, StateError
+from .events import append_event, event_count, latest_event, list_events
 from .parsing import parse_planner_output, parse_writer_output, review_verdict
 from .plan_schema import validate_plan_json
 from .runner import run_logged
@@ -63,6 +68,10 @@ from .state import (
 )
 
 
+TERMINAL_STATUSES = {APPLIED, FAILED, REVIEWED_PASS, REVIEWED_CHANGES_REQUESTED}
+RUN_LOCK_FILE = "RUN.lock"
+
+
 def resolve_root(cwd: Path) -> Path:
     return find_project_root(cwd, prefer_git=True)
 
@@ -74,6 +83,73 @@ def _run_dir(root: Path, run_id: str) -> Path:
 def _load_run(root: Path, run_id: str) -> tuple[Path, dict[str, Any]]:
     path = _run_dir(root, run_id)
     return path, load_status(path)
+
+
+def _lock_path(run_path: Path) -> Path:
+    return run_path / RUN_LOCK_FILE
+
+
+def _acquire_lock(run_path: Path, phase: str) -> None:
+    path = _lock_path(run_path)
+    if path.exists():
+        raise StateError(
+            f"Run is already busy: {read_text(path, default='').strip()}",
+            stage=phase,
+            suggested_next_action="Wait for the active phase to finish, then poll events/status.",
+        )
+    write_text(path, phase + "\n")
+
+
+def _begin_phase_lock(run_path: Path, phase: str) -> bool:
+    inherited = os.environ.get("PATCHBAY_INHERITED_LOCK")
+    if inherited == phase and _lock_path(run_path).exists():
+        return True
+    _acquire_lock(run_path, phase)
+    return True
+
+
+def _release_lock(run_path: Path) -> None:
+    path = _lock_path(run_path)
+    if path.exists():
+        path.unlink()
+
+
+def start_background_phase(cwd: Path, phase: str, *, run_id: str | None = None, task: str | None = None) -> dict[str, Any]:
+    root = resolve_root(cwd)
+    command = [sys.executable, str(root / "scripts" / "patchbay"), phase]
+    if phase == "plan":
+        if not task:
+            raise AiFlowError("Background plan requires task.", stage="plan")
+        command.extend(["--task", task])
+    else:
+        if not run_id:
+            raise AiFlowError(f"Background {phase} requires run_id.", stage=phase)
+        run_path, _ = _load_run(root, run_id)
+        _acquire_lock(run_path, phase)
+        command.append(run_id)
+    env = dict(os.environ)
+    if phase != "plan":
+        env["PATCHBAY_INHERITED_LOCK"] = phase
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=str(root),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            env=env,
+        )
+    except Exception:
+        if phase != "plan" and run_id:
+            _release_lock(_run_dir(root, run_id))
+        raise
+    return {
+        "background": True,
+        "phase": phase,
+        "pid": process.pid,
+        "run_id": run_id or "pending",
+        "command": command,
+    }
 
 
 def _base_commit(root: Path) -> str | None:
@@ -276,19 +352,18 @@ def _call_writer(
                     suggested_next_action="Set [phases.write].provider or [writer].provider to reasonix_cli or mock.",
                 )
             try:
-                if provider == "reasonix_cli":
-                    raw = writer(prompt=prompt, config=adapter_cfg, cwd=worktree, log_path=log_path, command_key=p_command_key, timeout=p_timeout, env=p_env)
-                    append_text(log_path, raw + "\n")
-                    parsed = parse_writer_output(raw)
-                    summary = parsed.summary
-                    git_utils.add_all(worktree)
-                    final_diff = git_utils.diff(worktree)
-                    if not final_diff.strip():
-                        raise AiFlowError("Reasonix agent did not produce a worktree diff.", stage="write")
-                    validate_patch_safety(final_diff)
-                    return final_diff, summary
-                else:
-                    raise AiFlowError(f"Unknown writer provider: {provider}", stage="write")
+                raw = writer(prompt=prompt, config=adapter_cfg, cwd=worktree, log_path=log_path, command_key=p_command_key, timeout=p_timeout, env=p_env)
+                append_text(log_path, raw + "\n")
+                parsed = parse_writer_output(raw)
+                summary = parsed.summary
+                if parsed.diff:
+                    return parsed.diff, summary
+                git_utils.add_all(worktree)
+                final_diff = git_utils.diff(worktree)
+                if not final_diff.strip():
+                    raise AiFlowError(f"{provider} did not produce a worktree diff.", stage="write")
+                validate_patch_safety(final_diff)
+                return final_diff, summary or f"{provider} edited the isolated worktree."
             except AiFlowError:
                 if attempt < max_attempts - 1:
                     append_text(log_path, "\nWriter attempt failed; retrying.\n")
@@ -442,6 +517,15 @@ def plan(cwd: Path, *, task: str, mock: bool = False) -> dict[str, str]:
         max_context = int(cfg.get("writer", {}).get("max_context_files", 30))
         context = build_context(root, max_files=max_context)
         plan_phase = resolve_phase(cfg, "plan")
+        append_event(
+            run_path,
+            phase="plan",
+            provider=plan_phase["provider"],
+            model=plan_phase.get("model", ""),
+            action="start",
+            status="RUNNING",
+            run_id=run_id,
+        )
         adapter_cfg = _phase_config(cfg, role="planner", model=plan_phase.get("model"))
         if mock:
             raw = PLANNERS["mock"](task=task, context=context)
@@ -474,6 +558,16 @@ def plan(cwd: Path, *, task: str, mock: bool = False) -> dict[str, str]:
             _assert_plan_read_only(root, run_path, before_workspace)
             raise
         set_status(run_path, PLANNED)
+        append_event(
+            run_path,
+            phase="plan",
+            provider=plan_phase["provider"],
+            model=plan_phase.get("model", ""),
+            action="success",
+            status="PLANNED",
+            detail=str(parsed.plan_json.get("summary", "")),
+            run_id=run_id,
+        )
         return {
             "run_id": run_id,
             "run_dir": str(run_path),
@@ -497,7 +591,15 @@ def approve(cwd: Path, run_id: str) -> dict[str, Any]:
         .isoformat(),
     }
     write_json(run_path / "APPROVAL.json", approval)
-    return set_status(run_path, APPROVED)
+    result = set_status(run_path, APPROVED)
+    append_event(
+        run_path,
+        phase="approve",
+        action="approve_granted",
+        status="APPROVED",
+        run_id=run_id,
+    )
+    return result
 
 
 def write(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
@@ -506,6 +608,7 @@ def write(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
     try:
         with git_utils.log_to(run_path / "git.log"):
             require_status(status, {APPROVED}, "write")
+            _begin_phase_lock(run_path, "write")
             if not (run_path / "APPROVAL.json").exists():
                 raise StateError("Missing APPROVAL.json.", stage="write")
             if not git_utils.is_repo(root):
@@ -515,6 +618,16 @@ def write(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                     suggested_next_action="Run Patchbay inside a git repository.",
                 )
             cfg = load_config(root)
+            write_phase = resolve_phase(cfg, "write")
+            append_event(
+                run_path,
+                phase="write",
+                provider=write_phase["provider"],
+                model=write_phase.get("model", ""),
+                action="start",
+                status="RUNNING",
+                run_id=run_id,
+            )
             branch_prefix = str(cfg.get("workflow", {}).get("default_branch_prefix", "patchbay")).strip("/")
             worktree_root = configured_worktree_root(root, cfg)
             worktree_path = worktree_root / run_id
@@ -531,10 +644,22 @@ def write(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
             _validate_writer_scope(run_path, final_diff, summary)
             write_text(run_path / "IMPLEMENTATION.md", summary.rstrip() + "\n")
             write_text(run_path / "FINAL.diff", final_diff)
-            return set_status(run_path, IMPLEMENTED)
+            result = set_status(run_path, IMPLEMENTED)
+            append_event(
+                run_path,
+                phase="write",
+                provider=write_phase["provider"],
+                model=write_phase.get("model", ""),
+                action="success",
+                status="IMPLEMENTED",
+                run_id=run_id,
+            )
+            return result
     except Exception as exc:
         _mark_failure_if_possible(run_path, exc, "write")
         raise
+    finally:
+        _release_lock(run_path)
 
 
 def test(cwd: Path, run_id: str) -> dict[str, Any]:
@@ -543,10 +668,18 @@ def test(cwd: Path, run_id: str) -> dict[str, Any]:
     try:
         with git_utils.log_to(run_path / "git.log"):
             require_status(status, {IMPLEMENTED}, "test")
+            _begin_phase_lock(run_path, "test")
             worktree = Path(status["worktree_path"])
             cfg = load_config(root)
             plan_json = read_json(run_path / "plan.json")
             test_phase = resolve_phase(cfg, "test")
+            append_event(
+                run_path,
+                phase="test",
+                action="start",
+                status="RUNNING",
+                run_id=run_id,
+            )
             commands = _selected_test_commands(worktree, cfg, plan_json, test_phase)
             allowlist = allowlisted_test_commands(cfg)
             timeout = int(test_phase.get("timeout") or 900)
@@ -554,7 +687,16 @@ def test(cwd: Path, run_id: str) -> dict[str, Any]:
             write_text(run_path / "TEST.log", "")
             if not commands:
                 append_text(run_path / "TEST.log", "No test commands selected.\n")
-                return set_status(run_path, TESTED, tests_passed=True)
+                result = set_status(run_path, TESTED, tests_passed=True)
+                append_event(
+                    run_path,
+                    phase="test",
+                    action="success",
+                    status="TESTED",
+                    detail="No test commands selected.",
+                    run_id=run_id,
+                )
+                return result
             for command in commands:
                 ensure_command_allowed(command, allowlist)
                 result = run_logged(
@@ -571,10 +713,21 @@ def test(cwd: Path, run_id: str) -> dict[str, Any]:
                         stage="test",
                         suggested_next_action="Run `scripts/patchbay fix <run_id>` after inspecting TEST.log.",
                     )
-            return set_status(run_path, TESTED, tests_passed=True)
+            result = set_status(run_path, TESTED, tests_passed=True)
+            append_event(
+                run_path,
+                phase="test",
+                action="success",
+                status="TESTED",
+                detail=f"{len(commands)} test command(s) passed.",
+                run_id=run_id,
+            )
+            return result
     except Exception as exc:
         _mark_failure_if_possible(run_path, exc, "test")
         raise
+    finally:
+        _release_lock(run_path)
 
 
 def _review_prompt(run_path: Path) -> str:
@@ -630,7 +783,17 @@ def review(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
             ):
                 allowed_statuses.add(FAILED)
             require_status(status, allowed_statuses, "review")
+            _begin_phase_lock(run_path, "review")
             worktree = Path(status["worktree_path"])
+            append_event(
+                run_path,
+                phase="review",
+                provider=review_phase["provider"],
+                model=review_phase.get("model", ""),
+                action="start",
+                status="RUNNING",
+                run_id=run_id,
+            )
             set_status(run_path, REVIEWING)
             before = git_utils.diff(worktree)
             before_status = git_utils.status_porcelain(worktree)
@@ -670,15 +833,37 @@ def review(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
             verdict = review_verdict(raw)
             write_text(run_path / "REVIEW.md", raw)
             if verdict == "PASS":
-                return set_status(run_path, REVIEWED_PASS, review_result="PASS")
-            return set_status(
+                result = set_status(run_path, REVIEWED_PASS, review_result="PASS")
+                append_event(
+                    run_path,
+                    phase="review",
+                    provider=review_phase["provider"],
+                    model=review_phase.get("model", ""),
+                    action="success",
+                    status="PASS",
+                    run_id=run_id,
+                )
+                return result
+            result = set_status(
                 run_path,
                 REVIEWED_CHANGES_REQUESTED,
                 review_result="CHANGES_REQUESTED",
             )
+            append_event(
+                run_path,
+                phase="review",
+                provider=review_phase["provider"],
+                model=review_phase.get("model", ""),
+                action="success",
+                status="CHANGES_REQUESTED",
+                run_id=run_id,
+            )
+            return result
     except Exception as exc:
         _mark_failure_if_possible(run_path, exc, "review")
         raise
+    finally:
+        _release_lock(run_path)
 
 
 def _ensure_review_did_not_change_diff(run_path: Path, status: dict[str, Any]) -> None:
@@ -705,6 +890,7 @@ def fix(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
             if status.get("status") == FAILED and status.get("stage") == "test":
                 allowed.add(FAILED)
             require_status(status, allowed, "fix")
+            _begin_phase_lock(run_path, "fix")
             cfg = load_config(root)
             max_repairs = int(cfg.get("writer", {}).get("max_repair_iterations", 2))
             iterations = int(status.get("fix_iterations") or 0)
@@ -715,6 +901,17 @@ def fix(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                     suggested_next_action="Inspect artifacts manually or start a new run.",
                 )
             worktree = Path(status["worktree_path"])
+            fix_phase = resolve_phase(cfg, "fix")
+            append_event(
+                run_path,
+                phase="fix",
+                provider=fix_phase["provider"],
+                model=fix_phase.get("model", ""),
+                action="start",
+                status="RUNNING",
+                detail=f"Fix iteration {iterations + 1}/{max_repairs}",
+                run_id=run_id,
+            )
             set_status(run_path, FIXING)
             patch, summary = _call_writer(root=root, run_path=run_path, cfg=cfg, mock=mock, repair=True)
             if _writer_edits_worktree(cfg, mock, repair=True):
@@ -724,23 +921,42 @@ def fix(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
             _validate_writer_scope(run_path, final_diff, summary)
             append_text(run_path / "FIXES.md", f"## Fix iteration {iterations + 1}\n\n{summary.rstrip()}\n\n")
             write_text(run_path / "FINAL.diff", final_diff)
-            return set_status(
+            result = set_status(
                 run_path,
                 IMPLEMENTED,
                 fix_iterations=iterations + 1,
                 tests_passed=False,
                 review_result=None,
             )
+            append_event(
+                run_path,
+                phase="fix",
+                provider=fix_phase["provider"],
+                model=fix_phase.get("model", ""),
+                action="success",
+                status="IMPLEMENTED",
+                detail=f"Fix iteration {iterations + 1} complete.",
+                run_id=run_id,
+            )
+            return result
     except Exception as exc:
         _mark_failure_if_possible(run_path, exc, "fix")
         raise
+    finally:
+        _release_lock(run_path)
 
 
 def _writer_edits_worktree(cfg: dict[str, Any], mock: bool, *, repair: bool = False) -> bool:
     if mock:
         return False
     phase = "fix" if repair else "write"
-    return resolve_phase(cfg, phase)["provider"] == "reasonix_cli"
+    provider = resolve_phase(cfg, phase)["provider"]
+    if provider == "reasonix_cli":
+        return True
+    provider_cfg = cfg.get("providers", {}).get(provider, {})
+    if isinstance(provider_cfg, dict):
+        return str(provider_cfg.get("output_contract", "")) == "worktree_diff"
+    return False
 
 
 def status(cwd: Path, run_id: str) -> dict[str, Any]:
@@ -749,7 +965,112 @@ def status(cwd: Path, run_id: str) -> dict[str, Any]:
     data = dict(data)
     data["run_dir"] = str(run_path)
     data["artifacts"] = list_run_artifacts(run_path)
+    latest = latest_event(run_path)
+    if latest:
+        data["latest_event"] = latest
+    data["event_count"] = event_count(run_path)
+    data["next_commands"] = _next_commands(data)
+    data["gate_state"] = _gate_state(data)
     return data
+
+
+def _next_commands(data: dict[str, Any]) -> list[str]:
+    current = str(data.get("status", ""))
+    if current == PLANNED:
+        return ["approve"]
+    if current == APPROVED:
+        return ["write"]
+    if current == IMPLEMENTED:
+        return ["test"]
+    if current == TESTED:
+        return ["review"]
+    if current == REVIEWED_CHANGES_REQUESTED:
+        return ["fix"]
+    if current == REVIEWED_PASS and data.get("tests_passed"):
+        return ["apply"]
+    if current == APPLIED:
+        return ["cleanup"]
+    return []
+
+
+def _gate_state(data: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "approved": str(data.get("status")) not in {"NEW", PLANNED},
+        "tests_passed": bool(data.get("tests_passed")),
+        "review_result": data.get("review_result"),
+        "ready_to_apply": data.get("status") == REVIEWED_PASS and bool(data.get("tests_passed")),
+    }
+
+
+def events(cwd: Path, run_id: str, *, since: int = 0, phase: str | None = None) -> dict[str, Any]:
+    """Return event log entries for a run (used by CLI ``events`` and MCP ``patchbay_events``)."""
+    root = resolve_root(cwd)
+    run_path, data = _load_run(root, run_id)
+    entries = list_events(run_path, since=since, phase=phase)
+    return {
+        "run_id": run_id,
+        "since": since,
+        "total": event_count(run_path),
+        "returned": len(entries),
+        "events": entries,
+    }
+
+
+def runs(cwd: Path, *, limit: int = 20) -> dict[str, Any]:
+    root = resolve_root(cwd)
+    ensure_layout(root)
+    items: list[dict[str, Any]] = []
+    for candidate in sorted(runs_dir(root).iterdir(), key=lambda item: item.stat().st_mtime, reverse=True):
+        if not candidate.is_dir() or not (candidate / "STATUS.json").exists():
+            continue
+        try:
+            data = load_status(candidate)
+        except Exception:
+            continue
+        items.append(
+            {
+                "run_id": data.get("run_id", candidate.name),
+                "status": data.get("status"),
+                "task": data.get("task"),
+                "updated_at": data.get("updated_at"),
+                "run_dir": str(candidate),
+            }
+        )
+        if len(items) >= limit:
+            break
+    return {"count": len(items), "runs": items}
+
+
+def artifact(cwd: Path, run_id: str, artifact_name: str, *, tail: int | None = None) -> dict[str, Any]:
+    root = resolve_root(cwd)
+    run_path, _ = _load_run(root, run_id)
+    normalized = artifact_name.replace("\\", "/")
+    if not normalized or normalized.startswith("/") or ".." in Path(normalized).parts:
+        raise SafetyError("Invalid artifact name; use a file name inside the run directory.", stage="artifact")
+    path = run_path / normalized
+    try:
+        resolved = path.resolve()
+        if not resolved.is_relative_to(run_path.resolve()):
+            raise SafetyError("Invalid artifact name; use a file name inside the run directory.", stage="artifact")
+    except AttributeError:
+        if str(path.resolve()).startswith(str(run_path.resolve())) is False:
+            raise SafetyError("Invalid artifact name; use a file name inside the run directory.", stage="artifact")
+    if not path.exists() or not path.is_file():
+        raise StateError(f"Missing artifact: {artifact_name}", stage="artifact")
+    text = read_text(path)
+    lines = text.splitlines()
+    if tail is not None and tail >= 0:
+        lines = lines[-tail:] if tail else []
+        text = "\n".join(lines)
+        if text:
+            text += "\n"
+    return {
+        "run_id": run_id,
+        "artifact": normalized,
+        "path": str(path),
+        "text": text,
+        "lines_returned": len(lines),
+    }
 
 
 def diff(cwd: Path, run_id: str) -> str:
@@ -786,6 +1107,14 @@ def apply(cwd: Path, run_id: str) -> dict[str, Any]:
         with git_utils.log_to(run_path / "git.log"):
             require_status(status, {REVIEWED_PASS}, "apply")
             if not status.get("tests_passed"):
+                append_event(
+                    run_path,
+                    phase="apply",
+                    action="apply_denied",
+                    status="DENIED",
+                    detail="Cannot apply because tests_passed is false.",
+                    run_id=run_id,
+                )
                 raise StateError("Cannot apply because tests_passed is false.", stage="apply")
             cfg = load_config(root)
             apply_phase = resolve_phase(cfg, "apply")
@@ -801,7 +1130,16 @@ def apply(cwd: Path, run_id: str) -> dict[str, Any]:
                     git_utils.apply_diff(root, patch, recount=True, threeway=True)
                 except GitError:
                     git_utils.apply_diff(root, patch, recount=True, ignore_space_change=True)
-            return set_status(run_path, APPLIED)
+            result = set_status(run_path, APPLIED)
+            append_event(
+                run_path,
+                phase="apply",
+                action="apply_granted",
+                status="APPLIED",
+                detail=f"Applied FINAL.diff to {root}",
+                run_id=run_id,
+            )
+            return result
     except Exception as exc:
         _mark_failure_if_possible(run_path, exc, "apply")
         raise
@@ -822,6 +1160,16 @@ def _mark_failure_if_possible(run_path: Path, exc: Exception, stage: str) -> Non
         return
     suggested = getattr(exc, "suggested_next_action", None) or "Inspect run artifacts and rerun the failed stage."
     mark_failed(run_path, error=str(exc), stage=getattr(exc, "stage", None) or stage, suggested_next_action=suggested)
+    try:
+        append_event(
+            run_path,
+            phase=stage,
+            action="error",
+            status="ERROR",
+            detail=str(exc),
+        )
+    except Exception:
+        pass
 
 
 EXAMPLE_TOML = """[models]

@@ -8,6 +8,8 @@ The default workflow uses Claude Code as the read-only planner, Reasonix ACP as 
 
 ## Per-Phase Executors
 
+Any configured provider that advertises the required role (plan/write/review/fix) can be assigned to any phase — no code changes needed. Unsupported assignments fail with a clear error at resolution time.
+
 Each workflow phase can be independently bound to a provider and model in `.ai/patchbay.toml`:
 
 ```toml
@@ -36,18 +38,35 @@ Legacy `[models]`, `[commands]`, and `[writer].provider` keys remain supported a
 ## What It Provides
 
 - CLI workflow: `plan`, `approve`, `write`, `test`, `review`, `fix`, `status`, `diff`, `apply`, `cleanup`.
-- MCP tools: `patchbay_plan`, `patchbay_approve`, `patchbay_write`, `patchbay_test`, `patchbay_review`, `patchbay_fix`, `patchbay_status`, `patchbay_diff`, `patchbay_apply`.
+- MCP tools: `patchbay_plan`, `patchbay_approve`, `patchbay_write`, `patchbay_test`, `patchbay_review`, `patchbay_fix`, `patchbay_status`, `patchbay_events`, `patchbay_diff`, `patchbay_apply`.
 - Legacy MCP aliases: `ai_flow_*`.
 - Isolated git worktrees by default.
 - File-backed run artifacts under `.ai/runs/<run_id>/`.
 - Human approval gate before implementation.
 - Patch safety checks and read-only reviewer verification.
+- **Cross-host visibility**: `patchbay events <run_id>` and `patchbay_status` reveal what every phase/agent did, including provider, model, action, and timestamps — from any MCP host.
 
 ## Quick Start
+
+### npx-style (recommended)
+
+```bash
+uvx patchbay init                        # or: pipx run patchbay init
+uvx patchbay plan --task "your task"     # or: pipx run patchbay plan ...
+```
+
+### From a local checkout
 
 ```bash
 python scripts/patchbay init
 cp .ai/patchbay.example.toml .ai/patchbay.toml
+```
+
+### Interactive configuration
+
+```bash
+patchbay config     # Interactive wizard — no hand-editing required
+patchbay doctor     # Validate your resolved phase configuration
 ```
 
 Edit `.ai/patchbay.toml` for your local CLI commands, model names, provider, and test allowlist. Do not commit `.ai/patchbay.toml`; it is intentionally ignored.
@@ -78,10 +97,17 @@ python scripts/patchbay review <run_id> --mock
 From the repository root:
 
 ```bash
+# Automated — no hand-editing JSON/TOML required
+patchbay mcp install codex          # Codex CLI / Codex Desktop
+patchbay mcp install claude         # Claude Code
+patchbay mcp install claude-desktop # Claude Desktop (edits config in-place)
+patchbay mcp install gemini         # Gemini CLI
+
+# Or manually
 codex mcp add patchbay -- python scripts/patchbay_mcp_server.py
 ```
 
-Use the equivalent MCP server registration command for Claude Desktop, Claude Code, Gemini CLI, or any other MCP host.
+Use the equivalent MCP server registration command for other MCP hosts. Run `patchbay mcp doctor` to verify the server is reachable.
 
 ## Configuration
 

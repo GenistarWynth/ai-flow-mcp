@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "patchbay"
+version = "0.1.0"
+description = "MCP-friendly patch orchestration across interchangeable coding agents"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.scripts]
+patchbay = "ai_flow.cli:main"
+patchbay-mcp = "patchbay_mcp_server:main"
+
+[tool.setuptools]
+package-dir = { "" = "scripts" }
+packages = ["ai_flow", "ai_flow.adapters", "ai_flow.prompts"]
+py-modules = ["patchbay_mcp_server"]
+
+[tool.setuptools.package-data]
+"ai_flow" = ["prompts/*.md"]

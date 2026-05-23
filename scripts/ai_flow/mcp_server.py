@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any, Callable
@@ -12,12 +13,14 @@ else:
     from . import service
 
 
-ROOT = Path.cwd()
+ROOT = Path(os.environ.get("PATCHBAY_ROOT") or Path.cwd())
 SERVER_NAME = "patchbay"
 SERVER_VERSION = "0.1.0"
 
 
-def patchbay_plan(task: str) -> dict[str, Any]:
+def patchbay_plan(task: str, background: bool = False) -> dict[str, Any]:
+    if background:
+        return service.start_background_phase(ROOT, "plan", task=task)
     return service.plan(ROOT, task=task)
 
 
@@ -25,24 +28,44 @@ def patchbay_approve(run_id: str) -> dict[str, Any]:
     return service.approve(ROOT, run_id)
 
 
-def patchbay_write(run_id: str) -> dict[str, Any]:
+def patchbay_write(run_id: str, background: bool = False) -> dict[str, Any]:
+    if background:
+        return service.start_background_phase(ROOT, "write", run_id=run_id)
     return service.write(ROOT, run_id)
 
 
-def patchbay_test(run_id: str) -> dict[str, Any]:
+def patchbay_test(run_id: str, background: bool = False) -> dict[str, Any]:
+    if background:
+        return service.start_background_phase(ROOT, "test", run_id=run_id)
     return service.test(ROOT, run_id)
 
 
-def patchbay_review(run_id: str) -> dict[str, Any]:
+def patchbay_review(run_id: str, background: bool = False) -> dict[str, Any]:
+    if background:
+        return service.start_background_phase(ROOT, "review", run_id=run_id)
     return service.review(ROOT, run_id)
 
 
-def patchbay_fix(run_id: str) -> dict[str, Any]:
+def patchbay_fix(run_id: str, background: bool = False) -> dict[str, Any]:
+    if background:
+        return service.start_background_phase(ROOT, "fix", run_id=run_id)
     return service.fix(ROOT, run_id)
 
 
 def patchbay_status(run_id: str) -> dict[str, Any]:
     return service.status(ROOT, run_id)
+
+
+def patchbay_events(run_id: str, since: int = 0, phase: str = "") -> dict[str, Any]:
+    return service.events(ROOT, run_id, since=since, phase=phase or None)
+
+
+def patchbay_runs(limit: int = 20) -> dict[str, Any]:
+    return service.runs(ROOT, limit=limit)
+
+
+def patchbay_artifact(run_id: str, artifact: str, tail: int | None = None) -> dict[str, Any]:
+    return service.artifact(ROOT, run_id, artifact, tail=tail)
 
 
 def patchbay_diff(run_id: str) -> dict[str, str]:
@@ -61,6 +84,9 @@ CANONICAL_TOOLS: dict[str, Callable[..., Any]] = {
     "patchbay_review": patchbay_review,
     "patchbay_fix": patchbay_fix,
     "patchbay_status": patchbay_status,
+    "patchbay_events": patchbay_events,
+    "patchbay_runs": patchbay_runs,
+    "patchbay_artifact": patchbay_artifact,
     "patchbay_diff": patchbay_diff,
     "patchbay_apply": patchbay_apply,
 }
@@ -73,6 +99,9 @@ LEGACY_TOOLS: dict[str, Callable[..., Any]] = {
     "ai_flow_review": patchbay_review,
     "ai_flow_fix": patchbay_fix,
     "ai_flow_status": patchbay_status,
+    "ai_flow_events": patchbay_events,
+    "ai_flow_runs": patchbay_runs,
+    "ai_flow_artifact": patchbay_artifact,
     "ai_flow_diff": patchbay_diff,
     "ai_flow_apply": patchbay_apply,
 }
@@ -82,10 +111,30 @@ TOOLS: dict[str, Callable[..., Any]] = {**CANONICAL_TOOLS, **LEGACY_TOOLS}
 
 def _tool_schema(name: str) -> dict[str, Any]:
     if name.endswith("_plan"):
-        properties = {"task": {"type": "string"}}
+        properties: dict[str, Any] = {"task": {"type": "string"}}
+        properties["background"] = {"type": "boolean", "description": "Start phase in the background and poll events."}
         required = ["task"]
+    elif name.endswith("_runs"):
+        properties = {"limit": {"type": "integer"}}
+        required = []
+    elif name.endswith("_artifact"):
+        properties = {
+            "run_id": {"type": "string"},
+            "artifact": {"type": "string"},
+            "tail": {"type": "integer"},
+        }
+        required = ["run_id", "artifact"]
+    elif name.endswith("_events"):
+        properties = {
+            "run_id": {"type": "string"},
+            "since": {"type": "integer", "description": "Return events after index N (default 0)."},
+            "phase": {"type": "string", "description": "Optional filter by phase name."},
+        }
+        required = ["run_id"]
     else:
         properties = {"run_id": {"type": "string"}}
+        if any(name.endswith(suffix) for suffix in ("_write", "_test", "_review", "_fix")):
+            properties["background"] = {"type": "boolean", "description": "Start phase in the background and poll events."}
         required = ["run_id"]
 
     descriptions: dict[str, str] = {
@@ -95,7 +144,10 @@ def _tool_schema(name: str) -> dict[str, Any]:
         "patchbay_test": "Run test commands from the plan or allowlist inside the isolated worktree.",
         "patchbay_review": "Run the review phase (provider configurable via [phases.review]).",
         "patchbay_fix": "Run the fix phase after a CHANGES_REQUESTED review (provider defaults to write).",
-        "patchbay_status": "Return current run status and artifacts.",
+        "patchbay_status": "Return current run status and artifacts, including latest cross-phase event.",
+        "patchbay_events": "Return the append-only event log (JSONL stream) for a run so any host can see what every phase/agent did.",
+        "patchbay_runs": "List recent Patchbay runs.",
+        "patchbay_artifact": "Read a run artifact such as PLAN.md, TEST.log, REVIEW.md, or FINAL.diff.",
         "patchbay_diff": "Return the current FINAL.diff for the run.",
         "patchbay_apply": "Apply the reviewed patch to the original repository (no LLM executor).",
     }

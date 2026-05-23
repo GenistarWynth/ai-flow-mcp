@@ -36,7 +36,7 @@ timeout = 900
 ## 功能概览
 
 - CLI 流程：`plan`、`approve`、`write`、`test`、`review`、`fix`、`status`、`diff`、`apply`、`cleanup`。
-- MCP 工具：`patchbay_plan`、`patchbay_approve`、`patchbay_write`、`patchbay_test`、`patchbay_review`、`patchbay_fix`、`patchbay_status`、`patchbay_diff`、`patchbay_apply`。
+- MCP 工具：`patchbay_plan`、`patchbay_approve`、`patchbay_write`、`patchbay_test`、`patchbay_review`、`patchbay_fix`、`patchbay_status`、`patchbay_events`、`patchbay_diff`、`patchbay_apply`。
 - 兼容旧 MCP 工具名：`ai_flow_*`。
 - 默认使用隔离 git worktree，避免直接污染当前工作区。
 - 每次运行都会在 `.ai/runs/<run_id>/` 下落盘计划、diff、日志和状态。
@@ -45,6 +45,15 @@ timeout = 900
 - reviewer 默认只读，并检查审查阶段没有修改 worktree。
 
 ## 快速开始
+
+### npx 风格（推荐）
+
+```bash
+uvx patchbay init                        # 或: pipx run patchbay init
+uvx patchbay plan --task "你的任务"       # 或: pipx run patchbay plan ...
+```
+
+### 本地检出
 
 ```bash
 python scripts/patchbay init
@@ -56,6 +65,13 @@ Windows 也可以使用：
 ```bat
 scripts\patchbay.cmd init
 copy .ai\patchbay.example.toml .ai\patchbay.toml
+```
+
+### 交互式配置
+
+```bash
+patchbay config     # 交互式向导，无需手动编辑
+patchbay doctor     # 验证解析后的阶段配置
 ```
 
 然后编辑 `.ai/patchbay.toml`，配置本机命令、模型名、writer provider 和测试命令 allowlist。
@@ -118,10 +134,17 @@ Mock 模式适合检查 CLI、状态流转、worktree、补丁应用和 MCP 封�
 在仓库根目录运行：
 
 ```bash
+# 自动化 — 无需手动编辑 JSON/TOML
+patchbay mcp install codex          # Codex CLI / Codex Desktop
+patchbay mcp install claude         # Claude Code
+patchbay mcp install claude-desktop # Claude Desktop（直接编辑配置文件）
+patchbay mcp install gemini         # Gemini CLI
+
+# 或手动注册
 codex mcp add patchbay -- python scripts/patchbay_mcp_server.py
 ```
 
-Claude Desktop、Claude Code、Gemini CLI 或其他 MCP host 使用各自等价的 MCP server 注册方式即可。
+Claude Desktop、Claude Code、Gemini CLI 或其他 MCP host 使用各自等价的 MCP server 注册方式即可。运行 `patchbay mcp doctor` 验证服务器是否可达。
 
 安装后可用的 MCP 工具包括：
 
@@ -132,6 +155,7 @@ Claude Desktop、Claude Code、Gemini CLI 或其他 MCP host 使用各自等价�
 - `patchbay_review`
 - `patchbay_fix`
 - `patchbay_status`
+- `patchbay_events`
 - `patchbay_diff`
 - `patchbay_apply`
 

@@ -1,16 +1,30 @@
 #!/usr/bin/env python3
+"""Patchbay CLI entry point — in-repo shim and console_script forwarder.
+
+Usage:
+    scripts/patchbay <command> ...     (in-repo)
+    patchbay <command> ...             (after pipx install / uvx)
+
+This script bootstraps ``sys.path`` so that ``ai_flow.cli.main`` can be
+imported regardless of whether the user is running from a local checkout
+or from an installed package.
+"""
+
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-if str(SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_DIR))
-
-from ai_flow.cli import main
+def _bootstrap() -> None:
+    """Ensure the ``scripts/`` directory is on sys.path for in-repo usage."""
+    script_dir = Path(__file__).resolve().parent
+    if str(script_dir) not in sys.path:
+        sys.path.insert(0, str(script_dir))
 
 
 if __name__ == "__main__":
+    _bootstrap()
+    from ai_flow.cli import main
+
     raise SystemExit(main())
