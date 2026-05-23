@@ -69,7 +69,7 @@ configuration, mock mode, and safety enforcement are implemented.
 - **Free phase-to-provider routing**: Any configured provider that advertises a role (plan/write/review/fix) can be assigned to any phase. Unsupported assignments fail with a clear error.
 - **Interactive configuration**: `patchbay config` wizard + `patchbay config set k v` + `patchbay doctor`. No hand-editing TOML required.
 - **Automated MCP registration**: `patchbay mcp install <host>` writes host-specific registration for Codex, Claude Code, Claude Desktop, and Gemini CLI.
-- **npx-style installation**: `uvx patchbay ...` / `pipx run patchbay ...` via `pyproject.toml` console_scripts.
+- **npx-style installation**: `uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay-mcp --root <repo>` via `pyproject.toml` console_scripts.
 - **Gate enforcement events**: Approval and apply-gate decisions are recorded in the event log.
 
 The project is actively maintained.

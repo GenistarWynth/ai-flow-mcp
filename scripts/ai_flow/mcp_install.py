@@ -36,25 +36,25 @@ def _server_command(root: Path) -> str:
     return f"patchbay-mcp --root {root}"
 
 
-def install_codex(root: Path, dry_run: bool = False) -> dict[str, Any]:
+def install_codex(root: Path, dry_run: bool = False, *, host_name: str = "codex") -> dict[str, Any]:
     """Print the ``codex mcp add`` command for Codex CLI / Codex Desktop."""
     cmd = _server_command(root)
     full = f"codex mcp add {SERVER_NAME} -- {cmd}"
     if dry_run:
-        return {"host": "codex", "command": full, "dry_run": True}
-    return {"host": "codex", "command": full, "note": "Run the command above in your terminal to register the MCP server."}
+        return {"host": host_name, "command": full, "dry_run": True}
+    return {"host": host_name, "command": full, "note": "Run the command above in your terminal to register the MCP server."}
 
 
-def install_claude(root: Path, dry_run: bool = False) -> dict[str, Any]:
+def install_claude(root: Path, dry_run: bool = False, *, host_name: str = "claude") -> dict[str, Any]:
     """Print the ``claude mcp add`` command for Claude Code."""
     cmd = _server_command(root)
     full = f"claude mcp add {SERVER_NAME} -- {cmd}"
     if dry_run:
-        return {"host": "claude", "command": full, "dry_run": True}
-    return {"host": "claude", "command": full, "note": "Run the command above in your terminal to register the MCP server."}
+        return {"host": host_name, "command": full, "dry_run": True}
+    return {"host": host_name, "command": full, "note": "Run the command above in your terminal to register the MCP server."}
 
 
-def install_claude_desktop(root: Path, dry_run: bool = False) -> dict[str, Any]:
+def install_claude_desktop(root: Path, dry_run: bool = False, *, host_name: str = "claude-desktop") -> dict[str, Any]:
     """Generate the Claude Desktop config snippet and optionally write it."""
     cmd = _server_command(root)
     args = cmd.split()
@@ -66,7 +66,7 @@ def install_claude_desktop(root: Path, dry_run: bool = False) -> dict[str, Any]:
     config_path = _claude_desktop_config_path()
     if dry_run:
         return {
-            "host": "claude-desktop",
+            "host": host_name,
             "config_file": str(config_path),
             "entry": entry,
             "dry_run": True,
@@ -91,21 +91,21 @@ def install_claude_desktop(root: Path, dry_run: bool = False) -> dict[str, Any]:
     config_path.write_text(json.dumps(existing, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
 
     return {
-        "host": "claude-desktop",
+        "host": host_name,
         "config_file": str(config_path),
         "entry": entry,
         "note": "Restart Claude Desktop for the change to take effect.",
     }
 
 
-def install_gemini(root: Path, dry_run: bool = False) -> dict[str, Any]:
+def install_gemini(root: Path, dry_run: bool = False, *, host_name: str = "gemini") -> dict[str, Any]:
     """Print instructions for Gemini CLI MCP registration."""
     cmd = _server_command(root)
     full = f"gemini mcp add {SERVER_NAME} -- {cmd}"
     if dry_run:
-        return {"host": "gemini", "command": full, "dry_run": True}
+        return {"host": host_name, "command": full, "dry_run": True}
     return {
-        "host": "gemini",
+        "host": host_name,
         "command": full,
         "note": "Run the command above in your terminal, or use the Gemini CLI MCP config UI.",
     }
@@ -123,16 +123,17 @@ def _claude_desktop_config_path() -> Path:
 
 
 HOST_HANDLERS: dict[str, Any] = {
-    "codex": install_codex,
-    "claude": install_claude,
-    "claude-desktop": install_claude_desktop,
-    "gemini": install_gemini,
+    "codex": lambda root, dry_run=False: install_codex(root, dry_run=dry_run, host_name="codex"),
+    "claude": lambda root, dry_run=False: install_claude(root, dry_run=dry_run, host_name="claude"),
+    "claude-code": lambda root, dry_run=False: install_claude(root, dry_run=dry_run, host_name="claude-code"),
+    "claude-desktop": lambda root, dry_run=False: install_claude_desktop(root, dry_run=dry_run, host_name="claude-desktop"),
+    "gemini": lambda root, dry_run=False: install_gemini(root, dry_run=dry_run, host_name="gemini"),
 }
 
 
-def run_mcp_install(cwd: Path, host: str, *, dry_run: bool = False) -> dict[str, Any]:
+def run_mcp_install(cwd: Path, host: str, *, root: str | Path | None = None, dry_run: bool = False) -> dict[str, Any]:
     """Entry point for ``patchbay mcp install <host>``."""
-    root = _repo_root(cwd)
+    repo_root = Path(root).expanduser().resolve() if root else _repo_root(cwd)
     handler = HOST_HANDLERS.get(host.lower())
     if handler is None:
         from .errors import AiFlowError
@@ -141,16 +142,16 @@ def run_mcp_install(cwd: Path, host: str, *, dry_run: bool = False) -> dict[str,
             stage="config",
             suggested_next_action="Run `patchbay mcp install codex` or one of the supported hosts.",
         )
-    return handler(root, dry_run=dry_run)
+    return handler(repo_root, dry_run=dry_run)
 
 
-def run_mcp_doctor(cwd: Path) -> dict[str, Any]:
+def run_mcp_doctor(cwd: Path, *, root: str | Path | None = None) -> dict[str, Any]:
     """Validate that the MCP server can be reached and tools are listed."""
-    root = _repo_root(cwd)
-    server_cmd = _server_command(root)
+    repo_root = Path(root).expanduser().resolve() if root else _repo_root(cwd)
+    server_cmd = _server_command(repo_root)
     return {
         "server_command": server_cmd,
-        "server_script_exists": (root / SERVER_SCRIPT).exists(),
+        "server_script_exists": (repo_root / SERVER_SCRIPT).exists(),
         "supported_hosts": sorted(HOST_HANDLERS.keys()),
         "note": "MCP tools are exposed via the server. Verify with your MCP host after registration.",
     }

@@ -36,7 +36,7 @@ timeout = 900
 ## 功能概览
 
 - CLI 流程：`plan`、`approve`、`write`、`test`、`review`、`fix`、`status`、`diff`、`apply`、`cleanup`。
-- MCP 工具：`patchbay_plan`、`patchbay_approve`、`patchbay_write`、`patchbay_test`、`patchbay_review`、`patchbay_fix`、`patchbay_status`、`patchbay_events`、`patchbay_diff`、`patchbay_apply`。
+- MCP 工具：`patchbay_plan`、`patchbay_approve`、`patchbay_write`、`patchbay_test`、`patchbay_review`、`patchbay_fix`、`patchbay_status`、`patchbay_events`、`patchbay_runs`、`patchbay_artifact`、`patchbay_config_show`、`patchbay_config_phase_set`、`patchbay_config_command_set`、`patchbay_config_test_add`、`patchbay_config_provider_add_cli`、`patchbay_diff`、`patchbay_apply`。
 - 兼容旧 MCP 工具名：`ai_flow_*`。
 - 默认使用隔离 git worktree，避免直接污染当前工作区。
 - 每次运行都会在 `.ai/runs/<run_id>/` 下落盘计划、diff、日志和状态。
@@ -49,8 +49,8 @@ timeout = 900
 ### npx 风格（推荐）
 
 ```bash
-uvx patchbay init                        # 或: pipx run patchbay init
-uvx patchbay plan --task "你的任务"       # 或: pipx run patchbay plan ...
+uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay init
+uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay-mcp --root /path/to/repo
 ```
 
 ### 本地检出
@@ -156,6 +156,13 @@ Claude Desktop、Claude Code、Gemini CLI 或其他 MCP host 使用各自等价�
 - `patchbay_fix`
 - `patchbay_status`
 - `patchbay_events`
+- `patchbay_runs`
+- `patchbay_artifact`
+- `patchbay_config_show`
+- `patchbay_config_phase_set`
+- `patchbay_config_command_set`
+- `patchbay_config_test_add`
+- `patchbay_config_provider_add_cli`
 - `patchbay_diff`
 - `patchbay_apply`
 

@@ -63,6 +63,23 @@ class ConfigWizardTest(unittest.TestCase):
         self.assertIn("set", result)
         self.assertEqual(result["set"]["models.planner"], "gemini-2.5-pro")
 
+    def test_set_config_key_preserves_existing_comments(self) -> None:
+        from scripts.ai_flow.config_wizard import run_config_wizard
+        self._make_git_repo()
+        config_path = self.tmp / ".ai" / "patchbay.toml"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            "# keep this human note\n\n[models]\n# planner choice\nplanner = \"claude-opus-4-7\"\n",
+            encoding="utf-8",
+        )
+
+        run_config_wizard(self.tmp, set_key="models.planner", set_value="gemini-2.5-pro")
+        text = config_path.read_text(encoding="utf-8")
+
+        self.assertIn("# keep this human note", text)
+        self.assertIn("# planner choice", text)
+        self.assertIn('planner = "gemini-2.5-pro"', text)
+
     def test_doctor_validates_phases(self) -> None:
         """Test doctor on valid default config."""
         from scripts.ai_flow.config import load_config
@@ -74,6 +91,46 @@ class ConfigWizardTest(unittest.TestCase):
         self.assertNotIn("error", result["phases"]["plan"])
         self.assertNotIn("error", result["phases"]["write"])
         self.assertNotIn("error", result["phases"]["review"])
+
+    def test_show_returns_public_config(self) -> None:
+        from scripts.ai_flow.config_wizard import run_config_wizard
+        self._make_git_repo()
+
+        result = run_config_wizard(self.tmp, show=True)
+        self.assertIn("config", result)
+        self.assertIn("resolved", result)
+
+    def test_add_cli_provider(self) -> None:
+        from scripts.ai_flow.config_wizard import run_config_wizard
+        self._make_git_repo()
+
+        result = run_config_wizard(
+            self.tmp,
+            provider_id="local_writer",
+            provider_roles=["write", "fix"],
+            provider_command="python",
+            provider_args=["writer.py"],
+            prompt_mode="stdin",
+            output_contract="worktree_diff",
+        )
+        self.assertEqual(result["provider"], "local_writer")
+
+    def test_add_command_and_test_command(self) -> None:
+        from scripts.ai_flow.config_wizard import run_config_wizard
+        self._make_git_repo()
+
+        command_result = run_config_wizard(self.tmp, command_key_name="claude", command_value="claude")
+        test_result = run_config_wizard(self.tmp, test_command="pytest -q")
+        self.assertIn("commands.claude", command_result["set"])
+        self.assertTrue(test_result["allowlisted"])
+
+    def test_set_phase_configuration(self) -> None:
+        from scripts.ai_flow.config_wizard import run_config_wizard
+        self._make_git_repo()
+
+        result = run_config_wizard(self.tmp, phase="plan", provider="mock", model="mock")
+        self.assertEqual(result["phase"], "plan")
+        self.assertEqual(result["updated"]["provider"], "mock")
 
     def test_set_bool_value(self) -> None:
         """Test setting a boolean config key."""

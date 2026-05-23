@@ -31,6 +31,9 @@ def append_event(
     status: str,
     detail: str = "",
     run_id: str = "",
+    artifact_paths: list[str] | None = None,
+    duration_ms: int | None = None,
+    next_action: str = "",
 ) -> dict[str, Any]:
     """Write an event record and return it.
 
@@ -53,6 +56,12 @@ def append_event(
         record["model"] = model
     if detail:
         record["detail"] = detail
+    if artifact_paths:
+        record["artifact_paths"] = artifact_paths
+    if duration_ms is not None:
+        record["duration_ms"] = duration_ms
+    if next_action:
+        record["next_action"] = next_action
     append_text(events_path(run_dir), json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
     return record
 

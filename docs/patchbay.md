@@ -6,8 +6,8 @@ Patchbay 是一个本地补丁编排器：任意支持 MCP 的客户端都可以
 
 ```bash
 # npx 风格（推荐）
-uvx patchbay init                    # 或: pipx run patchbay init
-uvx patchbay plan --task "..."       # 或: pipx run patchbay plan ...
+uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay init
+uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay-mcp --root /path/to/repo
 
 # 交互式配置（无需手动编辑 TOML）
 patchbay config                      # 交互式向导
@@ -81,7 +81,7 @@ scripts/patchbay events <run_id> --since 5     # 从第 5 条事件开始
 scripts/patchbay status <run_id>           # status 现在包含 latest_event 和 event_count
 ```
 
-MCP 工具 `patchbay_events` 和 `patchbay_status` 提供相同数据。每条事件记录包含 `phase`、`provider`、`model`、`action`、`status`、`timestamp` 和 `detail`。
+MCP 工具 `patchbay_events` 和 `patchbay_status` 提供相同数据。每条事件记录包含 `phase`、`provider`、`model`、`action`、`status`、`timestamp`、`detail`、`artifact_paths`、`duration_ms` 和 `next_action`。
 
 ## 常用命令
 
@@ -139,7 +139,7 @@ claude mcp add patchbay -- python scripts/patchbay_mcp_server.py
 # Gemini CLI: 使用对应的 MCP server 注册方式
 ```
 
-MCP 只调用 `scripts.ai_flow.service` 中已有函数，不复制业务逻辑。工具名使用 `patchbay_*`（包括新增的 `patchbay_events`），旧的 `ai_flow_*` 作为兼容别名保留。无论通过哪个 host 调用，流程和门禁保持一致。
+MCP 只调用已有服务函数，不复制业务逻辑。工具名使用 `patchbay_*`（包括 `patchbay_events`、`patchbay_runs`、`patchbay_artifact` 和 `patchbay_config_*` 配置工具），旧的 `ai_flow_*` 作为兼容别名保留。无论通过哪个 host 调用，流程和门禁保持一致。
 
 ## 故障排查
 

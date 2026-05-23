@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -49,9 +50,14 @@ def config_wizard_run(cwd: Path, args: argparse.Namespace) -> Any:
 def mcp_dispatch(cwd: Path, args: argparse.Namespace) -> Any:
     mcp_cmd = getattr(args, "mcp_command", "")
     if mcp_cmd == "install":
-        return run_mcp_install(cwd, args.host, dry_run=bool(getattr(args, "dry_run", False)))
+        return run_mcp_install(
+            cwd,
+            args.host,
+            root=getattr(args, "root", "") or None,
+            dry_run=bool(getattr(args, "dry_run", False)),
+        )
     if mcp_cmd == "doctor":
-        return run_mcp_doctor(cwd)
+        return run_mcp_doctor(cwd, root=getattr(args, "root", "") or None)
     raise AiFlowError(
         "Missing MCP subcommand. Try: patchbay mcp install codex  or  patchbay mcp doctor",
         stage="config",
@@ -90,6 +96,7 @@ def build_parser() -> argparse.ArgumentParser:
     plan.add_argument("--task", required=True, help="Task to plan.")
     plan.add_argument("--mock", action="store_true", help="Use mock planner.")
     plan.add_argument("--background", action="store_true", help="Run this phase in the background.")
+    plan.add_argument("--run-id", default="", help="Reuse a specific run id.")
     _add_json(plan)
 
     approve = sub.add_parser("approve", help="Approve a planned run.")
@@ -189,10 +196,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     mcp_install = mcp_sub.add_parser("install", help="Register Patchbay MCP server for a host.")
     mcp_install.add_argument("host", help="Host name: codex, claude, claude-desktop, gemini.")
+    mcp_install.add_argument("--root", default="", help="Repository root to register.")
     mcp_install.add_argument("--dry-run", action="store_true", help="Print the command without running it.")
     _add_json(mcp_install)
 
     mcp_doctor = mcp_sub.add_parser("doctor", help="Validate MCP server reachability.")
+    mcp_doctor.add_argument("--root", default="", help="Repository root to inspect.")
     _add_json(mcp_doctor)
 
     diff = sub.add_parser("diff", help="Print run final diff.")
@@ -209,12 +218,38 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _run_events_follow(cwd: Path, args: argparse.Namespace) -> dict[str, Any]:
+    seen = int(getattr(args, "since", 0) or 0)
+    last: dict[str, Any] | None = None
+    idle_rounds = 0
+    while True:
+        last = service.events(cwd, args.run_id, since=seen, phase=getattr(args, "phase", None))
+        events = last.get("events", [])
+        if events:
+            seen += len(events)
+            idle_rounds = 0
+        else:
+            idle_rounds += 1
+            if idle_rounds >= 5:
+                break
+        if not getattr(args, "follow", False):
+            break
+        if events and not bool(getattr(args, "json", False)):
+            for event in events:
+                print(json.dumps(event, ensure_ascii=False, sort_keys=True))
+        time.sleep(0.4)
+    return last or {"run_id": args.run_id, "since": seen, "total": 0, "returned": 0, "events": []}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     cwd = Path.cwd()
     try:
-        result = dispatch(args, cwd)
+        if args.command == "events" and getattr(args, "follow", False):
+            result = _run_events_follow(cwd, args)
+        else:
+            result = dispatch(args, cwd)
     except AiFlowError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         if exc.stage:
@@ -228,6 +263,9 @@ def main(argv: list[str] | None = None) -> int:
     as_json = bool(getattr(args, "json", False))
     if args.command == "diff":
         print(result, end="" if str(result).endswith("\n") else "\n")
+    elif args.command == "events" and getattr(args, "follow", False):
+        if as_json:
+            print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
     else:
         _print_result(result, as_json=as_json)
     return 0
@@ -237,12 +275,12 @@ def dispatch(args: argparse.Namespace, cwd: Path) -> Any:
     command = args.command.replace("-", "_")
     handlers: dict[str, Callable[[argparse.Namespace, Path], Any]] = {
         "init": lambda a, c: service.init_project(c),
-        "plan": lambda a, c: service.start_background_phase(c, "plan", task=a.task) if a.background else service.plan(c, task=a.task, mock=a.mock),
+        "plan": lambda a, c: service.start_background_phase(c, "plan", task=a.task, mock=a.mock) if a.background else service.plan(c, task=a.task, mock=a.mock, run_id=a.run_id or None),
         "approve": lambda a, c: service.approve(c, a.run_id),
-        "write": lambda a, c: service.start_background_phase(c, "write", run_id=a.run_id) if a.background else service.write(c, a.run_id, mock=a.mock),
+        "write": lambda a, c: service.start_background_phase(c, "write", run_id=a.run_id, mock=a.mock) if a.background else service.write(c, a.run_id, mock=a.mock),
         "test": lambda a, c: service.start_background_phase(c, "test", run_id=a.run_id) if a.background else service.test(c, a.run_id),
-        "review": lambda a, c: service.start_background_phase(c, "review", run_id=a.run_id) if a.background else service.review(c, a.run_id, mock=a.mock),
-        "fix": lambda a, c: service.start_background_phase(c, "fix", run_id=a.run_id) if a.background else service.fix(c, a.run_id, mock=a.mock),
+        "review": lambda a, c: service.start_background_phase(c, "review", run_id=a.run_id, mock=a.mock) if a.background else service.review(c, a.run_id, mock=a.mock),
+        "fix": lambda a, c: service.start_background_phase(c, "fix", run_id=a.run_id, mock=a.mock) if a.background else service.fix(c, a.run_id, mock=a.mock),
         "status": lambda a, c: service.status(c, a.run_id),
         "events": lambda a, c: service.events(c, a.run_id, since=getattr(a, "since", 0), phase=getattr(a, "phase", None)),
         "runs": lambda a, c: service.runs(c, limit=a.limit),

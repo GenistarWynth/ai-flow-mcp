@@ -9,8 +9,10 @@ from typing import Any, Callable
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ai_flow import service
+    from ai_flow.config_wizard import run_config_wizard
 else:
     from . import service
+    from .config_wizard import run_config_wizard
 
 
 ROOT = Path(os.environ.get("PATCHBAY_ROOT") or Path.cwd())
@@ -68,6 +70,46 @@ def patchbay_artifact(run_id: str, artifact: str, tail: int | None = None) -> di
     return service.artifact(ROOT, run_id, artifact, tail=tail)
 
 
+def patchbay_config_show() -> dict[str, Any]:
+    return run_config_wizard(ROOT, show=True)
+
+
+def patchbay_config_phase_set(
+    phase: str,
+    provider: str,
+    model: str = "",
+    command_key: str = "",
+) -> dict[str, Any]:
+    return run_config_wizard(ROOT, phase=phase, provider=provider, model=model, command_key=command_key)
+
+
+def patchbay_config_command_set(key: str, command: str) -> dict[str, Any]:
+    return run_config_wizard(ROOT, command_key_name=key, command_value=command)
+
+
+def patchbay_config_test_add(command: str) -> dict[str, Any]:
+    return run_config_wizard(ROOT, test_command=command)
+
+
+def patchbay_config_provider_add_cli(
+    provider_id: str,
+    roles: list[str],
+    command: str,
+    args: list[str] | None = None,
+    prompt_mode: str = "stdin",
+    output_contract: str = "writer_diff",
+) -> dict[str, Any]:
+    return run_config_wizard(
+        ROOT,
+        provider_id=provider_id,
+        provider_roles=roles,
+        provider_command=command,
+        provider_args=args or [],
+        prompt_mode=prompt_mode,
+        output_contract=output_contract,
+    )
+
+
 def patchbay_diff(run_id: str) -> dict[str, str]:
     return {"diff": service.diff(ROOT, run_id)}
 
@@ -87,6 +129,11 @@ CANONICAL_TOOLS: dict[str, Callable[..., Any]] = {
     "patchbay_events": patchbay_events,
     "patchbay_runs": patchbay_runs,
     "patchbay_artifact": patchbay_artifact,
+    "patchbay_config_show": patchbay_config_show,
+    "patchbay_config_phase_set": patchbay_config_phase_set,
+    "patchbay_config_command_set": patchbay_config_command_set,
+    "patchbay_config_test_add": patchbay_config_test_add,
+    "patchbay_config_provider_add_cli": patchbay_config_provider_add_cli,
     "patchbay_diff": patchbay_diff,
     "patchbay_apply": patchbay_apply,
 }
@@ -102,6 +149,11 @@ LEGACY_TOOLS: dict[str, Callable[..., Any]] = {
     "ai_flow_events": patchbay_events,
     "ai_flow_runs": patchbay_runs,
     "ai_flow_artifact": patchbay_artifact,
+    "ai_flow_config_show": patchbay_config_show,
+    "ai_flow_config_phase_set": patchbay_config_phase_set,
+    "ai_flow_config_command_set": patchbay_config_command_set,
+    "ai_flow_config_test_add": patchbay_config_test_add,
+    "ai_flow_config_provider_add_cli": patchbay_config_provider_add_cli,
     "ai_flow_diff": patchbay_diff,
     "ai_flow_apply": patchbay_apply,
 }
@@ -131,6 +183,33 @@ def _tool_schema(name: str) -> dict[str, Any]:
             "phase": {"type": "string", "description": "Optional filter by phase name."},
         }
         required = ["run_id"]
+    elif name.endswith("_config_show"):
+        properties = {}
+        required = []
+    elif name.endswith("_config_phase_set"):
+        properties = {
+            "phase": {"type": "string"},
+            "provider": {"type": "string"},
+            "model": {"type": "string"},
+            "command_key": {"type": "string"},
+        }
+        required = ["phase", "provider"]
+    elif name.endswith("_config_command_set"):
+        properties = {"key": {"type": "string"}, "command": {"type": "string"}}
+        required = ["key", "command"]
+    elif name.endswith("_config_test_add"):
+        properties = {"command": {"type": "string"}}
+        required = ["command"]
+    elif name.endswith("_config_provider_add_cli"):
+        properties = {
+            "provider_id": {"type": "string"},
+            "roles": {"type": "array", "items": {"type": "string"}},
+            "command": {"type": "string"},
+            "args": {"type": "array", "items": {"type": "string"}},
+            "prompt_mode": {"type": "string"},
+            "output_contract": {"type": "string"},
+        }
+        required = ["provider_id", "roles", "command", "output_contract"]
     else:
         properties = {"run_id": {"type": "string"}}
         if any(name.endswith(suffix) for suffix in ("_write", "_test", "_review", "_fix")):
@@ -148,6 +227,11 @@ def _tool_schema(name: str) -> dict[str, Any]:
         "patchbay_events": "Return the append-only event log (JSONL stream) for a run so any host can see what every phase/agent did.",
         "patchbay_runs": "List recent Patchbay runs.",
         "patchbay_artifact": "Read a run artifact such as PLAN.md, TEST.log, REVIEW.md, or FINAL.diff.",
+        "patchbay_config_show": "Show the effective Patchbay configuration.",
+        "patchbay_config_phase_set": "Set a phase provider/model/command key without hand-editing TOML.",
+        "patchbay_config_command_set": "Set a command alias in .ai/patchbay.toml.",
+        "patchbay_config_test_add": "Add a test command to both allowlist and phase config.",
+        "patchbay_config_provider_add_cli": "Add a custom CLI provider block under [providers.<id>].",
         "patchbay_diff": "Return the current FINAL.diff for the run.",
         "patchbay_apply": "Apply the reviewed patch to the original repository (no LLM executor).",
     }

@@ -12,6 +12,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import tomlkit
+
 
 def _prompt(prompt: str, default: str = "") -> str:
     suffix = f" [{default}]" if default else ""
@@ -181,7 +183,7 @@ def _set_phase(
     if command_key:
         phase_cfg["command_key"] = command_key
     cfg.setdefault("phases", {})[phase] = {**cfg.get("phases", {}).get(phase, {}), **phase_cfg}
-    _write_config(cfg_path, cfg)
+    _write_config_update(cfg_path, ("phases", phase), phase_cfg)
     return {"config": str(cfg_path), "phase": phase, "updated": phase_cfg}
 
 
@@ -193,7 +195,13 @@ def _add_test_command(cfg_path: Path, cfg: dict[str, Any], command: str) -> dict
     commands = test_phase.setdefault("commands", [])
     if command not in commands:
         commands.append(command)
-    _write_config(cfg_path, cfg)
+    _write_config_updates(
+        cfg_path,
+        [
+            (("commands_allowlist", "test"), allowlist),
+            (("phases", "test", "commands"), commands),
+        ],
+    )
     return {"config": str(cfg_path), "test_command": command, "allowlisted": True}
 
 
@@ -216,7 +224,7 @@ def _add_cli_provider(
         "output_contract": output_contract,
     }
     cfg.setdefault("providers", {})[provider_id] = provider_cfg
-    _write_config(cfg_path, cfg)
+    _write_config_update(cfg_path, ("providers", provider_id), provider_cfg)
     return {"config": str(cfg_path), "provider": provider_id, "updated": provider_cfg}
 
 
@@ -245,7 +253,7 @@ def _set_config_key(cfg_path: Path, cfg: dict[str, Any], key: str, value: str) -
         current = current[part]
     current[parts[-1]] = typed_value
 
-    _write_config(cfg_path, cfg)
+    _write_config_update(cfg_path, tuple(parts), typed_value)
     return {"config": str(cfg_path), "set": {key: typed_value}}
 
 
@@ -408,3 +416,49 @@ def _write_config(cfg_path: Path, cfg: dict[str, Any]) -> None:
                 continue
             _write_section(f, section, keys)
             f.write("\n")
+
+
+def _load_toml_document(cfg_path: Path) -> Any:
+    if cfg_path.exists():
+        return tomlkit.parse(cfg_path.read_text(encoding="utf-8"))
+    document = tomlkit.document()
+    document.add(tomlkit.comment("Patchbay configuration"))
+    return document
+
+
+def _to_toml_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        table = tomlkit.table()
+        for key, item in value.items():
+            table[str(key)] = _to_toml_value(item)
+        return table
+    if isinstance(value, list):
+        array = tomlkit.array()
+        array.multiline(False)
+        for item in value:
+            array.append(_to_toml_value(item))
+        return array
+    return value
+
+
+def _ensure_table(parent: Any, key: str) -> Any:
+    existing = parent.get(key)
+    if existing is None or not hasattr(existing, "items"):
+        parent[key] = tomlkit.table()
+    return parent[key]
+
+
+def _write_config_update(cfg_path: Path, parts: tuple[str, ...], value: Any) -> None:
+    _write_config_updates(cfg_path, [(parts, value)])
+
+
+def _write_config_updates(cfg_path: Path, updates: list[tuple[tuple[str, ...], Any]]) -> None:
+    """Apply TOML updates through tomlkit so comments and ordering survive."""
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    document = _load_toml_document(cfg_path)
+    for parts, value in updates:
+        current = document
+        for part in parts[:-1]:
+            current = _ensure_table(current, part)
+        current[parts[-1]] = _to_toml_value(value)
+    cfg_path.write_text(tomlkit.dumps(document), encoding="utf-8", newline="\n")

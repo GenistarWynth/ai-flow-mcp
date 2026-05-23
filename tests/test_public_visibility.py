@@ -87,6 +87,11 @@ class PublicVisibilityTest(unittest.TestCase):
         tools = {tool["name"]: tool for tool in response["result"]["tools"]}
         self.assertIn("patchbay_runs", tools)
         self.assertIn("patchbay_artifact", tools)
+        self.assertIn("patchbay_config_show", tools)
+        self.assertIn("patchbay_config_phase_set", tools)
+        self.assertIn("patchbay_config_command_set", tools)
+        self.assertIn("patchbay_config_test_add", tools)
+        self.assertIn("patchbay_config_provider_add_cli", tools)
         self.assertIn("background", tools["patchbay_plan"]["inputSchema"]["properties"])
         self.assertIn("background", tools["patchbay_write"]["inputSchema"]["properties"])
 
@@ -95,10 +100,54 @@ class PublicVisibilityTest(unittest.TestCase):
         from scripts.ai_flow.mcp_server import patchbay_plan
 
         with mock.patch.object(service, "start_background_phase") as start:
-            start.return_value = {"background": True, "phase": "plan", "pid": 123, "run_id": "pending"}
+            start.return_value = {
+                "background": True,
+                "phase": "plan",
+                "pid": 123,
+                "run_id": "20260524-background-task",
+                "run_dir": str(self.repo / ".ai" / "runs" / "20260524-background-task"),
+                "events_path": str(self.repo / ".ai" / "runs" / "20260524-background-task" / "events.jsonl"),
+                "job": {"phase": "plan"},
+            }
 
             result = patchbay_plan("background task", background=True)
 
         self.assertTrue(result["background"])
         self.assertEqual(result["phase"], "plan")
         self.assertEqual(result["pid"], 123)
+        self.assertNotEqual(result["run_id"], "pending")
+        self.assertTrue(result["events_path"].endswith("events.jsonl"))
+
+    def test_background_plan_cli_returns_pollable_run_id(self) -> None:
+        completed = run(
+            ["python", str(self.script), "plan", "--task", "background pollable", "--mock", "--background", "--json"],
+            self.repo,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        result = json.loads(completed.stdout)
+
+        self.assertTrue(result["background"])
+        self.assertNotEqual(result["run_id"], "pending")
+        self.assertTrue(Path(result["run_dir"]).exists())
+        self.assertTrue(Path(result["events_path"]).exists())
+
+    def test_events_follow_json_returns_json_payload(self) -> None:
+        planned = self.cli_json("plan", "--task", "follow json", "--mock")
+        completed = run(
+            ["python", str(self.script), "events", planned["run_id"], "--follow", "--json"],
+            self.repo,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        result = json.loads(completed.stdout)
+        self.assertEqual(result["run_id"], planned["run_id"])
+
+    def test_status_exposes_current_phase_and_effective_providers(self) -> None:
+        planned = self.cli_json("plan", "--task", "status detail", "--mock")
+
+        status = self.cli_json("status", planned["run_id"])
+
+        self.assertEqual(status["current_phase"], "plan")
+        self.assertIn("effective_phase_providers", status)
+        self.assertEqual(status["effective_phase_providers"]["plan"]["provider"], "claude_cli")
+        self.assertEqual(status["effective_phase_providers"]["write"]["provider"], "reasonix_cli")
+        self.assertIn("next_commands", status)

@@ -69,6 +69,9 @@ class EventsTest(unittest.TestCase):
             status="APPLIED",
             detail="Applied FINAL.diff to /repo",
             run_id="abc-123",
+            artifact_paths=["FINAL.diff"],
+            duration_ms=1234,
+            next_action="cleanup",
         )
         events = list_events(self.tmp)
         self.assertEqual(len(events), 1)
@@ -79,6 +82,9 @@ class EventsTest(unittest.TestCase):
         self.assertEqual(e["status"], "APPLIED")
         self.assertEqual(e["run_id"], "abc-123")
         self.assertEqual(e["detail"], "Applied FINAL.diff to /repo")
+        self.assertEqual(e["artifact_paths"], ["FINAL.diff"])
+        self.assertEqual(e["duration_ms"], 1234)
+        self.assertEqual(e["next_action"], "cleanup")
         # provider and model omitted when empty
         self.assertNotIn("provider", e)
         self.assertNotIn("model", e)
@@ -91,6 +97,15 @@ class EventsTest(unittest.TestCase):
         self.assertEqual(len(lines), 1)
         parsed = json.loads(lines[0])
         self.assertEqual(parsed["phase"], "fix")
+
+    def test_background_follow_schema_is_available(self) -> None:
+        from scripts.ai_flow.mcp_server import handle
+
+        response = handle({"method": "tools/list", "id": 1, "params": {}})
+        assert response is not None
+        tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+        self.assertIn("background", tools["patchbay_plan"]["inputSchema"]["properties"])
+        self.assertIn("since", tools["patchbay_events"]["inputSchema"]["properties"])
 
 
 if __name__ == "__main__":

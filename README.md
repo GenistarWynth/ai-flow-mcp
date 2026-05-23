@@ -38,7 +38,7 @@ Legacy `[models]`, `[commands]`, and `[writer].provider` keys remain supported a
 ## What It Provides
 
 - CLI workflow: `plan`, `approve`, `write`, `test`, `review`, `fix`, `status`, `diff`, `apply`, `cleanup`.
-- MCP tools: `patchbay_plan`, `patchbay_approve`, `patchbay_write`, `patchbay_test`, `patchbay_review`, `patchbay_fix`, `patchbay_status`, `patchbay_events`, `patchbay_diff`, `patchbay_apply`.
+- MCP tools: `patchbay_plan`, `patchbay_approve`, `patchbay_write`, `patchbay_test`, `patchbay_review`, `patchbay_fix`, `patchbay_status`, `patchbay_events`, `patchbay_runs`, `patchbay_artifact`, `patchbay_config_show`, `patchbay_config_phase_set`, `patchbay_config_command_set`, `patchbay_config_test_add`, `patchbay_config_provider_add_cli`, `patchbay_diff`, `patchbay_apply`.
 - Legacy MCP aliases: `ai_flow_*`.
 - Isolated git worktrees by default.
 - File-backed run artifacts under `.ai/runs/<run_id>/`.
@@ -51,8 +51,8 @@ Legacy `[models]`, `[commands]`, and `[writer].provider` keys remain supported a
 ### npx-style (recommended)
 
 ```bash
-uvx patchbay init                        # or: pipx run patchbay init
-uvx patchbay plan --task "your task"     # or: pipx run patchbay plan ...
+uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay init
+uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay-mcp --root /path/to/repo
 ```
 
 ### From a local checkout

@@ -39,6 +39,12 @@ class McpInstallTest(unittest.TestCase):
         self.assertEqual(result["host"], "claude")
         self.assertIn("claude mcp add patchbay", result["command"])
 
+    def test_claude_code_dry_run_returns_command(self) -> None:
+        from scripts.ai_flow.mcp_install import run_mcp_install
+        result = run_mcp_install(self.tmp, "claude-code", dry_run=True)
+        self.assertEqual(result["host"], "claude-code")
+        self.assertIn("claude mcp add patchbay", result["command"])
+
     def test_gemini_dry_run_returns_command(self) -> None:
         from scripts.ai_flow.mcp_install import install_gemini
         result = install_gemini(self.tmp, dry_run=True)
@@ -82,6 +88,11 @@ class McpInstallTest(unittest.TestCase):
         self.assertIn("server_command", result)
         self.assertTrue(result["server_script_exists"])
         self.assertIn("codex", result["supported_hosts"])
+
+    def test_mcp_doctor_includes_root(self) -> None:
+        from scripts.ai_flow.mcp_install import run_mcp_doctor
+        result = run_mcp_doctor(self.tmp)
+        self.assertTrue(result["server_command"].endswith(f"--root {self.tmp}"))
 
 
 if __name__ == "__main__":

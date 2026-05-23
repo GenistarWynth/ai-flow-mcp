@@ -9,6 +9,7 @@ description = "MCP-friendly patch orchestration across interchangeable coding ag
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"
+dependencies = ["tomlkit>=0.13"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",

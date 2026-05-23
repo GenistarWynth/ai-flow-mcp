@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,7 @@ from .artifacts import (
     append_text,
     ensure_layout,
     list_run_artifacts,
+    now_iso,
     runs_dir,
     new_run_id,
     read_json,
@@ -54,6 +56,7 @@ from .state import (
     FIXING,
     IMPLEMENTED,
     IMPLEMENTING,
+    NEW,
     PLANNED,
     REVIEWED_CHANGES_REQUESTED,
     REVIEWED_PASS,
@@ -89,6 +92,14 @@ def _lock_path(run_path: Path) -> Path:
     return run_path / RUN_LOCK_FILE
 
 
+def _job_path(run_path: Path) -> Path:
+    return run_path / "JOB.json"
+
+
+def _record_job(run_path: Path, data: dict[str, Any]) -> None:
+    write_json(_job_path(run_path), data)
+
+
 def _acquire_lock(run_path: Path, phase: str) -> None:
     path = _lock_path(run_path)
     if path.exists():
@@ -114,19 +125,32 @@ def _release_lock(run_path: Path) -> None:
         path.unlink()
 
 
-def start_background_phase(cwd: Path, phase: str, *, run_id: str | None = None, task: str | None = None) -> dict[str, Any]:
+def start_background_phase(
+    cwd: Path,
+    phase: str,
+    *,
+    run_id: str | None = None,
+    task: str | None = None,
+    mock: bool = False,
+) -> dict[str, Any]:
     root = resolve_root(cwd)
     command = [sys.executable, str(root / "scripts" / "patchbay"), phase]
+    job_started = time.time()
     if phase == "plan":
         if not task:
             raise AiFlowError("Background plan requires task.", stage="plan")
-        command.extend(["--task", task])
+        run_id = run_id or new_run_id(task)
+        command.extend(["--task", task, "--run-id", run_id])
+        if mock:
+            command.append("--mock")
     else:
         if not run_id:
             raise AiFlowError(f"Background {phase} requires run_id.", stage=phase)
         run_path, _ = _load_run(root, run_id)
         _acquire_lock(run_path, phase)
         command.append(run_id)
+        if mock and phase in {"write", "review", "fix"}:
+            command.append("--mock")
     env = dict(os.environ)
     if phase != "plan":
         env["PATCHBAY_INHERITED_LOCK"] = phase
@@ -143,13 +167,23 @@ def start_background_phase(cwd: Path, phase: str, *, run_id: str | None = None, 
         if phase != "plan" and run_id:
             _release_lock(_run_dir(root, run_id))
         raise
-    return {
+    run_path = _run_dir(root, run_id or "pending")
+    run_path.mkdir(parents=True, exist_ok=True)
+    write_text(run_path / "events.jsonl", read_text(run_path / "events.jsonl", default=""))
+    job_data = {
         "background": True,
         "phase": phase,
         "pid": process.pid,
         "run_id": run_id or "pending",
         "command": command,
+        "started_at": now_iso(),
+        "started_at_epoch": job_started,
+        "root": str(root),
+        "run_dir": str(run_path),
+        "events_path": str(run_path / "events.jsonl"),
     }
+    _record_job(run_path, job_data)
+    return job_data
 
 
 def _base_commit(root: Path) -> str | None:
@@ -493,11 +527,11 @@ def init_project(cwd: Path) -> dict[str, str]:
     }
 
 
-def plan(cwd: Path, *, task: str, mock: bool = False) -> dict[str, str]:
+def plan(cwd: Path, *, task: str, mock: bool = False, run_id: str | None = None) -> dict[str, str]:
     root = resolve_root(cwd)
     ensure_layout(root)
     cfg = load_config(root)
-    run_id = new_run_id(task)
+    run_id = run_id or new_run_id(task)
     run_path = _run_dir(root, run_id)
     run_path.mkdir(parents=True, exist_ok=True)
     base_commit = _base_commit(root)
@@ -517,6 +551,7 @@ def plan(cwd: Path, *, task: str, mock: bool = False) -> dict[str, str]:
         max_context = int(cfg.get("writer", {}).get("max_context_files", 30))
         context = build_context(root, max_files=max_context)
         plan_phase = resolve_phase(cfg, "plan")
+        plan_started = time.time()
         append_event(
             run_path,
             phase="plan",
@@ -525,6 +560,7 @@ def plan(cwd: Path, *, task: str, mock: bool = False) -> dict[str, str]:
             action="start",
             status="RUNNING",
             run_id=run_id,
+            next_action="await plan completion",
         )
         adapter_cfg = _phase_config(cfg, role="planner", model=plan_phase.get("model"))
         if mock:
@@ -567,6 +603,9 @@ def plan(cwd: Path, *, task: str, mock: bool = False) -> dict[str, str]:
             status="PLANNED",
             detail=str(parsed.plan_json.get("summary", "")),
             run_id=run_id,
+            artifact_paths=["PLAN.md", "plan.json", "TASK.md", "BASE_COMMIT"],
+            next_action="approve",
+            duration_ms=int((time.time() - plan_started) * 1000),
         )
         return {
             "run_id": run_id,
@@ -598,6 +637,7 @@ def approve(cwd: Path, run_id: str) -> dict[str, Any]:
         action="approve_granted",
         status="APPROVED",
         run_id=run_id,
+        next_action="write",
     )
     return result
 
@@ -627,6 +667,8 @@ def write(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 action="start",
                 status="RUNNING",
                 run_id=run_id,
+                artifact_paths=["TASK.md", "PLAN.md", "plan.json", "APPROVAL.json"],
+                next_action="await write completion",
             )
             branch_prefix = str(cfg.get("workflow", {}).get("default_branch_prefix", "patchbay")).strip("/")
             worktree_root = configured_worktree_root(root, cfg)
@@ -653,6 +695,8 @@ def write(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 action="success",
                 status="IMPLEMENTED",
                 run_id=run_id,
+                artifact_paths=["IMPLEMENTATION.md", "FINAL.diff", "writer.log"],
+                next_action="test",
             )
             return result
     except Exception as exc:
@@ -679,6 +723,8 @@ def test(cwd: Path, run_id: str) -> dict[str, Any]:
                 action="start",
                 status="RUNNING",
                 run_id=run_id,
+                artifact_paths=["FINAL.diff", "TEST.log"],
+                next_action="await tests",
             )
             commands = _selected_test_commands(worktree, cfg, plan_json, test_phase)
             allowlist = allowlisted_test_commands(cfg)
@@ -695,6 +741,8 @@ def test(cwd: Path, run_id: str) -> dict[str, Any]:
                     status="TESTED",
                     detail="No test commands selected.",
                     run_id=run_id,
+                    artifact_paths=["TEST.log"],
+                    next_action="review",
                 )
                 return result
             for command in commands:
@@ -721,6 +769,8 @@ def test(cwd: Path, run_id: str) -> dict[str, Any]:
                 status="TESTED",
                 detail=f"{len(commands)} test command(s) passed.",
                 run_id=run_id,
+                artifact_paths=["TEST.log"],
+                next_action="review",
             )
             return result
     except Exception as exc:
@@ -793,6 +843,8 @@ def review(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 action="start",
                 status="RUNNING",
                 run_id=run_id,
+                artifact_paths=["FINAL.diff", "TEST.log"],
+                next_action="await review completion",
             )
             set_status(run_path, REVIEWING)
             before = git_utils.diff(worktree)
@@ -842,6 +894,8 @@ def review(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                     action="success",
                     status="PASS",
                     run_id=run_id,
+                    artifact_paths=["REVIEW.md"],
+                    next_action="apply",
                 )
                 return result
             result = set_status(
@@ -857,6 +911,8 @@ def review(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 action="success",
                 status="CHANGES_REQUESTED",
                 run_id=run_id,
+                artifact_paths=["REVIEW.md"],
+                next_action="fix",
             )
             return result
     except Exception as exc:
@@ -911,6 +967,8 @@ def fix(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 status="RUNNING",
                 detail=f"Fix iteration {iterations + 1}/{max_repairs}",
                 run_id=run_id,
+                artifact_paths=["FINAL.diff", "REVIEW.md", "TEST.log"],
+                next_action="await fix completion",
             )
             set_status(run_path, FIXING)
             patch, summary = _call_writer(root=root, run_path=run_path, cfg=cfg, mock=mock, repair=True)
@@ -937,6 +995,8 @@ def fix(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 status="IMPLEMENTED",
                 detail=f"Fix iteration {iterations + 1} complete.",
                 run_id=run_id,
+                artifact_paths=["FIXES.md", "FINAL.diff"],
+                next_action="test",
             )
             return result
     except Exception as exc:
@@ -968,10 +1028,43 @@ def status(cwd: Path, run_id: str) -> dict[str, Any]:
     latest = latest_event(run_path)
     if latest:
         data["latest_event"] = latest
+    data["current_phase"] = data.get("stage") or (latest or {}).get("phase") or _current_phase_from_status(str(data.get("status", "")))
     data["event_count"] = event_count(run_path)
     data["next_commands"] = _next_commands(data)
     data["gate_state"] = _gate_state(data)
+    cfg = load_config(root)
+    effective: dict[str, Any] = {}
+    for phase in ("plan", "write", "review", "fix"):
+        resolved = resolve_phase(cfg, phase)
+        effective[phase] = {
+            "provider": resolved.get("provider", ""),
+            "model": resolved.get("model", ""),
+            "command_key": resolved.get("command_key", ""),
+        }
+    data["effective_phase_providers"] = effective
+    job_path = _job_path(run_path)
+    if job_path.exists():
+        data["job"] = read_json(job_path)
     return data
+
+
+def _current_phase_from_status(status_value: str) -> str:
+    mapping = {
+        NEW: "plan",
+        PLANNED: "approve",
+        APPROVED: "write",
+        IMPLEMENTING: "write",
+        IMPLEMENTED: "test",
+        TESTING: "test",
+        TESTED: "review",
+        REVIEWING: "review",
+        REVIEWED_PASS: "apply",
+        REVIEWED_CHANGES_REQUESTED: "fix",
+        FIXING: "fix",
+        APPLIED: "cleanup",
+        FAILED: "error",
+    }
+    return mapping.get(status_value, "")
 
 
 def _next_commands(data: dict[str, Any]) -> list[str]:
