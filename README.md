@@ -4,7 +4,7 @@
 
 Patchbay is a local patch orchestration server for teams of coding agents. Any MCP-capable client can be the front door: Codex Desktop, Claude Desktop, Claude Code, Codex CLI, Gemini CLI, or another host that can call MCP tools.
 
-The default workflow uses Claude Code as the read-only planner, Reasonix ACP as the default Agent writer, with a DeepSeek-compatible API as an explicit fallback, local test commands as factual verification, and Codex CLI as the read-only reviewer. Those role bindings are configuration, not the product boundary.
+The default workflow uses Claude Code as the read-only planner, Reasonix ACP as the default Agent writer, local test commands as factual verification, and Codex CLI as the read-only reviewer. Those role bindings are configuration, not the product boundary.
 
 ## Per-Phase Executors
 
@@ -16,7 +16,7 @@ provider = "claude_cli"       # claude_cli | codex_cli | gemini_cli | mock
 model = "claude-opus-4-7"
 
 [phases.write]
-provider = "reasonix_cli"     # reasonix_cli | deepseek_api | mock
+provider = "reasonix_cli"     # reasonix_cli | mock
 model = "deepseek-v4-pro"
 
 [phases.review]
@@ -87,10 +87,9 @@ Use the equivalent MCP server registration command for Claude Desktop, Claude Co
 
 The public example config lives at `.ai/patchbay.example.toml`. It contains environment variable names only, not API keys.
 
-Supported writer providers:
+Supported writer provider:
 
-- `reasonix_cli`: uses `reasonix acp` as a real coding agent.
-- `deepseek_api`: direct OpenAI-compatible Chat Completions fallback that returns a patch.
+- `reasonix_cli`: uses `reasonix acp` as a real coding agent. Mock mode (`--mock`) is available for testing without credentials.
 
 ## Security
 
@@ -106,6 +105,10 @@ Supported writer providers:
 ```bash
 python -m unittest discover -s tests -v
 ```
+
+## Custom Provider Support (planned)
+
+User-defined provider entries are planned for a future release. See [docs/custom-providers-plan.md](docs/custom-providers-plan.md) for the design — TOML schema, output parsing contract, safety constraints, and test surface are enumerated but not yet implemented.
 
 ## License
 

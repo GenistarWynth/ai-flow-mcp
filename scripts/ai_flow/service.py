@@ -11,7 +11,6 @@ from .adapters import (
     REVIEWERS,
     WRITERS,
     run_codex_reviewer,
-    run_deepseek_writer,
     run_mock_planner,
     run_mock_reviewer,
     run_mock_writer,
@@ -274,7 +273,7 @@ def _call_writer(
                 raise AiFlowError(
                     f"Unknown writer provider: {provider}",
                     stage="write",
-                    suggested_next_action="Set [phases.write].provider or [writer].provider to reasonix_cli, deepseek_api, or mock.",
+                    suggested_next_action="Set [phases.write].provider or [writer].provider to reasonix_cli or mock.",
                 )
             try:
                 if provider == "reasonix_cli":
@@ -288,8 +287,6 @@ def _call_writer(
                         raise AiFlowError("Reasonix agent did not produce a worktree diff.", stage="write")
                     validate_patch_safety(final_diff)
                     return final_diff, summary
-                elif provider == "deepseek_api":
-                    raw = writer(prompt=prompt, config=adapter_cfg, log_path=log_path, command_key=p_command_key, timeout=p_timeout, env=p_env)
                 else:
                     raise AiFlowError(f"Unknown writer provider: {provider}", stage="write")
             except AiFlowError:
@@ -839,14 +836,10 @@ gemini = "gemini"
 reasonix = ""
 
 [writer]
-provider = "reasonix_cli" # Reasonix agent (默认); deepseek_api 为 API fallback
+provider = "reasonix_cli" # Reasonix agent (默认)
 max_context_files = 30
 max_patch_attempts = 3
 max_repair_iterations = 2
-
-[deepseek]
-base_url = "https://api.deepseek.com"
-api_key_env = "DEEPSEEK_API_KEY"
 
 [workflow]
 require_plan_approval = true
@@ -872,9 +865,9 @@ test = [
 # Uncomment any section to override the default provider / model for that phase.
 # Supported providers per phase:
 #   plan:   claude_cli | codex_cli | gemini_cli | mock
-#   write:  reasonix_cli | deepseek_api | mock
+#   write:  reasonix_cli | mock
 #   review: codex_cli | claude_cli | gemini_cli | mock
-#   fix:    (defaults to write provider) reasonix_cli | deepseek_api | mock
+#   fix:    (defaults to write provider) reasonix_cli | mock
 #   test:   no LLM executor (command allowlist only)
 #   apply:  no LLM executor (git apply only)
 # ---------------------------------------------------------------------------
@@ -884,7 +877,7 @@ test = [
 # model = "claude-opus-4-7"
 
 # [phases.write]
-# provider = "reasonix_cli"    # reasonix_cli | deepseek_api | mock (默认)
+# provider = "reasonix_cli"    # reasonix_cli | mock (默认)
 # model = "deepseek-v4-pro"
 # command_key = "reasonix"     # 仅 provider = reasonix_cli 时有效
 
@@ -909,7 +902,6 @@ AGENTS_MD = """# Multi-Agent Workflow
 
 当用户明确说：
 - “走多模型流程”
-- “用 Claude 规划，DeepSeek 实现，Codex 审查”
 - “multi-agent workflow”
 
 你必须使用 `scripts/patchbay`，不要直接改代码。旧入口 `scripts/ai-flow` 仍可兼容使用，但新文档优先使用 Patchbay 名称。
@@ -947,13 +939,12 @@ Patchbay 支持任意 MCP host 作为交互入口（Claude Code、Claude Desktop
 
 DOCS_MD = """# Patchbay
 
-Patchbay 是一个本地补丁编排器：任意支持 MCP 的客户端都可以作为入口，默认把规划、实现、测试、审查和应用拆成可审计阶段。当前默认角色绑定是 Claude 规划，Reasonix (默认 Agent) 实现，Codex 审查，DeepSeek API 作为显式 fallback；后续可以把这些槽位换成别的工具。
+Patchbay 是一个本地补丁编排器：任意支持 MCP 的客户端都可以作为入口，默认把规划、实现、测试、审查和应用拆成可审计阶段。当前默认角色绑定是 Claude 规划，Reasonix (默认 Agent) 实现，Codex 审查；后续可以把这些槽位换成别的工具。
 
 ## 环境准备
 
 - 登录 Claude Code，并确保 `claude` CLI 可用。
 - 登录 Codex CLI，并确保 `codex` CLI 可用。
-- 使用 DeepSeek API 时，设置 `DEEPSEEK_API_KEY`。
 
 ## 配置
 
@@ -966,10 +957,7 @@ cp .ai/patchbay.example.toml .ai/patchbay.toml
 
 按需编辑 `.ai/patchbay.toml`，尤其是 writer provider、命令路径和测试 allowlist。
 
-Writer 有两种实现入口：
-
-- `reasonix_cli`：调用 Reasonix ACP coding agent（`reasonix acp`），由 Reasonix 自己的文件系统工具修改独立 worktree，Patchbay 只负责审批权限并捕获最终 `git diff`。
-- `deepseek_api`：直接调用 OpenAI-compatible Chat Completions API，要求模型按 sentinel 返回 unified diff；这是 API fallback，不等同于 Agent。
+Writer 使用 Reasonix ACP coding agent（`reasonix acp`），由 Reasonix 自己的文件系统工具修改独立 worktree，Patchbay 只负责审批权限并捕获最终 `git diff`。
 
 ## 常用命令
 
@@ -1014,8 +1002,7 @@ MCP 只调用 `scripts.ai_flow.service` 中已有函数，不复制业务逻辑�
 
 - Claude CLI 不存在：检查 `[commands].claude`，或用 `--mock` 验证流程。
 - Codex CLI 不存在：检查 `[commands].codex`，或用 `--mock` 验证审查流程。
-- DeepSeek API key 缺失：设置 `DEEPSEEK_API_KEY` 或切换 writer provider。
-- Reasonix 只聊天不改文件：确认 `[writer].provider = "reasonix_cli"`，且 `[commands].reasonix` 指向 `reasonix.cmd`/`reasonix`。Patchbay 会自动使用 `reasonix acp`，不要把 `deepseek_api` 当作 Reasonix Agent。
+- Reasonix 只聊天不改文件：确认 `[writer].provider = "reasonix_cli"`，且 `[commands].reasonix` 指向 `reasonix.cmd`/`reasonix`。Patchbay 会自动使用 `reasonix acp`。
 - Claude 输出空 result 但其实已生成计划：Patchbay 会从 `stream-json` assistant event 和 Claude transcript 中恢复计划文本；查看 `claude-planner.log` 确认恢复路径。
 - patch apply 失败：检查 `writer.log` 和 `FINAL.diff`。
 - test command 不在 allowlist：把确认安全的命令加入 `.ai/patchbay.toml` 的 `commands_allowlist.test`。

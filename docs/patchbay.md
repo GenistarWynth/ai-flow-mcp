@@ -1,14 +1,13 @@
 # Patchbay
 
-Patchbay 是一个本地补丁编排器：任意支持 MCP 的客户端都可以作为入口（Claude Code、Claude Desktop、Codex CLI、Codex Desktop、Gemini CLI 等），默认把规划、实现、测试、审查和应用拆成可审计阶段。默认角色绑定是 Claude 规划、Reasonix (默认 Agent) 实现、Codex 审查，DeepSeek API 作为显式 fallback；每个阶段都可以通过配置换成其他工具。
+Patchbay 是一个本地补丁编排器：任意支持 MCP 的客户端都可以作为入口（Claude Code、Claude Desktop、Codex CLI、Codex Desktop、Gemini CLI 等），默认把规划、实现、测试、审查和应用拆成可审计阶段。默认角色绑定是 Claude 规划、Reasonix (默认 Agent) 实现、Codex 审查；每个阶段都可以通过配置换成其他工具。
 
 ## 环境准备
 
 - 确保所需 CLI 已登录并可调用（按你要用的 provider 准备）：
   - Planner：`claude`（Claude Code）、`codex`（Codex CLI）或 `gemini`（Gemini CLI）
-  - Writer：Reasonix CLI（`reasonix` / `reasonix.cmd`，默认 Agent）；DeepSeek API 作为显式 API fallback
+  - Writer：Reasonix CLI（`reasonix` / `reasonix.cmd`，默认 Agent）
   - Reviewer：`codex`（Codex CLI）、`claude`（Claude Code）或 `gemini`（Gemini CLI）
-- 使用 DeepSeek API 时，设置 `DEEPSEEK_API_KEY`。
 - 使用 Reasonix CLI 时，确保 `reasonix acp` 可用。
 
 ## 配置
@@ -30,7 +29,7 @@ provider = "claude_cli"      # claude_cli | codex_cli | gemini_cli | mock
 model = "claude-opus-4-7"
 
 [phases.write]
-provider = "reasonix_cli"    # reasonix_cli | deepseek_api | mock
+provider = "reasonix_cli"    # reasonix_cli | mock
 model = "deepseek-v4-pro"
 
 [phases.review]
@@ -47,10 +46,9 @@ timeout = 900
 
 旧配置节 `[models]`、`[commands]` 和 `[writer].provider` 继续有效，作为未设置 phase 时的默认值。
 
-Writer 有两种实现入口：
+Writer 实现入口：
 
 - `reasonix_cli`：调用 Reasonix ACP coding agent（`reasonix acp`），由 Reasonix 自己的文件系统工具修改独立 worktree，Patchbay 只负责审批权限并捕获最终 `git diff`。
-- `deepseek_api`：直接调用 OpenAI-compatible Chat Completions API，要求模型按 sentinel 返回 unified diff；这是 API fallback，不等同于 Agent。
 
 ## 常用命令
 
@@ -102,8 +100,7 @@ MCP 只调用 `scripts.ai_flow.service` 中已有函数，不复制业务逻辑�
 
 - Claude CLI 不存在：检查 `[commands].claude`，或用 `--mock` 验证流程。
 - Codex CLI 不存在：检查 `[commands].codex`，或用 `--mock` 验证审查流程。
-- DeepSeek API key 缺失：设置 `DEEPSEEK_API_KEY` 或切换 writer provider。
-- Reasonix 只聊天不改文件：确认 `[writer].provider = "reasonix_cli"`，且 `[commands].reasonix` 指向 `reasonix.cmd`/`reasonix`。Patchbay 会自动使用 `reasonix acp`，不要把 `deepseek_api` 当作 Reasonix Agent。
+- Reasonix 只聊天不改文件：确认 `[writer].provider = "reasonix_cli"`，且 `[commands].reasonix` 指向 `reasonix.cmd`/`reasonix`。Patchbay 会自动使用 `reasonix acp`。
 - Claude 输出空 result 但其实已生成计划：Patchbay 会从 `stream-json` assistant event 和 Claude transcript 中恢复计划文本；查看 `claude-planner.log` 确认恢复路径。
 - patch apply 失败：检查 `writer.log` 和 `FINAL.diff`。
 - test command 不在 allowlist：把确认安全的命令加入 `.ai/patchbay.toml` 的 `commands_allowlist.test`。
@@ -126,3 +123,7 @@ CLI phases can use `command_key` to reference `[commands]` or `command` for an i
 ## Provider Safety Notes
 
 Claude and Codex CLI providers request their native read-only/plan execution modes. Gemini CLI does not expose the same sandbox control, so Patchbay enforces safety for Gemini plan/review phases by comparing repository/worktree state before and after the provider runs, including failure paths.
+
+## Custom Providers（规划中）
+
+用户自定义 provider 配置（`[providers.<id>]`）计划在后续版本实现。详见 [custom-providers-plan.md](custom-providers-plan.md) — TOML 模式、输出解析约定、安全约束和测试范围已列出，但尚未实现。

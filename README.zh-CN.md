@@ -4,7 +4,7 @@
 
 Patchbay 是一个本地代码补丁编排器：任意支持 MCP 的客户端都可以作为交互入口，例如 Codex Desktop、Claude Desktop、Claude Code、Codex CLI、Gemini CLI，或者其他 MCP host。
 
-默认流程是 Claude Code 只读规划，Reasonix ACP (默认 Agent writer) 负责实现，DeepSeek 兼容 API 作为显式 fallback，本地测试命令负责事实验证，Codex CLI 负责只读审查。但这些只是默认角色绑定，不是边界；后续可以把 plan/write/review/test 槽位接到不同工具上。
+默认流程是 Claude Code 只读规划，Reasonix ACP (默认 Agent writer) 负责实现，本地测试命令负责事实验证，Codex CLI 负责只读审查。但这些只是默认角色绑定，不是边界；后续可以把 plan/write/review/test 槽位接到不同工具上。
 
 ## 按阶段配置执行器
 
@@ -16,7 +16,7 @@ provider = "claude_cli"       # claude_cli | codex_cli | gemini_cli | mock
 model = "claude-opus-4-7"
 
 [phases.write]
-provider = "reasonix_cli"     # reasonix_cli | deepseek_api | mock
+provider = "reasonix_cli"     # reasonix_cli | mock
 model = "deepseek-v4-pro"
 
 [phases.review]
@@ -155,21 +155,8 @@ codex = "codex"
 reasonix = ""
 
 [writer]
-provider = "reasonix_cli" # 默认 Agent writer；deepseek_api 为 API fallback
-
-[deepseek]
-base_url = "https://api.deepseek.com"
-api_key_env = "DEEPSEEK_API_KEY"
+provider = "reasonix_cli" # 默认 Agent writer
 ```
-
-`api_key_env` 是环境变量名，不是 API key 本身。请把真实 key 放在环境变量里，不要写进仓库。
-
-## Writer Provider
-
-当前支持两种 writer 入口：
-
-- `reasonix_cli`：调用 `reasonix acp`，让 Reasonix 作为真正的 coding agent 在隔离 worktree 中改文件。Patchbay 负责审批权限、捕获最终 diff，并拒绝不安全操作。
-- `deepseek_api`：直接调用 OpenAI-compatible Chat Completions API，让模型按约定返回 unified diff。这是 API fallback，不等同于 agent。
 
 Reasonix agent 是默认 writer。确保 `[commands].reasonix` 指向你的 Reasonix 可执行文件：
 
@@ -177,8 +164,6 @@ Reasonix agent 是默认 writer。确保 `[commands].reasonix` 指向你的 Reas
 [commands]
 reasonix = "reasonix"
 ```
-
-如果要切换到 DeepSeek API fallback，设置 `[writer] provider = "deepseek_api"` 和 `DEEPSEEK_API_KEY` 环境变量。
 
 Windows 上如果 `reasonix` 是 `.cmd` 入口，可以写成：
 
@@ -214,8 +199,7 @@ Patchbay 默认做了这些防护：
 
 - `claude` 找不到：检查 `[commands].claude`，或先用 `--mock` 验证流程。
 - `codex` 找不到：检查 `[commands].codex`，或先用 `--mock` 验证 review 流程。
-- DeepSeek key 缺失：设置 `DEEPSEEK_API_KEY`，或把 `api_key_env` 改成你的环境变量名。
-- Reasonix 只能聊天、不改文件：确认 `[writer].provider = "reasonix_cli"`，并为 `[commands].reasonix` 指向 `reasonix` 或 `reasonix.cmd`。不要把 `deepseek_api` 当成 Reasonix agent。
+- Reasonix 只能聊天、不改文件：确认 `[writer].provider = "reasonix_cli"`，并为 `[commands].reasonix` 指向 `reasonix` 或 `reasonix.cmd`。
 - 上游没有收到请求：在带沙箱的环境中，真实模型阶段可能需要允许子进程访问网络。
 - patch apply 失败：查看 `.ai/runs/<run_id>/FINAL.diff` 和对应日志。
 - test command 不在 allowlist：把确认安全的测试命令加入 `.ai/patchbay.toml` 的 `commands_allowlist.test`。
@@ -230,6 +214,10 @@ python -m unittest discover -s tests -v
 ## 开源说明
 
 这个仓库不包含真实 API key、本地私有配置、运行日志或历史 `.ai/runs`。公开配置文件只保留环境变量名和示例值。
+
+## 自定义 Provider 支持（规划中）
+
+用户自定义 provider 配置计划在后续版本中实现。详见 [docs/custom-providers-plan.md](docs/custom-providers-plan.md) — TOML 模式、输出解析约定、安全约束和测试范围已列出，但尚未实现。
 
 ## License
 

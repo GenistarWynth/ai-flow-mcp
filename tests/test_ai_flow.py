@@ -484,47 +484,6 @@ END_DIFF
         finally:
             shutil.rmtree(tempdir, ignore_errors=True)
 
-    def test_deepseek_writer_reads_api_key_from_phase_env(self) -> None:
-        from scripts.ai_flow.adapters.deepseek_writer import run_deepseek_writer
-
-        class FakeResponse:
-            def __enter__(self) -> "FakeResponse":
-                return self
-
-            def __exit__(self, *args: object) -> None:
-                return None
-
-            def read(self) -> bytes:
-                return b'{"choices":[{"message":{"content":"writer output"}}]}'
-
-        tempdir = Path(tempfile.mkdtemp(prefix="patchbay-deepseek-env-"))
-        try:
-            with mock.patch(
-                "scripts.ai_flow.adapters.deepseek_writer._read_reasonix_config",
-                return_value={},
-            ), mock.patch(
-                "scripts.ai_flow.adapters.deepseek_writer.urllib.request.urlopen",
-                return_value=FakeResponse(),
-            ) as urlopen:
-                output = run_deepseek_writer(
-                    prompt="write",
-                    config={
-                        "deepseek": {
-                            "api_key_env": "PATCHBAY_TEST_DEEPSEEK_KEY",
-                            "base_url": "https://deepseek.example",
-                        },
-                        "models": {"writer": "test-writer"},
-                    },
-                    log_path=tempdir / "writer.log",
-                    env={"PATCHBAY_TEST_DEEPSEEK_KEY": "phase-secret"},
-                )
-
-            request = urlopen.call_args.args[0]
-            self.assertEqual(output, "writer output")
-            self.assertEqual(request.get_header("Authorization"), "Bearer phase-secret")
-        finally:
-            shutil.rmtree(tempdir, ignore_errors=True)
-
     def test_reasonix_acp_command_uses_agent_entrypoint(self) -> None:
         command = _acp_command(
             {
@@ -1183,9 +1142,9 @@ class PhaseResolverTests(unittest.TestCase):
     def test_fix_phase_explicit_override(self) -> None:
         cfg = dict(self.default_cfg)
         cfg.setdefault("phases", {})["write"] = {"provider": "reasonix_cli"}
-        cfg.setdefault("phases", {})["fix"] = {"provider": "deepseek_api"}
+        cfg.setdefault("phases", {})["fix"] = {"provider": "mock"}
         phase = resolve_phase(cfg, "fix")
-        self.assertEqual(phase["provider"], "deepseek_api")
+        self.assertEqual(phase["provider"], "mock")
 
     def test_default_config_resolves_write_to_reasonix_cli(self) -> None:
         """With no overrides, DEFAULT_CONFIG write provider is reasonix_cli."""
@@ -1195,19 +1154,11 @@ class PhaseResolverTests(unittest.TestCase):
         self.assertEqual(phase["command_key"], "reasonix")
         self.assertEqual(phase["model"], "deepseek-v4-pro")
 
-    def test_explicit_deepseek_api_writer_still_resolves(self) -> None:
-        """Setting [writer].provider='deepseek_api' must still dispatch correctly."""
-        cfg = dict(self.default_cfg)
-        cfg.setdefault("writer", {})["provider"] = "deepseek_api"
-        phase = resolve_phase(cfg, "write")
-        self.assertEqual(phase["provider"], "deepseek_api")
-        self.assertEqual(phase["model"], "deepseek-v4-pro")
-
-    def test_example_toml_does_not_advertise_deepseek_as_default_writer(self) -> None:
-        """EXAMPLE_TOML should default to reasonix_cli, not deepseek_api."""
+    def test_example_toml_defaults_writer_to_reasonix_cli(self) -> None:
+        """EXAMPLE_TOML should default to reasonix_cli and not advertise deepseek_api."""
         from scripts.ai_flow.service import EXAMPLE_TOML
         self.assertIn('provider = "reasonix_cli"', EXAMPLE_TOML)
-        self.assertNotIn('provider = "deepseek_api"', EXAMPLE_TOML)
+        self.assertNotIn("deepseek_api", EXAMPLE_TOML)
 
     def test_test_phase_has_no_provider_by_default(self) -> None:
         cfg = dict(self.default_cfg)
@@ -1253,13 +1204,12 @@ class ProviderRegistryTests(unittest.TestCase):
             self.assertIn(provider, PLANNERS, f"{provider} missing from PLANNERS")
             self.assertTrue(callable(PLANNERS[provider]), f"{provider} not callable")
 
-    def test_writers_registry_has_deepseek_reasonix_mock(self) -> None:
+    def test_writers_registry_has_reasonix_cli_and_mock(self) -> None:
         from scripts.ai_flow.adapters import WRITERS
-        self.assertIn("deepseek_api", WRITERS)
-        self.assertIn("reasonix_cli", WRITERS)
-        self.assertIn("mock", WRITERS)
-        self.assertTrue(callable(WRITERS["deepseek_api"]))
+        self.assertEqual(set(WRITERS.keys()), {"reasonix_cli", "mock"})
+        self.assertNotIn("deepseek_api", WRITERS)
         self.assertTrue(callable(WRITERS["reasonix_cli"]))
+        self.assertTrue(callable(WRITERS["mock"]))
 
     def test_reviewers_registry_has_all_providers(self) -> None:
         from scripts.ai_flow.adapters import REVIEWERS
@@ -1269,6 +1219,7 @@ class ProviderRegistryTests(unittest.TestCase):
 
     def test_fixers_registry_mirrors_writers(self) -> None:
         from scripts.ai_flow.adapters import FIXERS, WRITERS
+        self.assertNotIn("deepseek_api", FIXERS)
         for key in WRITERS:
             self.assertIn(key, FIXERS)
             self.assertIs(FIXERS[key], WRITERS[key])

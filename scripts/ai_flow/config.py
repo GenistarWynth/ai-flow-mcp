@@ -35,10 +35,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "max_patch_attempts": 3,
         "max_repair_iterations": 2,
     },
-    "deepseek": {
-        "base_url": "https://api.deepseek.com",
-        "api_key_env": "DEEPSEEK_API_KEY",
-    },
     "workflow": {
         "require_plan_approval": True,
         "default_branch_prefix": "patchbay",
@@ -221,7 +217,6 @@ _PROVIDER_COMMAND_KEY_DEFAULTS: dict[str, str] = {
     "codex_cli": "codex",
     "gemini_cli": "gemini",
     "reasonix_cli": "reasonix",
-    "deepseek_api": "",
     "mock": "",
 }
 
@@ -230,7 +225,6 @@ _PROVIDER_MODEL_DEFAULTS: dict[str, str] = {
     "codex_cli": "gpt-5.5",
     "gemini_cli": "gemini-2.5-pro",
     "reasonix_cli": "deepseek-v4-pro",
-    "deepseek_api": "deepseek-v4-pro",
     "mock": "mock",
 }
 

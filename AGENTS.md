@@ -2,7 +2,6 @@
 
 当用户明确说：
 - “走多模型流程”
-- “用 Claude 规划，DeepSeek 实现，Codex 审查”
 - “multi-agent workflow”
 
 你必须使用 `scripts/patchbay`，不要直接改代码。旧入口 `scripts/ai-flow` 仍可兼容使用，但新文档优先使用 Patchbay 名称。

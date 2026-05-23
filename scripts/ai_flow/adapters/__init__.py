@@ -6,7 +6,6 @@ from .claude_planner import run_claude_planner, run_mock_planner
 from .claude_reviewer import run_claude_reviewer
 from .codex_planner import run_codex_planner
 from .codex_reviewer import run_codex_reviewer, run_mock_reviewer
-from .deepseek_writer import run_deepseek_writer
 from .gemini_planner import run_gemini_planner
 from .gemini_reviewer import run_gemini_reviewer
 from .mock_writer import run_mock_writer
@@ -25,7 +24,6 @@ PLANNERS: dict[str, Callable[..., Any]] = {
 }
 
 WRITERS: dict[str, Callable[..., Any]] = {
-    "deepseek_api": run_deepseek_writer,
     "reasonix_cli": run_reasonix_writer,
     "mock": run_mock_writer,
 }
@@ -40,7 +38,6 @@ REVIEWERS: dict[str, Callable[..., Any]] = {
 # FIXERS reuses the writer registry by default; individual fix providers can be
 # added here later without changing service dispatch.
 FIXERS: dict[str, Callable[..., Any]] = {
-    "deepseek_api": run_deepseek_writer,
     "reasonix_cli": run_reasonix_writer,
     "mock": run_mock_writer,
 }
@@ -60,7 +57,6 @@ __all__ = [
     "run_gemini_planner",
     "run_gemini_reviewer",
     "run_mock_planner",
-    "run_deepseek_writer",
     "run_reasonix_writer",
     "run_mock_writer",
     "run_codex_reviewer",

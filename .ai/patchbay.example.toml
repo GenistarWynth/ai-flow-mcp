@@ -9,14 +9,10 @@ codex = "codex"
 reasonix = "" # reasonix_cli 时填 reasonix/reasonix.cmd；Patchbay 会调用 reasonix acp
 
 [writer]
-provider = "reasonix_cli" # Reasonix agent (默认); deepseek_api 为 API fallback
+provider = "reasonix_cli" # Reasonix agent (默认)
 max_context_files = 30
 max_patch_attempts = 3
 max_repair_iterations = 2
-
-[deepseek]
-base_url = "https://api.deepseek.com"
-api_key_env = "DEEPSEEK_API_KEY"
 
 [workflow]
 require_plan_approval = true
@@ -42,9 +38,9 @@ test = [
 # Uncomment any section to override the default provider / model for that phase.
 # Supported providers per phase:
 #   plan:   claude_cli | codex_cli | gemini_cli | mock
-#   write:  reasonix_cli | deepseek_api | mock
+#   write:  reasonix_cli | mock
 #   review: codex_cli | claude_cli | gemini_cli | mock
-#   fix:    (defaults to write provider) reasonix_cli | deepseek_api | mock
+#   fix:    (defaults to write provider) reasonix_cli | mock
 #   test:   no LLM executor (command allowlist only)
 #   apply:  no LLM executor (git apply only)
 # ---------------------------------------------------------------------------
@@ -56,7 +52,7 @@ test = [
 # timeout = 900
 
 # [phases.write]
-# provider = "reasonix_cli"    # reasonix_cli | deepseek_api | mock (默认)
+# provider = "reasonix_cli"    # reasonix_cli | mock (默认)
 # model = "deepseek-v4-pro"
 # command_key = "reasonix"     # only used when provider = reasonix_cli
 # timeout = 900

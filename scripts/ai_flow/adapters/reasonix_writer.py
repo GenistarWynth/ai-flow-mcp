@@ -48,7 +48,7 @@ def _acp_command(config: dict, cwd: Path, log_path: Path, *, command_key: str = 
             suggested_next_action=(
                 f"Set commands.{command_key} in .ai/patchbay.toml to your Reasonix executable "
                 f"(reasonix or reasonix.cmd). Or explicitly configure "
-                f"[writer].provider='deepseek_api' as an API fallback."
+                f"[writer].provider='reasonix_cli'."
             ),
         )
     executable = configured[0]
