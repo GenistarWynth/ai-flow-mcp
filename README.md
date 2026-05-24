@@ -132,9 +132,9 @@ Supported writer provider:
 python -m unittest discover -s tests -v
 ```
 
-## Custom Provider Support (planned)
+## Custom Provider Support
 
-User-defined provider entries are planned for a future release. See [docs/custom-providers-plan.md](docs/custom-providers-plan.md) for the design — TOML schema, output parsing contract, safety constraints, and test surface are enumerated but not yet implemented.
+User-defined CLI providers can be configured under `[providers.<id>]` with `roles`, `command`, `args`, `prompt_mode`, and `output_contract`. Use `patchbay config provider add-cli ...` to add them without hand-editing TOML. See [docs/custom-providers-plan.md](docs/custom-providers-plan.md) for the design notes and safety contract.
 
 ## License
 
