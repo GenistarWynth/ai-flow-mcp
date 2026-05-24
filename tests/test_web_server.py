@@ -79,6 +79,11 @@ class WebServerTest(unittest.TestCase):
         self.assertEqual(run_status["run_id"], self.run_id)
         self.assertFalse(run_status["gate_state"]["ready_to_apply"])
 
+        _, context = self._request("GET", f"/api/runs/{self.run_id}/context")
+        self.assertEqual(context["run_id"], self.run_id)
+        self.assertEqual(context["timeline"][0]["source"], "event")
+        self.assertIn("next_actions", context)
+
         _, events = self._request("GET", f"/api/runs/{self.run_id}/events")
         self.assertEqual(events["returned"], 1)
 

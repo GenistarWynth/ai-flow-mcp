@@ -105,6 +105,16 @@ class _Handler(SimpleHTTPRequestHandler):
             run_id, remainder = route
             if remainder == "status":
                 self._json(service.status(self.repo_root, run_id))
+            elif remainder == "context":
+                self._json(
+                    service.context(
+                        self.repo_root,
+                        run_id,
+                        since_event=_int_query(query, "since_event", 0),
+                        since_trace=_int_query(query, "since_trace", 0),
+                        include_trace=_bool_query(query, "include_trace", False),
+                    )
+                )
             elif remainder == "events":
                 self._json(
                     service.events(
@@ -321,6 +331,13 @@ def _str_query(query: dict[str, list[str]], name: str) -> str | None:
         return None
     value = values[0]
     return value if value != "" else None
+
+
+def _bool_query(query: dict[str, list[str]], name: str, default: bool) -> bool:
+    value = _str_query(query, name)
+    if value is None:
+        return default
+    return value.lower() in {"1", "true", "yes", "on"}
 
 
 def _default_static_dir() -> Path:

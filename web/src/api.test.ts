@@ -4,6 +4,7 @@ import {
   cleanupRun,
   fetchArtifact,
   fetchConfig,
+  fetchContext,
   fetchDiff,
   fetchRuns,
   fetchStatus,
@@ -21,6 +22,7 @@ describe("Patchbay API client", () => {
       const url = String(input);
       if (url.endsWith("/api/runs")) return jsonResponse({ runs: [] });
       if (url.endsWith("/api/runs/run-1/status")) return jsonResponse({ run_id: "run-1" });
+      if (url.endsWith("/api/runs/run-1/context?since_event=2&include_trace=true")) return jsonResponse({ run_id: "run-1" });
       if (url.endsWith("/api/runs/run-1/trace?since=3")) return jsonResponse({ events: [] });
       if (url.endsWith("/api/runs/run-1/diff")) return jsonResponse({ diff: "diff --git" });
       if (url.endsWith("/api/runs/run-1/artifact/PLAN.md?tail=60")) return jsonResponse({ text: "plan" });
@@ -32,6 +34,7 @@ describe("Patchbay API client", () => {
 
     await fetchRuns(client);
     await fetchStatus("run-1", client);
+    await fetchContext("run-1", { since_event: 2, include_trace: true }, client);
     await fetchTrace("run-1", { since: 3 }, client);
     await fetchDiff("run-1", client);
     await fetchArtifact("run-1", "PLAN.md", { tail: 60 }, client);
@@ -40,6 +43,7 @@ describe("Patchbay API client", () => {
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
       "/api/runs",
       "/api/runs/run-1/status",
+      "/api/runs/run-1/context?since_event=2&include_trace=true",
       "/api/runs/run-1/trace?since=3",
       "/api/runs/run-1/diff",
       "/api/runs/run-1/artifact/PLAN.md?tail=60",

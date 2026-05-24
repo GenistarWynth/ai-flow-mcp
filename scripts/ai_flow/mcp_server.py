@@ -58,6 +58,21 @@ def patchbay_status(run_id: str) -> dict[str, Any]:
     return service.status(ROOT, run_id)
 
 
+def patchbay_context(
+    run_id: str,
+    since_event: int = 0,
+    since_trace: int = 0,
+    include_trace: bool = False,
+) -> dict[str, Any]:
+    return service.context(
+        ROOT,
+        run_id,
+        since_event=since_event,
+        since_trace=since_trace,
+        include_trace=include_trace,
+    )
+
+
 def patchbay_events(run_id: str, since: int = 0, phase: str = "") -> dict[str, Any]:
     return service.events(ROOT, run_id, since=since, phase=phase or None)
 
@@ -130,6 +145,7 @@ CANONICAL_TOOLS: dict[str, Callable[..., Any]] = {
     "patchbay_review": patchbay_review,
     "patchbay_fix": patchbay_fix,
     "patchbay_status": patchbay_status,
+    "patchbay_context": patchbay_context,
     "patchbay_events": patchbay_events,
     "patchbay_trace": patchbay_trace,
     "patchbay_runs": patchbay_runs,
@@ -151,6 +167,7 @@ LEGACY_TOOLS: dict[str, Callable[..., Any]] = {
     "ai_flow_review": patchbay_review,
     "ai_flow_fix": patchbay_fix,
     "ai_flow_status": patchbay_status,
+    "ai_flow_context": patchbay_context,
     "ai_flow_events": patchbay_events,
     "ai_flow_trace": patchbay_trace,
     "ai_flow_runs": patchbay_runs,
@@ -172,6 +189,14 @@ def _tool_schema(name: str) -> dict[str, Any]:
         properties: dict[str, Any] = {"task": {"type": "string"}}
         properties["background"] = {"type": "boolean", "description": "Start phase in the background and poll events."}
         required = ["task"]
+    elif name.endswith("_context"):
+        properties = {
+            "run_id": {"type": "string"},
+            "since_event": {"type": "integer", "description": "Return events after raw event index N (default 0)."},
+            "since_trace": {"type": "integer", "description": "Return trace entries after raw trace index N (default 0)."},
+            "include_trace": {"type": "boolean", "description": "Merge trace entries into the handoff timeline."},
+        }
+        required = ["run_id"]
     elif name.endswith("_runs"):
         properties = {"limit": {"type": "integer"}}
         required = []
@@ -230,6 +255,7 @@ def _tool_schema(name: str) -> dict[str, Any]:
         "patchbay_review": "Run the review phase (provider configurable via [phases.review]).",
         "patchbay_fix": "Run the fix phase after a CHANGES_REQUESTED review (provider defaults to write).",
         "patchbay_status": "Return current run status and artifacts, including latest cross-phase event.",
+        "patchbay_context": "Return the unified handoff digest for resuming a run across MCP hosts, CLI sessions, and the web workbench.",
         "patchbay_events": "Return the append-only event log (JSONL stream) for a run so any host can see what every phase/agent did.",
         "patchbay_trace": "Return the structured trace log (JSONL stream) for lower-level agent/tool activity with redacted raw payloads.",
         "patchbay_runs": "List recent Patchbay runs.",

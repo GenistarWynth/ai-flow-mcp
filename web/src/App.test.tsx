@@ -29,6 +29,39 @@ function createClient(overrides: Partial<PatchbayClient> = {}): PatchbayClient {
         fix: { provider: "reasonix_cli", model: "", command_key: "reasonix" }
       }
     }),
+    getContext: vi.fn().mockResolvedValue({
+      run_id: "run-ready",
+      handoff_summary: "Run run-ready is REVIEWED_PASS in phase apply; next safe action: apply.",
+      status: "REVIEWED_PASS",
+      current_phase: "apply",
+      gate_state: { approved: true, tests_passed: true, review_result: "PASS", ready_to_apply: true },
+      next_actions: [
+        {
+          name: "apply",
+          safe: true,
+          tool: "patchbay_apply",
+          requires_human_confirmation: true,
+          reason: "Tests passed and review returned PASS; human confirmation is still required."
+        }
+      ],
+      provider_trail: [{ phase: "review", provider: "codex_cli", model: "gpt-5", status: "PASS", timestamp: "2026-05-24T10:02:00Z" }],
+      artifacts: [{ name: "REVIEW.md", purpose: "review verdict", path: ".ai/runs/run-ready/REVIEW.md" }],
+      timeline: [
+        {
+          source: "event",
+          index: 0,
+          timestamp: "2026-05-24T10:02:00Z",
+          phase: "review",
+          action: "success",
+          status: "PASS",
+          detail: "ready from context",
+          provider: "codex_cli",
+          artifact_paths: ["REVIEW.md"],
+          next_action: "apply"
+        }
+      ],
+      cursors: { event: 1, trace: 0 }
+    }),
     getTrace: vi.fn().mockResolvedValue({
       total: 1,
       events: [
@@ -67,15 +100,15 @@ describe("Workbench", () => {
     expect(screen.getByRole("heading", { name: "run-ready" })).toBeInTheDocument();
     expect(await screen.findByText(/当前阶段：应用/)).toBeInTheDocument();
     expect(screen.getByText("门禁状态")).toBeInTheDocument();
-    expect(await screen.findByText("patchbay_review")).toBeInTheDocument();
+    expect(await screen.findByText(/patchbay_apply/)).toBeInTheDocument();
+    expect(await screen.findByText("ready from context")).toBeInTheDocument();
     expect(screen.getAllByText("审查")).not.toHaveLength(0);
-    expect(screen.getByText(".ai/runs/run-ready/REVIEW.md")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("tab", { name: "提供方" }));
 
     expect(screen.getAllByText("reasonix_cli")).not.toHaveLength(0);
     expect(screen.getAllByText("codex_cli")).not.toHaveLength(0);
-    expect(client.getTrace).toHaveBeenCalledWith("run-ready");
+    expect(client.getContext).toHaveBeenCalledWith("run-ready");
   });
 
   it("filters the run list by search and status", async () => {
@@ -93,48 +126,54 @@ describe("Workbench", () => {
 
   it("polls trace incrementally after the initial load", async () => {
     const client = createClient({
-      getTrace: vi
+      getContext: vi
         .fn()
         .mockResolvedValueOnce({
-          total: 2,
-          events: [
+          run_id: "run-ready",
+          status: "REVIEWED_PASS",
+          current_phase: "apply",
+          gate_state: { ready_to_apply: true },
+          next_actions: [{ name: "apply", safe: true, tool: "patchbay_apply", requires_human_confirmation: true, reason: "ready" }],
+          timeline: [
             {
+              source: "event",
               index: 0,
               timestamp: "2026-05-24T10:02:00Z",
-              agent: "codex_cli",
               phase: "review",
               action: "start",
-              tool: "patchbay_review",
-              path: ".ai/runs/run-ready/REVIEW.md",
               status: "RUNNING",
               detail: "reviewing"
             },
             {
+              source: "event",
               index: 1,
               timestamp: "2026-05-24T10:03:00Z",
-              agent: "codex_cli",
               phase: "review",
               action: "success",
-              tool: "patchbay_review",
-              path: ".ai/runs/run-ready/REVIEW.md",
               status: "PASS",
               detail: "ready"
             }
-          ]
+          ],
+          cursors: { event: 2, trace: 0 }
         })
         .mockResolvedValueOnce({
-          total: 3,
-          events: [
+          run_id: "run-ready",
+          status: "REVIEWED_PASS",
+          current_phase: "apply",
+          gate_state: { ready_to_apply: true },
+          next_actions: [{ name: "apply", safe: true, tool: "patchbay_apply", requires_human_confirmation: true, reason: "ready" }],
+          timeline: [
             {
+              source: "event",
               index: 2,
               timestamp: "2026-05-24T10:04:00Z",
-              agent: "patchbay",
               phase: "apply",
               action: "gate",
               status: "READY",
               detail: "ready to apply"
             }
-          ]
+          ],
+          cursors: { event: 3, trace: 0 }
         })
     });
 
@@ -142,7 +181,7 @@ describe("Workbench", () => {
 
     expect(await screen.findByText("ready")).toBeInTheDocument();
     await waitFor(() => {
-      expect(client.getTrace).toHaveBeenLastCalledWith("run-ready", { since: 2 });
+      expect(client.getContext).toHaveBeenLastCalledWith("run-ready", { since_event: 2 });
     });
     expect(await screen.findByText("ready to apply")).toBeInTheDocument();
   });
@@ -176,6 +215,15 @@ describe("Workbench", () => {
         next_commands: [],
         artifacts: [],
         effective_phase_providers: {}
+      }),
+      getContext: vi.fn().mockResolvedValue({
+        run_id: "run-ready",
+        status: "REVIEWED_PASS",
+        current_phase: "apply",
+        gate_state: { ready_to_apply: false },
+        next_actions: [],
+        timeline: [],
+        cursors: { event: 0, trace: 0 }
       })
     });
 

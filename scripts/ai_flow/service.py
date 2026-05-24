@@ -46,6 +46,7 @@ from .config import (
 from .context import build_context
 from .errors import AiFlowError, GitError, SafetyError, StateError
 from .events import append_event, event_count, latest_event, list_events
+from .handoff import build_handoff_context
 from .parsing import parse_planner_output, parse_writer_output, review_verdict
 from .plan_schema import validate_plan_json
 from .runner import run_logged
@@ -1242,6 +1243,27 @@ def _gate_state(data: dict[str, Any]) -> dict[str, Any]:
         "review_result": data.get("review_result"),
         "ready_to_apply": data.get("status") == REVIEWED_PASS and bool(data.get("tests_passed")),
     }
+
+
+def context(
+    cwd: Path,
+    run_id: str,
+    *,
+    since_event: int = 0,
+    since_trace: int = 0,
+    include_trace: bool = False,
+) -> dict[str, Any]:
+    """Return a unified run handoff digest for CLI, MCP, and web clients."""
+    root = resolve_root(cwd)
+    run_path, _ = _load_run(root, run_id)
+    status_data = status(root, run_id)
+    return build_handoff_context(
+        run_path=run_path,
+        status_data=status_data,
+        since_event=since_event,
+        since_trace=since_trace,
+        include_trace=include_trace,
+    )
 
 
 def events(cwd: Path, run_id: str, *, since: int = 0, phase: str | None = None) -> dict[str, Any]:

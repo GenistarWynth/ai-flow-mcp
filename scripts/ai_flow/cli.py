@@ -137,6 +137,13 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--watch", action="store_true", help="Poll status until terminal.")
     _add_json(status)
 
+    context = sub.add_parser("context", help="Show unified run handoff context.")
+    context.add_argument("run_id")
+    context.add_argument("--since-event", type=int, default=0, help="Return events after raw event index N.")
+    context.add_argument("--since-trace", type=int, default=0, help="Return trace entries after raw trace index N.")
+    context.add_argument("--include-trace", action="store_true", help="Merge trace entries into the context timeline.")
+    _add_json(context)
+
     events = sub.add_parser("events", help="Show run event log (JSONL stream).")
     events.add_argument("run_id")
     events.add_argument("--since", type=int, default=0, help="Return events after index N.")
@@ -307,6 +314,13 @@ def dispatch(args: argparse.Namespace, cwd: Path) -> Any:
         "review": lambda a, c: service.start_background_phase(c, "review", run_id=a.run_id, mock=a.mock) if a.background else service.review(c, a.run_id, mock=a.mock),
         "fix": lambda a, c: service.start_background_phase(c, "fix", run_id=a.run_id, mock=a.mock) if a.background else service.fix(c, a.run_id, mock=a.mock),
         "status": lambda a, c: service.status(c, a.run_id),
+        "context": lambda a, c: service.context(
+            c,
+            a.run_id,
+            since_event=getattr(a, "since_event", 0),
+            since_trace=getattr(a, "since_trace", 0),
+            include_trace=bool(getattr(a, "include_trace", False)),
+        ),
         "events": lambda a, c: service.events(c, a.run_id, since=getattr(a, "since", 0), phase=getattr(a, "phase", None)),
         "trace": lambda a, c: service.trace(c, a.run_id, since=getattr(a, "since", 0), phase=getattr(a, "phase", None)),
         "runs": lambda a, c: service.runs(c, limit=a.limit),

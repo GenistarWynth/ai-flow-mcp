@@ -75,13 +75,14 @@ Writer 实现入口：
 
 ```bash
 # CLI
+scripts/patchbay context <run_id>          # 推荐：一次性查看 handoff 摘要、门禁、下一步、产物和时间线
 scripts/patchbay events <run_id>           # 展示完整事件日志
 scripts/patchbay events <run_id> --phase plan  # 按阶段筛选
 scripts/patchbay events <run_id> --since 5     # 从第 5 条事件开始
 scripts/patchbay status <run_id>           # status 现在包含 latest_event 和 event_count
 ```
 
-MCP 工具 `patchbay_events` 和 `patchbay_status` 提供相同数据。每条事件记录包含 `phase`、`provider`、`model`、`action`、`status`、`timestamp`、`detail`、`artifact_paths`、`duration_ms` 和 `next_action`。
+MCP 工具 `patchbay_context` 是跨 host 恢复上下文的首选入口；`patchbay_events` 和 `patchbay_status` 仍可用于聚焦查看。每条事件记录包含 `phase`、`provider`、`model`、`action`、`status`、`timestamp`、`detail`、`artifact_paths`、`duration_ms` 和 `next_action`。
 
 ## 常用命令
 
@@ -169,6 +170,6 @@ CLI phases can use `command_key` to reference `[commands]` or `command` for an i
 
 Claude and Codex CLI providers request their native read-only/plan execution modes. Gemini CLI does not expose the same sandbox control, so Patchbay enforces safety for Gemini plan/review phases by comparing repository/worktree state before and after the provider runs, including failure paths.
 
-## Custom Providers（规划中）
+## Custom Providers
 
-用户自定义 provider 配置（`[providers.<id>]`）计划在后续版本实现。详见 [custom-providers-plan.md](custom-providers-plan.md) — TOML 模式、输出解析约定、安全约束和测试范围已列出，但尚未实现。
+当前运行时已支持通过 `[providers.<id>]` 和 `patchbay config provider add-cli ...` 注册 CLI provider。详见 [custom-providers-plan.md](custom-providers-plan.md) — 文档包含已实现的 CLI 基线，以及 HTTP/ACP 模式和更细安全约束的后续路线图。

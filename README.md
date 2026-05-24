@@ -38,13 +38,13 @@ Legacy `[models]`, `[commands]`, and `[writer].provider` keys remain supported a
 ## What It Provides
 
 - CLI workflow: `plan`, `approve`, `write`, `test`, `review`, `fix`, `status`, `diff`, `apply`, `cleanup`.
-- MCP tools: `patchbay_plan`, `patchbay_approve`, `patchbay_write`, `patchbay_test`, `patchbay_review`, `patchbay_fix`, `patchbay_status`, `patchbay_events`, `patchbay_runs`, `patchbay_artifact`, `patchbay_config_show`, `patchbay_config_phase_set`, `patchbay_config_command_set`, `patchbay_config_test_add`, `patchbay_config_provider_add_cli`, `patchbay_diff`, `patchbay_apply`.
+- MCP tools: `patchbay_plan`, `patchbay_approve`, `patchbay_write`, `patchbay_test`, `patchbay_review`, `patchbay_fix`, `patchbay_status`, `patchbay_context`, `patchbay_events`, `patchbay_trace`, `patchbay_runs`, `patchbay_artifact`, `patchbay_config_show`, `patchbay_config_phase_set`, `patchbay_config_command_set`, `patchbay_config_test_add`, `patchbay_config_provider_add_cli`, `patchbay_diff`, `patchbay_apply`.
 - Legacy MCP aliases: `ai_flow_*`.
 - Isolated git worktrees by default.
 - File-backed run artifacts under `.ai/runs/<run_id>/`.
 - Human approval gate before implementation.
 - Patch safety checks and read-only reviewer verification.
-- **Cross-host visibility**: `patchbay events <run_id>` and `patchbay_status` reveal what every phase/agent did, including provider, model, action, and timestamps — from any MCP host.
+- **Cross-host visibility**: `patchbay context <run_id>` / `patchbay_context` is the preferred resume call. It returns the current gate state, next safe action, provider trail, artifacts, and timeline in one handoff digest. `patchbay events <run_id>` and `patchbay_status` remain available for focused inspection.
 
 ## Quick Start
 
@@ -81,6 +81,7 @@ python scripts/patchbay approve <run_id>
 python scripts/patchbay write <run_id>
 python scripts/patchbay test <run_id>
 python scripts/patchbay review <run_id>
+python scripts/patchbay context <run_id>
 python scripts/patchbay apply <run_id>
 ```
 
@@ -134,7 +135,7 @@ python -m unittest discover -s tests -v
 
 ## Custom Provider Support
 
-User-defined CLI providers can be configured under `[providers.<id>]` with `roles`, `command`, `args`, `prompt_mode`, and `output_contract`. Use `patchbay config provider add-cli ...` to add them without hand-editing TOML. See [docs/custom-providers-plan.md](docs/custom-providers-plan.md) for the design notes and safety contract.
+User-defined CLI providers can be configured under `[providers.<id>]` with `roles`, `command`, `args`, `prompt_mode`, and `output_contract`. Use `patchbay config provider add-cli ...` to add them without hand-editing TOML. The current runtime supports CLI providers; [docs/custom-providers-plan.md](docs/custom-providers-plan.md) tracks the broader future design for HTTP/ACP modes and stricter provider-specific safety controls.
 
 ## License
 

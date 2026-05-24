@@ -65,6 +65,7 @@ secret-like files, absolute paths, and path-traversal patterns.
 configuration, mock mode, and safety enforcement are implemented.
 
 **Recently shipped (v0.1.0 → current):**
+- **Unified handoff context**: `patchbay context <run_id>` and `patchbay_context` synthesize status, gate state, next safe action, provider trail, artifacts, and timeline into one cross-host resume payload.
 - **Cross-host visibility**: `events.jsonl` per run + `patchbay events` CLI + `patchbay_events` MCP tool. Any host can inspect what every phase/agent did, including provider, model, action, and timestamps.
 - **Free phase-to-provider routing**: Any configured provider that advertises a role (plan/write/review/fix) can be assigned to any phase. Unsupported assignments fail with a clear error.
 - **Interactive configuration**: `patchbay config` wizard + `patchbay config set k v` + `patchbay doctor`. No hand-editing TOML required.
@@ -74,10 +75,11 @@ configuration, mock mode, and safety enforcement are implemented.
 
 The project is actively maintained.
 
-## Next Planned Feature: Custom Providers
+## Custom Providers
 
-User-defined provider entries (`[providers.<id>]` TOML blocks) are planned for a
-future release. The design covers:
+User-defined CLI provider entries (`[providers.<id>]` TOML blocks) are implemented
+for the current runtime via `patchbay config provider add-cli`. The broader design
+continues to track additional modes and stronger provider-specific controls:
 
 - Four execution modes: `cli_stdin`, `cli_stdout`, `http_api`, `acp`
 - Role capability mask (a single provider can be registered for planner, writer,
@@ -85,13 +87,13 @@ future release. The design covers:
 - Output parsing contract (sentinel markers, JSON paths)
 - Safety constraints (path allowlists, deny patterns, execution blocking)
 
-**This is a design document only — not yet implemented.** See
-[docs/custom-providers-plan.md](docs/custom-providers-plan.md) for the full plan.
+See [docs/custom-providers-plan.md](docs/custom-providers-plan.md) for the current
+CLI baseline and the remaining HTTP/ACP roadmap.
 
 ## Pointers
 
 - [README.md](README.md) — English readme, quick start, config reference
 - [README.zh-CN.md](README.zh-CN.md) — Chinese readme
 - [docs/patchbay.md](docs/patchbay.md) — Full documentation (Chinese)
-- [docs/custom-providers-plan.md](docs/custom-providers-plan.md) — Custom providers design (planned)
+- [docs/custom-providers-plan.md](docs/custom-providers-plan.md) — Custom providers baseline and roadmap
 - [AGENTS.md](AGENTS.md) — Agent instruction block for MCP hosts

@@ -35,20 +35,62 @@ export type RunStatus = {
 export type TraceEntry = {
   index?: number;
   seq?: number;
+  source?: string;
   timestamp?: string;
   agent?: string;
+  provider?: string;
+  model?: string;
   phase?: string;
   action?: string;
   tool?: string;
   path?: string;
   status?: string;
   detail?: string;
+  next_action?: string;
+  artifact_paths?: string[];
+  duration_ms?: number;
   raw?: unknown;
+};
+
+export type NextAction = {
+  name: string;
+  safe: boolean;
+  tool: string;
+  requires_human_confirmation: boolean;
+  reason: string;
+};
+
+export type HandoffArtifact = {
+  name: string;
+  purpose: string;
+  path: string;
+};
+
+export type ProviderTrailEntry = {
+  phase?: string;
+  provider?: string;
+  model?: string;
+  status?: string;
+  timestamp?: string;
+};
+
+export type HandoffContext = {
+  run_id: string;
+  handoff_summary?: string;
+  status?: string;
+  current_phase?: string;
+  gate_state?: GateState;
+  next_actions?: NextAction[];
+  provider_trail?: ProviderTrailEntry[];
+  artifacts?: HandoffArtifact[];
+  timeline?: TraceEntry[];
+  cursors?: { event?: number; trace?: number };
 };
 
 export type PatchbayClient = {
   listRuns(): Promise<{ count?: number; runs: RunSummary[] }>;
   getStatus(runId: string): Promise<RunStatus>;
+  getContext(runId: string, options?: { since_event?: number; since_trace?: number; include_trace?: boolean }): Promise<HandoffContext>;
   getTrace(runId: string, options?: { since?: number; phase?: string }): Promise<{ total?: number; trace?: TraceEntry[]; events?: TraceEntry[] }>;
   getDiff(runId: string): Promise<{ text?: string; diff?: string }>;
   getArtifact(runId: string, artifact: string, options?: { tail?: number }): Promise<{ text: string }>;
@@ -76,7 +118,7 @@ async function requestJson<T>(url: string, client: ClientOptions = defaultClient
   return response.json() as Promise<T>;
 }
 
-function query(params: Record<string, string | number | undefined>): string {
+function query(params: Record<string, string | number | boolean | undefined>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== "") search.set(key, String(value));
@@ -91,6 +133,14 @@ export function fetchRuns(client?: ClientOptions) {
 
 export function fetchStatus(runId: string, client?: ClientOptions) {
   return requestJson<RunStatus>(`/api/runs/${encodeURIComponent(runId)}/status`, client);
+}
+
+export function fetchContext(
+  runId: string,
+  options: { since_event?: number; since_trace?: number; include_trace?: boolean } = {},
+  client?: ClientOptions
+) {
+  return requestJson<HandoffContext>(`/api/runs/${encodeURIComponent(runId)}/context${query(options)}`, client);
 }
 
 export function fetchTrace(runId: string, options: { since?: number; phase?: string } = {}, client?: ClientOptions) {
@@ -131,6 +181,7 @@ export function createPatchbayClient(client?: ClientOptions): PatchbayClient {
   return {
     listRuns: () => fetchRuns(client),
     getStatus: (runId) => fetchStatus(runId, client),
+    getContext: (runId, options) => fetchContext(runId, options, client),
     getTrace: (runId, options) => fetchTrace(runId, options, client),
     getDiff: (runId) => fetchDiff(runId, client),
     getArtifact: (runId, artifact, options) => fetchArtifact(runId, artifact, options, client),

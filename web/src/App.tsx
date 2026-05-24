@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, FileText, GitPullRequest, Play, RefreshCw, Search, Settings, Trash2 } from "lucide-react";
-import { createPatchbayClient, PatchbayClient, RunStatus, RunSummary, TraceEntry } from "./api";
+import { createPatchbayClient, HandoffContext, PatchbayClient, RunStatus, RunSummary, TraceEntry } from "./api";
 import "./styles.css";
 
 type TabName = "Trace" | "Log" | "Diff" | "Artifacts" | "Config" | "Providers";
@@ -75,9 +75,11 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [selectedRun, setSelectedRun] = useState("");
   const [status, setStatus] = useState<RunStatus | null>(null);
+  const [context, setContext] = useState<HandoffContext | null>(null);
   const [trace, setTrace] = useState<TraceEntry[]>([]);
+  const [rawTrace, setRawTrace] = useState<TraceEntry[]>([]);
   const [selectedTrace, setSelectedTrace] = useState<TraceEntry | null>(null);
-  const traceCursor = useRef(0);
+  const eventCursor = useRef(0);
   const [diff, setDiff] = useState("");
   const [artifactText, setArtifactText] = useState("");
   const [config, setConfig] = useState<unknown>(null);
@@ -101,27 +103,30 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     if (!selectedRun) return;
     let cancelled = false;
     setTrace([]);
+    setRawTrace([]);
     setSelectedTrace(null);
-    traceCursor.current = 0;
-    function appendTraceEntries(entries: TraceEntry[], total?: number, since = 0, replace = false) {
+    eventCursor.current = 0;
+    function appendTimelineEntries(entries: TraceEntry[], total?: number, since = 0, replace = false) {
       setTrace((current) => {
         const nextEntries = replace ? entries : [...current, ...entries];
         setSelectedTrace((selected) => selected ?? nextEntries[0] ?? null);
         return nextEntries;
       });
-      traceCursor.current = total ?? (entries.at(-1)?.index ?? since - 1) + 1;
+      eventCursor.current = total ?? (entries.at(-1)?.index ?? since - 1) + 1;
     }
     async function loadSelectedRun() {
-      const [nextStatus, nextTrace, nextDiff, nextConfig] = await Promise.all([
+      const [nextStatus, nextContext, nextTrace, nextDiff, nextConfig] = await Promise.all([
         client.getStatus(selectedRun),
+        client.getContext(selectedRun),
         client.getTrace(selectedRun),
         client.getDiff(selectedRun),
         client.getConfig()
       ]);
       if (cancelled) return;
-      const entries = nextTrace.trace ?? nextTrace.events ?? [];
       setStatus(nextStatus);
-      appendTraceEntries(entries, nextTrace.total, 0, true);
+      setContext(nextContext);
+      setRawTrace(nextTrace.trace ?? nextTrace.events ?? []);
+      appendTimelineEntries(nextContext.timeline ?? [], nextContext.cursors?.event, 0, true);
       setDiff(nextDiff.text ?? nextDiff.diff ?? "");
       setConfig(nextConfig);
       const firstArtifact = nextStatus.artifacts?.find((name) => name.endsWith(".log") || name.endsWith(".md"));
@@ -132,15 +137,16 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         setArtifactText("");
       }
     }
-    async function loadTraceUpdate() {
-      const since = traceCursor.current;
-      const nextTrace = await client.getTrace(selectedRun, { since });
-      if (cancelled) return;
-      appendTraceEntries(nextTrace.trace ?? nextTrace.events ?? [], nextTrace.total, since);
+    async function loadContextUpdate() {
+      const since = eventCursor.current;
+      const nextContext = await client.getContext(selectedRun, { since_event: since });
+      if (cancelled || !nextContext) return;
+      setContext((current) => ({ ...(current ?? {}), ...nextContext }));
+      appendTimelineEntries(nextContext.timeline ?? [], nextContext.cursors?.event, since);
     }
     void loadSelectedRun().catch((err) => setError(String(err)));
     const timer = pollIntervalMs > 0 ? window.setInterval(() => {
-      void loadTraceUpdate().catch((err) => setError(String(err)));
+      void loadContextUpdate().catch((err) => setError(String(err)));
     }, pollIntervalMs) : undefined;
     return () => {
       cancelled = true;
@@ -168,12 +174,17 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   }, [visibleRuns, selectedRun]);
 
   const selectedSummary = useMemo(() => runs.find((run) => run.run_id === selectedRun), [runs, selectedRun]);
-  const readyToApply = Boolean(status?.gate_state?.ready_to_apply);
-  const nextCommandText = status?.next_commands?.length ? status.next_commands.map(commandLabel).join("、") : "无";
+  const gateState = context?.gate_state ?? status?.gate_state ?? {};
+  const readyToApply = Boolean(gateState.ready_to_apply);
+  const nextCommandText = context?.next_actions?.length
+    ? context.next_actions.map((action) => commandLabel(action.name)).join(", ")
+    : status?.next_commands?.length
+      ? status.next_commands.map(commandLabel).join(", ")
+      : "none";
+  const nextToolText = context?.next_actions?.find((action) => action.safe)?.tool ?? context?.next_actions?.[0]?.tool ?? "";
   const headerMeta = selectedRun
-    ? `状态：${statusLabel(selectedSummary?.status ?? status?.status)} / 当前阶段：${phaseLabel(status?.current_phase)} / 可执行：${nextCommandText}`
+    ? `状态：${statusLabel(selectedSummary?.status ?? context?.status ?? status?.status)} / 当前阶段：${phaseLabel(context?.current_phase ?? status?.current_phase)} / 可执行：${nextCommandText}${nextToolText ? ` / MCP: ${nextToolText}` : ""}`
     : "请选择一次运行，查看各 Agent 的阶段与工具调用。";
-  const gateState = status?.gate_state ?? {};
 
   const runAction = async (action: string) => {
     if (!selectedRun) return;
@@ -181,6 +192,10 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     await client.runAction(selectedRun, action);
     await loadRuns();
     setStatus(await client.getStatus(selectedRun));
+    const nextContext = await client.getContext(selectedRun);
+    setContext(nextContext);
+    setTrace(nextContext.timeline ?? []);
+    eventCursor.current = nextContext.cursors?.event ?? 0;
   };
 
   const confirmAction = async () => {
@@ -190,6 +205,10 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     if (confirm.action === "cleanup") await client.cleanup(selectedRun);
     setConfirm(null);
     await loadRuns();
+    const nextContext = await client.getContext(selectedRun);
+    setContext(nextContext);
+    setTrace(nextContext.timeline ?? []);
+    eventCursor.current = nextContext.cursors?.event ?? 0;
   };
 
   return (
@@ -262,8 +281,10 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
 
         <section className="phase-strip">
           {phases.map((phase) => {
-            const isCurrent = status?.current_phase === phase;
-            const isDone = phase === "apply" ? status?.status === "APPLIED" : phases.indexOf(phase) < phases.indexOf(status?.current_phase ?? "");
+            const currentPhase = context?.current_phase ?? status?.current_phase ?? "";
+            const currentStatus = context?.status ?? status?.status;
+            const isCurrent = currentPhase === phase;
+            const isDone = phase === "apply" ? currentStatus === "APPLIED" : phases.indexOf(phase) < phases.indexOf(currentPhase);
             return (
               <div className={`phase ${isCurrent ? "current" : ""} ${isDone ? "done" : ""}`} key={phase}>
                 {isDone ? <Check size={14} /> : <span />}
@@ -275,7 +296,15 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
 
         <section className="actions">
           {actions.map((action) => (
-            <button key={action} onClick={() => void runAction(action)} disabled={!status?.next_commands?.includes(action)}>
+            <button
+              key={action}
+              onClick={() => void runAction(action)}
+              disabled={
+                context?.next_actions?.length
+                  ? !context.next_actions.some((next) => next.name === action && next.safe)
+                  : !status?.next_commands?.includes(action)
+              }
+            >
               <Play size={14} />
               {actionLabels[action] ?? `执行 ${phaseLabel(action)}`}
             </button>
@@ -302,13 +331,13 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
             <span>摘要</span>
           </div>
           {trace.map((entry, index) => (
-            <button className="trace-row" key={`${entry.index ?? entry.seq ?? index}-${entry.timestamp ?? index}`} onClick={() => setSelectedTrace(entry)}>
+            <button className="trace-row" key={`${entry.source ?? "trace"}-${entry.index ?? entry.seq ?? index}-${entry.timestamp ?? index}`} onClick={() => setSelectedTrace(entry)}>
               <span className="time">{entry.timestamp?.slice(11, 19) ?? "--:--:--"}</span>
-              <span className="agent">智能体：{entry.agent ?? "patchbay"}</span>
+              <span className="agent">智能体：{entry.agent ?? entry.provider ?? entry.source ?? "patchbay"}</span>
               <span className="phase-name">{phaseLabel(entry.phase)}</span>
               <span className="action-name">{commandLabel(entry.action)}</span>
-              <span className="tool">{entry.tool}</span>
-              <span className="path">{entry.path}</span>
+              <span className="tool">{entry.tool ?? entry.next_action}</span>
+              <span className="path">{entry.path ?? entry.artifact_paths?.join(", ")}</span>
               <span className={`trace-status ${entry.status ?? ""}`}>{statusLabel(entry.status)}</span>
               <span className="detail">{entry.detail}</span>
             </button>
@@ -324,7 +353,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
             </button>
           ))}
         </div>
-        <DetailPanel tab={activeTab} trace={selectedTrace} diff={diff} artifactText={artifactText} config={config} status={status} />
+        <DetailPanel tab={activeTab} trace={selectedTrace} rawTrace={rawTrace} diff={diff} artifactText={artifactText} config={config} status={status} />
       </aside>
 
       {confirm ? (
@@ -345,8 +374,24 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   );
 }
 
-function DetailPanel({ tab, trace, diff, artifactText, config, status }: { tab: TabName; trace: TraceEntry | null; diff: string; artifactText: string; config: unknown; status: RunStatus | null }) {
-  if (tab === "Trace") return <pre>{JSON.stringify(trace ?? {}, null, 2)}</pre>;
+function DetailPanel({
+  tab,
+  trace,
+  rawTrace,
+  diff,
+  artifactText,
+  config,
+  status
+}: {
+  tab: TabName;
+  trace: TraceEntry | null;
+  rawTrace: TraceEntry[];
+  diff: string;
+  artifactText: string;
+  config: unknown;
+  status: RunStatus | null;
+}) {
+  if (tab === "Trace") return <pre>{JSON.stringify({ selected: trace ?? {}, raw_trace: rawTrace }, null, 2)}</pre>;
   if (tab === "Diff") return <pre>{diff}</pre>;
   if (tab === "Log" || tab === "Artifacts") return <pre>{artifactText}</pre>;
   if (tab === "Providers") {
