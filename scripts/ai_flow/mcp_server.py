@@ -62,6 +62,10 @@ def patchbay_events(run_id: str, since: int = 0, phase: str = "") -> dict[str, A
     return service.events(ROOT, run_id, since=since, phase=phase or None)
 
 
+def patchbay_trace(run_id: str, since: int = 0, phase: str = "") -> dict[str, Any]:
+    return service.trace(ROOT, run_id, since=since, phase=phase or None)
+
+
 def patchbay_runs(limit: int = 20) -> dict[str, Any]:
     return service.runs(ROOT, limit=limit)
 
@@ -127,6 +131,7 @@ CANONICAL_TOOLS: dict[str, Callable[..., Any]] = {
     "patchbay_fix": patchbay_fix,
     "patchbay_status": patchbay_status,
     "patchbay_events": patchbay_events,
+    "patchbay_trace": patchbay_trace,
     "patchbay_runs": patchbay_runs,
     "patchbay_artifact": patchbay_artifact,
     "patchbay_config_show": patchbay_config_show,
@@ -147,6 +152,7 @@ LEGACY_TOOLS: dict[str, Callable[..., Any]] = {
     "ai_flow_fix": patchbay_fix,
     "ai_flow_status": patchbay_status,
     "ai_flow_events": patchbay_events,
+    "ai_flow_trace": patchbay_trace,
     "ai_flow_runs": patchbay_runs,
     "ai_flow_artifact": patchbay_artifact,
     "ai_flow_config_show": patchbay_config_show,
@@ -176,10 +182,10 @@ def _tool_schema(name: str) -> dict[str, Any]:
             "tail": {"type": "integer"},
         }
         required = ["run_id", "artifact"]
-    elif name.endswith("_events"):
+    elif name.endswith("_events") or name.endswith("_trace"):
         properties = {
             "run_id": {"type": "string"},
-            "since": {"type": "integer", "description": "Return events after index N (default 0)."},
+            "since": {"type": "integer", "description": "Return entries after raw line index N (default 0)."},
             "phase": {"type": "string", "description": "Optional filter by phase name."},
         }
         required = ["run_id"]
@@ -225,6 +231,7 @@ def _tool_schema(name: str) -> dict[str, Any]:
         "patchbay_fix": "Run the fix phase after a CHANGES_REQUESTED review (provider defaults to write).",
         "patchbay_status": "Return current run status and artifacts, including latest cross-phase event.",
         "patchbay_events": "Return the append-only event log (JSONL stream) for a run so any host can see what every phase/agent did.",
+        "patchbay_trace": "Return the structured trace log (JSONL stream) for lower-level agent/tool activity with redacted raw payloads.",
         "patchbay_runs": "List recent Patchbay runs.",
         "patchbay_artifact": "Read a run artifact such as PLAN.md, TEST.log, REVIEW.md, or FINAL.diff.",
         "patchbay_config_show": "Show the effective Patchbay configuration.",

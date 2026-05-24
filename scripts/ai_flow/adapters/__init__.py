@@ -245,6 +245,7 @@ def _custom_plan_runner(provider_id: str, provider_cfg: dict[str, Any]) -> Calla
         command_key: str = "",
         timeout: int = 900,
         env: dict[str, str] | None = None,
+        phase: str = "write",
     ) -> str:
         prompt = "\n\n".join(["# User Task", task, "# Repository Context", context])
         return _run_custom_cli(
@@ -269,6 +270,7 @@ def _custom_writer_runner(provider_id: str, provider_cfg: dict[str, Any]) -> Cal
         command_key: str = "",
         timeout: int = 900,
         env: dict[str, str] | None = None,
+        phase: str = "write",
     ) -> str:
         output = _run_custom_cli(
             provider_id=provider_id,
@@ -303,6 +305,7 @@ def _custom_review_runner(provider_id: str, provider_cfg: dict[str, Any]) -> Cal
         command_key: str = "",
         timeout: int = 900,
         env: dict[str, str] | None = None,
+        phase: str = "review",
     ) -> str:
         return _run_custom_cli(
             provider_id=provider_id,

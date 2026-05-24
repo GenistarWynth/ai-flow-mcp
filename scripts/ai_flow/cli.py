@@ -11,6 +11,7 @@ from . import service
 from .config_wizard import run_config_wizard
 from .errors import AiFlowError
 from .mcp_install import run_mcp_install, run_mcp_doctor
+from .web_server import serve as serve_web
 
 
 def config_wizard_run(cwd: Path, args: argparse.Namespace) -> Any:
@@ -92,6 +93,11 @@ def build_parser() -> argparse.ArgumentParser:
     init = sub.add_parser("init", help="Create config, ignored artifact dirs, and docs skeleton.")
     _add_json(init)
 
+    web = sub.add_parser("web", help="Start the local Patchbay web workbench.")
+    web.add_argument("--host", default="127.0.0.1", help="Host interface to bind.")
+    web.add_argument("--port", type=int, default=0, help="Port to bind; 0 selects a free port.")
+    _add_json(web)
+
     plan = sub.add_parser("plan", help="Run read-only Claude planner.")
     plan.add_argument("--task", required=True, help="Task to plan.")
     plan.add_argument("--mock", action="store_true", help="Use mock planner.")
@@ -137,6 +143,13 @@ def build_parser() -> argparse.ArgumentParser:
     events.add_argument("--phase", type=str, default=None, help="Filter by phase.")
     events.add_argument("--follow", action="store_true", help="Poll until new events stop arriving.")
     _add_json(events)
+
+    trace = sub.add_parser("trace", help="Show run structured trace log (JSONL stream).")
+    trace.add_argument("run_id")
+    trace.add_argument("--since", type=int, default=0, help="Return trace entries after raw line index N.")
+    trace.add_argument("--phase", type=str, default=None, help="Filter by phase.")
+    trace.add_argument("--follow", action="store_true", help="Poll until new trace entries stop arriving.")
+    _add_json(trace)
 
     runs = sub.add_parser("runs", help="List recent Patchbay runs.")
     runs.add_argument("--limit", type=int, default=20)
@@ -218,17 +231,18 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _run_events_follow(cwd: Path, args: argparse.Namespace) -> dict[str, Any]:
+def _run_stream_follow(cwd: Path, args: argparse.Namespace, *, kind: str) -> dict[str, Any]:
     initial_since = int(getattr(args, "since", 0) or 0)
     seen = initial_since
     last: dict[str, Any] | None = None
     collected: list[dict[str, Any]] = []
     idle_rounds = 0
+    service_func = service.events if kind == "events" else service.trace
     while True:
-        last = service.events(cwd, args.run_id, since=seen, phase=getattr(args, "phase", None))
-        events = last.get("events", [])
-        if events:
-            collected.extend(events)
+        last = service_func(cwd, args.run_id, since=seen, phase=getattr(args, "phase", None))
+        entries = last.get(kind, [])
+        if entries:
+            collected.extend(entries)
             idle_rounds = 0
         else:
             idle_rounds += 1
@@ -237,9 +251,9 @@ def _run_events_follow(cwd: Path, args: argparse.Namespace) -> dict[str, Any]:
         seen = int(last.get("total") or seen)
         if not getattr(args, "follow", False):
             break
-        if events and not bool(getattr(args, "json", False)):
-            for event in events:
-                print(json.dumps(event, ensure_ascii=False, sort_keys=True))
+        if entries and not bool(getattr(args, "json", False)):
+            for entry in entries:
+                print(json.dumps(entry, ensure_ascii=False, sort_keys=True))
         time.sleep(0.4)
     total = int((last or {}).get("total") or seen)
     return {
@@ -247,7 +261,7 @@ def _run_events_follow(cwd: Path, args: argparse.Namespace) -> dict[str, Any]:
         "since": initial_since,
         "total": total,
         "returned": len(collected),
-        "events": collected,
+        kind: collected,
     }
 
 
@@ -256,8 +270,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     cwd = Path.cwd()
     try:
-        if args.command == "events" and getattr(args, "follow", False):
-            result = _run_events_follow(cwd, args)
+        if args.command in {"events", "trace"} and getattr(args, "follow", False):
+            result = _run_stream_follow(cwd, args, kind=args.command)
         else:
             result = dispatch(args, cwd)
     except AiFlowError as exc:
@@ -273,7 +287,7 @@ def main(argv: list[str] | None = None) -> int:
     as_json = bool(getattr(args, "json", False))
     if args.command == "diff":
         print(result, end="" if str(result).endswith("\n") else "\n")
-    elif args.command == "events" and getattr(args, "follow", False):
+    elif args.command in {"events", "trace"} and getattr(args, "follow", False):
         if as_json:
             print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
     else:
@@ -285,6 +299,7 @@ def dispatch(args: argparse.Namespace, cwd: Path) -> Any:
     command = args.command.replace("-", "_")
     handlers: dict[str, Callable[[argparse.Namespace, Path], Any]] = {
         "init": lambda a, c: service.init_project(c),
+        "web": lambda a, c: serve_web(c, host=a.host, port=a.port, json_output=bool(getattr(a, "json", False))),
         "plan": lambda a, c: service.start_background_phase(c, "plan", task=a.task, mock=a.mock, run_id=a.run_id or None) if a.background else service.plan(c, task=a.task, mock=a.mock, run_id=a.run_id or None),
         "approve": lambda a, c: service.approve(c, a.run_id),
         "write": lambda a, c: service.start_background_phase(c, "write", run_id=a.run_id, mock=a.mock) if a.background else service.write(c, a.run_id, mock=a.mock),
@@ -293,6 +308,7 @@ def dispatch(args: argparse.Namespace, cwd: Path) -> Any:
         "fix": lambda a, c: service.start_background_phase(c, "fix", run_id=a.run_id, mock=a.mock) if a.background else service.fix(c, a.run_id, mock=a.mock),
         "status": lambda a, c: service.status(c, a.run_id),
         "events": lambda a, c: service.events(c, a.run_id, since=getattr(a, "since", 0), phase=getattr(a, "phase", None)),
+        "trace": lambda a, c: service.trace(c, a.run_id, since=getattr(a, "since", 0), phase=getattr(a, "phase", None)),
         "runs": lambda a, c: service.runs(c, limit=a.limit),
         "artifact": lambda a, c: service.artifact(c, a.run_id, a.artifact, tail=a.tail),
         "config": lambda a, c: config_wizard_run(c, a),

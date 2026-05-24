@@ -70,6 +70,7 @@ from .state import (
     require_status,
     set_status,
 )
+from .trace import list_trace, trace_count
 
 
 TERMINAL_STATUSES = {APPLIED, FAILED, REVIEWED_PASS, REVIEWED_CHANGES_REQUESTED}
@@ -210,6 +211,7 @@ def start_background_phase(
         _acquire_lock(run_path, phase, token=lock_token)
         parent_holds_lock = True
         write_text(run_path / "events.jsonl", "")
+        write_text(run_path / "trace.jsonl", "")
         phase_args.extend(["--task", task, "--run-id", run_id])
         if mock:
             phase_args.append("--mock")
@@ -243,6 +245,7 @@ def start_background_phase(
         "root": str(root),
         "run_dir": str(run_path),
         "events_path": str(run_path / "events.jsonl"),
+        "trace_path": str(run_path / "trace.jsonl"),
     }
     _record_job(run_path, pending_job)
     try:
@@ -509,7 +512,16 @@ def _call_writer(
                     suggested_next_action="Set [phases.write].provider or [writer].provider to reasonix_cli or mock.",
                 )
             try:
-                raw = writer(prompt=prompt, config=adapter_cfg, cwd=worktree, log_path=log_path, command_key=p_command_key, timeout=p_timeout, env=p_env)
+                raw = writer(
+                    prompt=prompt,
+                    config=adapter_cfg,
+                    cwd=worktree,
+                    log_path=log_path,
+                    command_key=p_command_key,
+                    timeout=p_timeout,
+                    env=p_env,
+                    phase="fix" if repair else "write",
+                )
                 append_text(log_path, raw + "\n")
                 parsed = parse_writer_output(raw)
                 summary = parsed.summary
@@ -1243,6 +1255,20 @@ def events(cwd: Path, run_id: str, *, since: int = 0, phase: str | None = None) 
         "total": event_count(run_path),
         "returned": len(entries),
         "events": entries,
+    }
+
+
+def trace(cwd: Path, run_id: str, *, since: int = 0, phase: str | None = None) -> dict[str, Any]:
+    """Return structured trace entries for a run (used by CLI ``trace`` and MCP ``patchbay_trace``)."""
+    root = resolve_root(cwd)
+    run_path, _ = _load_run(root, run_id)
+    entries = list_trace(run_path, since=since, phase=phase)
+    return {
+        "run_id": run_id,
+        "since": since,
+        "total": trace_count(run_path),
+        "returned": len(entries),
+        "trace": entries,
     }
 
 
