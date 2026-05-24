@@ -219,26 +219,36 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _run_events_follow(cwd: Path, args: argparse.Namespace) -> dict[str, Any]:
-    seen = int(getattr(args, "since", 0) or 0)
+    initial_since = int(getattr(args, "since", 0) or 0)
+    seen = initial_since
     last: dict[str, Any] | None = None
+    collected: list[dict[str, Any]] = []
     idle_rounds = 0
     while True:
         last = service.events(cwd, args.run_id, since=seen, phase=getattr(args, "phase", None))
         events = last.get("events", [])
         if events:
-            seen += len(events)
+            collected.extend(events)
             idle_rounds = 0
         else:
             idle_rounds += 1
             if idle_rounds >= 5:
                 break
+        seen = int(last.get("total") or seen)
         if not getattr(args, "follow", False):
             break
         if events and not bool(getattr(args, "json", False)):
             for event in events:
                 print(json.dumps(event, ensure_ascii=False, sort_keys=True))
         time.sleep(0.4)
-    return last or {"run_id": args.run_id, "since": seen, "total": 0, "returned": 0, "events": []}
+    total = int((last or {}).get("total") or seen)
+    return {
+        "run_id": args.run_id,
+        "since": initial_since,
+        "total": total,
+        "returned": len(collected),
+        "events": collected,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -275,7 +285,7 @@ def dispatch(args: argparse.Namespace, cwd: Path) -> Any:
     command = args.command.replace("-", "_")
     handlers: dict[str, Callable[[argparse.Namespace, Path], Any]] = {
         "init": lambda a, c: service.init_project(c),
-        "plan": lambda a, c: service.start_background_phase(c, "plan", task=a.task, mock=a.mock) if a.background else service.plan(c, task=a.task, mock=a.mock, run_id=a.run_id or None),
+        "plan": lambda a, c: service.start_background_phase(c, "plan", task=a.task, mock=a.mock, run_id=a.run_id or None) if a.background else service.plan(c, task=a.task, mock=a.mock, run_id=a.run_id or None),
         "approve": lambda a, c: service.approve(c, a.run_id),
         "write": lambda a, c: service.start_background_phase(c, "write", run_id=a.run_id, mock=a.mock) if a.background else service.write(c, a.run_id, mock=a.mock),
         "test": lambda a, c: service.start_background_phase(c, "test", run_id=a.run_id) if a.background else service.test(c, a.run_id),

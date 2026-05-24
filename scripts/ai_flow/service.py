@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -73,6 +74,9 @@ from .state import (
 
 TERMINAL_STATUSES = {APPLIED, FAILED, REVIEWED_PASS, REVIEWED_CHANGES_REQUESTED}
 RUN_LOCK_FILE = "RUN.lock"
+RESERVED_RUN_ENV = "PATCHBAY_RESERVED_RUN_ID"
+INHERITED_LOCK_ENV = "PATCHBAY_INHERITED_LOCK"
+LOCK_TOKEN_ENV = "PATCHBAY_LOCK_TOKEN"
 
 
 def resolve_root(cwd: Path) -> Path:
@@ -100,27 +104,82 @@ def _record_job(run_path: Path, data: dict[str, Any]) -> None:
     write_json(_job_path(run_path), data)
 
 
-def _acquire_lock(run_path: Path, phase: str) -> None:
+def _patchbay_command(root: Path, phase: str) -> list[str]:
+    repo_script = root / "scripts" / "patchbay"
+    if repo_script.exists():
+        return [sys.executable, str(repo_script), phase]
+    source_script = Path(__file__).resolve().parents[1] / "patchbay"
+    if source_script.exists():
+        return [sys.executable, str(source_script), phase]
+    return [sys.executable, "-m", "ai_flow.cli", phase]
+
+
+def _background_spawn_command(phase: str, phase_args: list[str]) -> list[str]:
+    runner = """
+import os
+import sys
+from pathlib import Path
+
+root = Path(os.environ["PATCHBAY_BACKGROUND_ROOT"])
+source_scripts = Path(os.environ.get("PATCHBAY_BACKGROUND_SOURCE_SCRIPTS", ""))
+for candidate in (root / "scripts", source_scripts):
+    if candidate.exists() and str(candidate) not in sys.path:
+        sys.path.insert(0, str(candidate))
+
+try:
+    from ai_flow.cli import main
+    raise SystemExit(main(sys.argv[1:]))
+finally:
+    run_dir = os.environ.get("PATCHBAY_BACKGROUND_RUN_DIR")
+    token = os.environ.get("PATCHBAY_LOCK_TOKEN")
+    phase = os.environ.get("PATCHBAY_BACKGROUND_PHASE", "")
+    if run_dir and token:
+        lock_path = Path(run_dir) / "RUN.lock"
+        try:
+            lines = lock_path.read_text(encoding="utf-8").splitlines()
+            if len(lines) >= 2 and lines[0] == phase and lines[1] == token:
+                lock_path.unlink()
+        except FileNotFoundError:
+            pass
+        except Exception:
+            pass
+""".strip()
+    return [sys.executable, "-c", runner, phase, *phase_args]
+
+
+def _acquire_lock(run_path: Path, phase: str, *, token: str | None = None) -> None:
     path = _lock_path(run_path)
-    if path.exists():
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL)
+    except FileExistsError:
         raise StateError(
             f"Run is already busy: {read_text(path, default='').strip()}",
             stage=phase,
             suggested_next_action="Wait for the active phase to finish, then poll events/status.",
         )
-    write_text(path, phase + "\n")
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(phase + "\n")
+        if token:
+            handle.write(token + "\n")
 
 
 def _begin_phase_lock(run_path: Path, phase: str) -> bool:
-    inherited = os.environ.get("PATCHBAY_INHERITED_LOCK")
+    inherited = os.environ.get(INHERITED_LOCK_ENV)
     if inherited == phase and _lock_path(run_path).exists():
         return True
     _acquire_lock(run_path, phase)
     return True
 
 
-def _release_lock(run_path: Path) -> None:
+def _release_lock(run_path: Path, *, token: str | None = None) -> None:
     path = _lock_path(run_path)
+    if not path.exists():
+        return
+    if token:
+        lines = read_text(path, default="").splitlines()
+        if len(lines) < 2 or lines[1] != token:
+            return
     if path.exists():
         path.unlink()
 
@@ -134,26 +193,58 @@ def start_background_phase(
     mock: bool = False,
 ) -> dict[str, Any]:
     root = resolve_root(cwd)
-    command = [sys.executable, str(root / "scripts" / "patchbay"), phase]
+    ensure_layout(root)
+    phase_args: list[str] = []
     job_started = time.time()
+    run_path: Path
+    parent_holds_lock = False
+    lock_token = uuid.uuid4().hex
     if phase == "plan":
         if not task:
             raise AiFlowError("Background plan requires task.", stage="plan")
-        run_id = run_id or new_run_id(task)
-        command.extend(["--task", task, "--run-id", run_id])
+        explicit_run_id = run_id is not None
+        if explicit_run_id:
+            run_path = _reserve_explicit_run_dir(root, run_id)
+        else:
+            run_id, run_path = _reserve_new_run_dir(root, new_run_id(task))
+        _acquire_lock(run_path, phase, token=lock_token)
+        parent_holds_lock = True
+        write_text(run_path / "events.jsonl", "")
+        phase_args.extend(["--task", task, "--run-id", run_id])
         if mock:
-            command.append("--mock")
+            phase_args.append("--mock")
     else:
         if not run_id:
             raise AiFlowError(f"Background {phase} requires run_id.", stage=phase)
         run_path, _ = _load_run(root, run_id)
-        _acquire_lock(run_path, phase)
-        command.append(run_id)
+        _acquire_lock(run_path, phase, token=lock_token)
+        parent_holds_lock = True
+        phase_args.append(run_id)
         if mock and phase in {"write", "review", "fix"}:
-            command.append("--mock")
+            phase_args.append("--mock")
+    command = _background_spawn_command(phase, phase_args)
     env = dict(os.environ)
-    if phase != "plan":
-        env["PATCHBAY_INHERITED_LOCK"] = phase
+    env[INHERITED_LOCK_ENV] = phase
+    env[LOCK_TOKEN_ENV] = lock_token
+    env["PATCHBAY_BACKGROUND_ROOT"] = str(root)
+    env["PATCHBAY_BACKGROUND_RUN_DIR"] = str(run_path)
+    env["PATCHBAY_BACKGROUND_PHASE"] = phase
+    env["PATCHBAY_BACKGROUND_SOURCE_SCRIPTS"] = str(Path(__file__).resolve().parents[1])
+    if phase == "plan" and run_id:
+        env[RESERVED_RUN_ENV] = run_id
+    pending_job = {
+        "background": True,
+        "phase": phase,
+        "pid": None,
+        "run_id": run_id or "pending",
+        "command": command,
+        "started_at": now_iso(),
+        "started_at_epoch": job_started,
+        "root": str(root),
+        "run_dir": str(run_path),
+        "events_path": str(run_path / "events.jsonl"),
+    }
+    _record_job(run_path, pending_job)
     try:
         process = subprocess.Popen(
             command,
@@ -164,26 +255,58 @@ def start_background_phase(
             env=env,
         )
     except Exception:
-        if phase != "plan" and run_id:
-            _release_lock(_run_dir(root, run_id))
+        if parent_holds_lock:
+            _release_lock(run_path, token=lock_token)
         raise
-    run_path = _run_dir(root, run_id or "pending")
-    run_path.mkdir(parents=True, exist_ok=True)
-    write_text(run_path / "events.jsonl", read_text(run_path / "events.jsonl", default=""))
     job_data = {
-        "background": True,
-        "phase": phase,
+        **pending_job,
         "pid": process.pid,
-        "run_id": run_id or "pending",
-        "command": command,
-        "started_at": now_iso(),
-        "started_at_epoch": job_started,
-        "root": str(root),
-        "run_dir": str(run_path),
-        "events_path": str(run_path / "events.jsonl"),
     }
+    early_exit = process.poll()
+    if early_exit is not None and parent_holds_lock:
+        _release_lock(run_path, token=lock_token)
+        job_data["exit_code"] = early_exit
+        parent_holds_lock = False
     _record_job(run_path, job_data)
     return job_data
+
+
+def _plan_may_use_existing_run(run_path: Path, run_id: str) -> bool:
+    return (
+        os.environ.get(RESERVED_RUN_ENV) == run_id
+        and os.environ.get(INHERITED_LOCK_ENV) == "plan"
+        and _lock_path(run_path).exists()
+        and not (run_path / "STATUS.json").exists()
+    )
+
+
+def _raise_run_exists(run_id: str) -> None:
+    raise StateError(
+        f"Run already exists: {run_id}",
+        stage="plan",
+        suggested_next_action="Choose a new run id or inspect the existing run before continuing.",
+    )
+
+
+def _reserve_new_run_dir(root: Path, base_run_id: str) -> tuple[str, Path]:
+    suffix = 1
+    while True:
+        candidate = base_run_id if suffix == 1 else f"{base_run_id}-{suffix}"
+        run_path = _run_dir(root, candidate)
+        try:
+            run_path.mkdir(parents=True, exist_ok=False)
+            return candidate, run_path
+        except FileExistsError:
+            suffix += 1
+
+
+def _reserve_explicit_run_dir(root: Path, run_id: str) -> Path:
+    run_path = _run_dir(root, run_id)
+    try:
+        run_path.mkdir(parents=True, exist_ok=False)
+    except FileExistsError:
+        _raise_run_exists(run_id)
+    return run_path
 
 
 def _base_commit(root: Path) -> str | None:
@@ -531,20 +654,31 @@ def plan(cwd: Path, *, task: str, mock: bool = False, run_id: str | None = None)
     root = resolve_root(cwd)
     ensure_layout(root)
     cfg = load_config(root)
-    run_id = run_id or new_run_id(task)
-    run_path = _run_dir(root, run_id)
-    run_path.mkdir(parents=True, exist_ok=True)
-    base_commit = _base_commit(root)
-    before_workspace = _workspace_snapshot(root)
-    create_status(
-        run_path,
-        run_id=run_id,
-        task=task,
-        repo_root=root,
-        config_path=config_path(root),
-        base_commit=base_commit,
-    )
+    explicit_run_id = run_id is not None
+    if not explicit_run_id:
+        run_id, run_path = _reserve_new_run_dir(root, new_run_id(task))
+        reserved_run = False
+    else:
+        run_path = _run_dir(root, run_id)
+        reserved_run = _plan_may_use_existing_run(run_path, run_id)
+    if explicit_run_id and run_path.exists() and not reserved_run:
+        _raise_run_exists(run_id)
+    if not run_path.exists():
+        run_path = _reserve_explicit_run_dir(root, run_id)
+    lock_started = False
     try:
+        _begin_phase_lock(run_path, "plan")
+        lock_started = True
+        base_commit = _base_commit(root)
+        before_workspace = _workspace_snapshot(root)
+        create_status(
+            run_path,
+            run_id=run_id,
+            task=task,
+            repo_root=root,
+            config_path=config_path(root),
+            base_commit=base_commit,
+        )
         write_text(run_path / "TASK.md", task.rstrip() + "\n")
         write_text(run_path / "BASE_COMMIT", (base_commit or "") + "\n")
         write_text(run_path / "FIXES.md", "")
@@ -616,6 +750,9 @@ def plan(cwd: Path, *, task: str, mock: bool = False, run_id: str | None = None)
     except Exception as exc:
         _mark_failure_if_possible(run_path, exc, "plan")
         raise
+    finally:
+        if lock_started:
+            _release_lock(run_path)
 
 
 def approve(cwd: Path, run_id: str) -> dict[str, Any]:
