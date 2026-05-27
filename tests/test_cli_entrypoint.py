@@ -22,6 +22,7 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertIn("review", help_text)
         self.assertIn("status", help_text)
         self.assertIn("events", help_text)
+        self.assertIn("metrics", help_text)
         self.assertIn("config", help_text)
         self.assertIn("mcp", help_text)
         self.assertIn("agent", help_text)
@@ -85,6 +86,7 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertIn("patchbay_plan", TOOLS)
         self.assertIn("patchbay_agent", TOOLS)
         self.assertIn("patchbay_events", TOOLS)
+        self.assertIn("patchbay_metrics", TOOLS)
         self.assertIn("patchbay_config_show", TOOLS)
         self.assertIn("patchbay_config_phase_set", TOOLS)
         self.assertIn("patchbay_config_command_set", TOOLS)
@@ -93,6 +95,7 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertIn("ai_flow_plan", TOOLS)
         self.assertIn("ai_flow_agent", TOOLS)
         self.assertIn("ai_flow_events", TOOLS)
+        self.assertIn("ai_flow_metrics", TOOLS)
 
     def test_mcp_initialize(self) -> None:
         from scripts.ai_flow.mcp_server import handle
@@ -110,8 +113,10 @@ class CliEntrypointTest(unittest.TestCase):
         tool_names = [t["name"] for t in response["result"]["tools"]]
         self.assertIn("patchbay_agent", tool_names)
         self.assertIn("patchbay_events", tool_names)
+        self.assertIn("patchbay_metrics", tool_names)
         self.assertIn("ai_flow_agent", tool_names)
         self.assertIn("ai_flow_events", tool_names)
+        self.assertIn("ai_flow_metrics", tool_names)
 
     def test_agent_and_skill_parsers(self) -> None:
         from scripts.ai_flow.cli import build_parser

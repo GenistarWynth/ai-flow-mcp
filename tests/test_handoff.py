@@ -188,6 +188,32 @@ class HandoffContextTest(unittest.TestCase):
         self.assertEqual(legacy_payload["run_id"], planned["run_id"])
         self.assertEqual(canonical_payload["next_actions"], legacy_payload["next_actions"])
 
+    def test_metrics_command_and_mcp_tool_expose_efficiency_digest(self) -> None:
+        planned = self.cli_json("plan", "--task", "metrics digest", "--mock")
+        run_id = planned["run_id"]
+
+        cli_metrics = self.cli_json("metrics", run_id)
+
+        self.assertEqual(cli_metrics["run_id"], run_id)
+        self.assertEqual(cli_metrics["status"], "PLANNED")
+        self.assertIn("plan", cli_metrics["run_metrics"]["phase_durations_ms"])
+        original_root = mcp_server.ROOT
+        try:
+            mcp_server.ROOT = self.repo
+            response = mcp_server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {"name": "patchbay_metrics", "arguments": {"run_id": run_id}},
+                }
+            )
+        finally:
+            mcp_server.ROOT = original_root
+
+        payload = json.loads(response["result"]["content"][0]["text"])
+        self.assertEqual(payload["run_metrics"]["event_count"], cli_metrics["run_metrics"]["event_count"])
+
     def test_fix_loop_context_tracks_provider_trail_and_next_action(self) -> None:
         planned = self.cli_json("plan", "--task", "fix handoff", "--mock")
         run_id = planned["run_id"]

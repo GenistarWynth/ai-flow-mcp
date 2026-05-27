@@ -176,6 +176,10 @@ def build_parser() -> argparse.ArgumentParser:
     context.add_argument("--include-trace", action="store_true", help="Merge trace entries into the context timeline.")
     _add_json(context)
 
+    metrics = sub.add_parser("metrics", help="Show run efficiency metrics.")
+    metrics.add_argument("run_id")
+    _add_json(metrics)
+
     events = sub.add_parser("events", help="Show run event log (JSONL stream).")
     events.add_argument("run_id")
     events.add_argument("--since", type=int, default=0, help="Return events after index N.")
@@ -377,6 +381,7 @@ def dispatch(args: argparse.Namespace, cwd: Path) -> Any:
             since_trace=getattr(a, "since_trace", 0),
             include_trace=bool(getattr(a, "include_trace", False)),
         ),
+        "metrics": lambda a, c: service.metrics(c, a.run_id),
         "events": lambda a, c: service.events(c, a.run_id, since=getattr(a, "since", 0), phase=getattr(a, "phase", None)),
         "trace": lambda a, c: service.trace(c, a.run_id, since=getattr(a, "since", 0), phase=getattr(a, "phase", None)),
         "runs": lambda a, c: service.runs(c, limit=a.limit),

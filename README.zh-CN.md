@@ -35,8 +35,8 @@ timeout = 900
 
 ## 功能概览
 
-- CLI 流程：`agent message`、`web`、`plan`、`approve`、`write`、`test`、`review`、`fix`、`status`、`context`、`trace`、`diff`、`apply`、`cleanup`。
-- MCP 工具：`patchbay_agent`、`patchbay_plan`、`patchbay_approve`、`patchbay_write`、`patchbay_test`、`patchbay_review`、`patchbay_fix`、`patchbay_status`、`patchbay_context`、`patchbay_events`、`patchbay_trace`、`patchbay_runs`、`patchbay_artifact`、`patchbay_config_show`、`patchbay_config_phase_set`、`patchbay_config_command_set`、`patchbay_config_test_add`、`patchbay_config_provider_add_cli`、`patchbay_diff`、`patchbay_apply`。
+- CLI 流程：`agent message`、`web`、`plan`、`approve`、`write`、`test`、`review`、`fix`、`status`、`context`、`metrics`、`trace`、`diff`、`apply`、`cleanup`。
+- MCP 工具：`patchbay_agent`、`patchbay_plan`、`patchbay_approve`、`patchbay_write`、`patchbay_test`、`patchbay_review`、`patchbay_fix`、`patchbay_status`、`patchbay_context`、`patchbay_metrics`、`patchbay_events`、`patchbay_trace`、`patchbay_runs`、`patchbay_artifact`、`patchbay_config_show`、`patchbay_config_phase_set`、`patchbay_config_command_set`、`patchbay_config_test_add`、`patchbay_config_provider_add_cli`、`patchbay_diff`、`patchbay_apply`。
 - 兼容旧 MCP 工具名：`ai_flow_*`。
 - 默认使用隔离 git worktree，避免直接污染当前工作区。
 - 每次运行都会在 `.ai/runs/<run_id>/` 下落盘计划、diff、日志和状态。
@@ -110,6 +110,7 @@ python scripts/patchbay agent message continue --run-id <run_id> --background --
 
 ```bash
 python scripts/patchbay status <run_id>
+python scripts/patchbay metrics <run_id>
 python scripts/patchbay diff <run_id>
 ```
 
@@ -172,6 +173,7 @@ Claude Desktop、Claude Code、Gemini CLI 或其他 MCP host 使用各自等价�
 - `patchbay_fix`
 - `patchbay_status`
 - `patchbay_context`
+- `patchbay_metrics`
 - `patchbay_events`
 - `patchbay_trace`
 - `patchbay_runs`

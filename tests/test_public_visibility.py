@@ -468,3 +468,5 @@ class PublicVisibilityTest(unittest.TestCase):
         self.assertEqual(status["effective_phase_providers"]["plan"]["provider"], "claude_cli")
         self.assertEqual(status["effective_phase_providers"]["write"]["provider"], "reasonix_cli")
         self.assertIn("next_commands", status)
+        self.assertIn("run_metrics", status)
+        self.assertEqual(status["run_metrics"]["event_count"], status["event_count"])

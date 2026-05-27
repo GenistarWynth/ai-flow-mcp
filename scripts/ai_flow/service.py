@@ -1426,6 +1426,17 @@ def context(
     )
 
 
+def metrics(cwd: Path, run_id: str) -> dict[str, Any]:
+    """Return the run efficiency digest without the full handoff payload."""
+    status_data = status(cwd, run_id)
+    return {
+        "run_id": run_id,
+        "status": status_data.get("status"),
+        "current_phase": status_data.get("current_phase"),
+        "run_metrics": status_data.get("run_metrics", {}),
+    }
+
+
 def events(cwd: Path, run_id: str, *, since: int = 0, phase: str | None = None) -> dict[str, Any]:
     """Return event log entries for a run (used by CLI ``events`` and MCP ``patchbay_events``)."""
     root = resolve_root(cwd)

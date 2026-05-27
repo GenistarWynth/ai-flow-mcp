@@ -88,9 +88,10 @@ scripts/patchbay events <run_id>           # 展示完整事件日志
 scripts/patchbay events <run_id> --phase plan  # 按阶段筛选
 scripts/patchbay events <run_id> --since 5     # 从第 5 条事件开始
 scripts/patchbay status <run_id>           # status 现在包含 latest_event 和 event_count
+scripts/patchbay metrics <run_id>          # 只查看 run_metrics 效率证据
 ```
 
-MCP 工具 `patchbay_agent` 是对话式入口，能启动、恢复和推进运行，但仍保留计划批准和 apply 确认门禁。`patchbay_context` 是跨 host 恢复上下文的首选只读入口；`patchbay_events` 和 `patchbay_status` 仍可用于聚焦查看。每条事件记录包含 `phase`、`provider`、`model`、`action`、`status`、`timestamp`、`detail`、`artifact_paths`、`duration_ms` 和 `next_action`。
+MCP 工具 `patchbay_agent` 是对话式入口，能启动、恢复和推进运行，但仍保留计划批准和 apply 确认门禁。`patchbay_context` 是跨 host 恢复上下文的首选只读入口；`patchbay_metrics` 可单独读取阶段耗时、尝试次数、provider 使用轨迹、事件/trace 数和成本/token 上报状态；`patchbay_events` 和 `patchbay_status` 仍可用于聚焦查看。每条事件记录包含 `phase`、`provider`、`model`、`action`、`status`、`timestamp`、`detail`、`artifact_paths`、`duration_ms` 和 `next_action`。
 
 ## 常用命令
 
@@ -106,6 +107,7 @@ scripts/patchbay test <run_id>
 scripts/patchbay review <run_id>
 scripts/patchbay fix <run_id>
 scripts/patchbay status <run_id>
+scripts/patchbay metrics <run_id>
 scripts/patchbay events <run_id>
 scripts/patchbay diff <run_id>
 scripts/patchbay apply <run_id>
@@ -156,7 +158,7 @@ claude mcp add patchbay -- python scripts/patchbay_mcp_server.py
 # Gemini CLI: 使用对应的 MCP server 注册方式
 ```
 
-MCP 只调用已有服务函数，不复制业务逻辑。工具名使用 `patchbay_*`（包括 `patchbay_agent`、`patchbay_context`、`patchbay_events`、`patchbay_runs`、`patchbay_artifact` 和 `patchbay_config_*` 配置工具），旧的 `ai_flow_*` 作为兼容别名保留。无论通过哪个 host 调用，流程和门禁保持一致。
+MCP 只调用已有服务函数，不复制业务逻辑。工具名使用 `patchbay_*`（包括 `patchbay_agent`、`patchbay_context`、`patchbay_metrics`、`patchbay_events`、`patchbay_runs`、`patchbay_artifact` 和 `patchbay_config_*` 配置工具），旧的 `ai_flow_*` 作为兼容别名保留。无论通过哪个 host 调用，流程和门禁保持一致。
 
 ## Codex Skill
 
