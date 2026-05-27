@@ -382,6 +382,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const [submitting, setSubmitting] = useState(false);
   const [actionInFlight, setActionInFlight] = useState(false);
   const [localMessages, setLocalMessages] = useState<Record<string, LocalMessage[]>>({});
+  const [newTaskReply, setNewTaskReply] = useState<AgentResponse | null>(null);
 
   const patchRunSummary = (runId: string, patch: Partial<RunSummary>) => {
     setRuns((current) => current.map((run) => (run.run_id === runId ? { ...run, ...patch } : run)));
@@ -653,6 +654,14 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       if (!selectedRun) {
         const created = await client.agentMessage(text, { include: { plan: true }, background: true });
         setComposer("");
+        setNewTaskReply(null);
+        if (!created.run_id) {
+          appendLocalMessage(text);
+          setNewTaskReply(created);
+          if (created.doctor) setDoctor(created.doctor);
+          await loadRuns();
+          return;
+        }
         setNewTaskMode(false);
         await loadRuns(created.run_id);
         return;
@@ -689,6 +698,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     setSelectedRun("");
     setComposer("");
     setError("");
+    setNewTaskReply(null);
   };
 
   return (
@@ -760,11 +770,17 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
 
         <section className="thread" aria-label="Patchbay Agent 对话线程">
           {!selectedRun ? (
-            <div className="empty-thread">
-              <Bot size={28} />
-              <strong>告诉 Patchbay Agent 要做什么</strong>
-              <span>它会先生成计划，后续批准、实现、测试、审查和应用都从这个线程推进。</span>
-            </div>
+            <>
+              <div className="empty-thread">
+                <Bot size={28} />
+                <strong>告诉 Patchbay Agent 要做什么</strong>
+                <span>它会先生成计划，后续批准、实现、测试、审查和应用都从这个线程推进。</span>
+              </div>
+              {localRunMessages.map((message) => (
+                <ChatBubble key={message.id} role="user" title="本地消息" body={message.body} timestamp={message.timestamp} />
+              ))}
+              {newTaskReply ? <ChatBubble role="assistant" title="Patchbay Agent" body={newTaskReply.reply} tone={newTaskReply.ok === false ? "failed" : "ready"} /> : null}
+            </>
           ) : (
             <>
               <ChatBubble role="user" title="任务" body={selectedTask || selectedRun} />

@@ -37,6 +37,22 @@ INHERITED_AGENT_LOCK_ENV = "PATCHBAY_INHERITED_AGENT_LOCK"
 AGENT_LOCK_TOKEN_ENV = "PATCHBAY_AGENT_LOCK_TOKEN"
 PLAN_CONFIRMATION = "plan_approved"
 APPLY_CONFIRMATION = "apply_approved"
+TASK_INTENT_WORDS = {
+    "add",
+    "build",
+    "change",
+    "create",
+    "fix",
+    "implement",
+    "improve",
+    "modify",
+    "optimize",
+    "refactor",
+    "repair",
+    "test",
+    "update",
+    "write",
+}
 
 
 def agent_message(
@@ -59,6 +75,10 @@ def agent_message(
     intent = _classify_intent(text, has_run=bool(run_id), confirmation=confirmation)
     if intent == "doctor":
         return _doctor_response(root)
+    if intent == "help":
+        return _help_response()
+    if intent == "runs":
+        return _runs_response(root)
     if background:
         return _start_background_agent(
             root,
@@ -525,6 +545,10 @@ def _classify_intent(message: str, *, has_run: bool, confirmation: str) -> str:
         return "apply"
     if _is_doctor_intent(text):
         return "doctor"
+    if _is_help_intent(text):
+        return "help"
+    if not has_run and _is_runs_intent(text):
+        return "runs"
     if not has_run:
         return "start"
     if _has_any(text, ("apply", "应用", "套用")):
@@ -540,29 +564,39 @@ def _classify_intent(message: str, *, has_run: bool, confirmation: str) -> str:
     return "status"
 
 
+def _words(text: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9_]+", text))
+
+
+def _is_help_intent(text: str) -> bool:
+    if text in {"?", "help", "usage", "commands", "帮助", "怎么用"}:
+        return True
+    words = _words(text)
+    if words & TASK_INTENT_WORDS:
+        return False
+    return bool(words & {"help", "usage", "commands"}) and bool(words & {"patchbay", "agent", "command", "commands"})
+
+
+def _is_runs_intent(text: str) -> bool:
+    if text in {"status", "runs", "recent", "recent runs", "list runs", "show runs", "状态", "运行", "最近运行"}:
+        return True
+    words = _words(text)
+    if words & TASK_INTENT_WORDS:
+        return False
+    if "runs" in words:
+        return True
+    if "status" in words:
+        return bool(words & {"agent", "latest", "list", "patchbay", "recent", "run", "runs", "show", "current"})
+    return "recent" in words and bool(words & {"run", "runs"})
+
+
 def _is_doctor_intent(text: str) -> bool:
     if text in {"doctor", "readiness", "diagnose", "diagnostic", "diagnostics", "诊断"}:
         return True
     if _has_any(text, ("就绪", "安装检查", "配置检查")):
         return True
-    words = set(re.findall(r"[a-z0-9_]+", text))
-    task_words = {
-        "add",
-        "build",
-        "change",
-        "create",
-        "fix",
-        "implement",
-        "improve",
-        "modify",
-        "optimize",
-        "refactor",
-        "repair",
-        "test",
-        "update",
-        "write",
-    }
-    if words & task_words:
+    words = _words(text)
+    if words & TASK_INTENT_WORDS:
         return False
     setup_words = {
         "check",
@@ -584,6 +618,55 @@ def _is_doctor_intent(text: str) -> bool:
     return "doctor" in words and bool(words & (setup_words | {"run", "show"}))
 
 
+def _help_response() -> dict[str, Any]:
+    capabilities = [
+        {
+            "name": "start",
+            "summary": "Send a task to create a plan; implementation still waits for explicit plan approval.",
+        },
+        {
+            "name": "readiness",
+            "summary": "Send `readiness` or `patchbay doctor` to inspect setup without creating a run.",
+        },
+        {
+            "name": "status",
+            "summary": "Send `status` without a run_id to list recent runs, or with a run_id to inspect one run.",
+        },
+        {
+            "name": "continue",
+            "summary": "Send `continue` with a run_id to advance the next safe phase.",
+        },
+        {
+            "name": "apply",
+            "summary": "Send `apply` only after tests and review pass; it still requires apply_approved confirmation.",
+        },
+    ]
+    return _stateless_response(
+        action="help",
+        reply="Patchbay Agent can start a gated run, report readiness, list recent runs, continue a run, show artifacts/diff, and apply only after explicit approval.",
+        next_actions=["start", "readiness", "runs"],
+        extra={"capabilities": capabilities},
+    )
+
+
+def _runs_response(root: Path) -> dict[str, Any]:
+    report = service.runs(root, limit=5)
+    recent = list(report.get("runs") or [])
+    if recent:
+        latest = recent[0]
+        reply = f"Latest Patchbay run is {latest.get('run_id')} ({latest.get('status') or 'unknown'}). Pass that run_id to inspect or continue it."
+        next_actions = ["status", "continue", "readiness"]
+    else:
+        reply = "No Patchbay runs found. Send a task to start with a plan, or send readiness to check setup."
+        next_actions = ["start", "readiness"]
+    return _stateless_response(
+        action="runs",
+        reply=reply,
+        next_actions=next_actions,
+        extra={"runs": report, "recent_run": recent[0] if recent else None},
+    )
+
+
 def _doctor_response(root: Path) -> dict[str, Any]:
     report = run_doctor(root, include_mcp=False)
     next_actions = list(report.get("next_actions") or [])
@@ -593,10 +676,29 @@ def _doctor_response(root: Path) -> dict[str, Any]:
         reply = "Patchbay readiness checks found setup work: " + " ".join(next_actions)
     else:
         reply = "Patchbay readiness checks need attention."
-    return {
+    return _stateless_response(
+        action="doctor",
+        reply=reply,
+        ok=bool(report.get("ok")),
+        error=None if report.get("ok") else reply,
+        next_actions=next_actions,
+        extra={"doctor": report},
+    )
+
+
+def _stateless_response(
+    *,
+    action: str,
+    reply: str,
+    next_actions: list[str],
+    ok: bool = True,
+    error: str | None = None,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    response: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
-        "ok": bool(report.get("ok")),
-        "action": "doctor",
+        "ok": ok,
+        "action": action,
         "reply": reply,
         "run_id": None,
         "status": None,
@@ -606,9 +708,11 @@ def _doctor_response(root: Path) -> dict[str, Any]:
         "diff": None,
         "requires_confirmation": None,
         "next_actions": next_actions,
-        "error": None if report.get("ok") else reply,
-        "doctor": report,
+        "error": error,
     }
+    if extra:
+        response.update(extra)
+    return response
 
 
 def _has_any(text: str, needles: tuple[str, ...]) -> bool:

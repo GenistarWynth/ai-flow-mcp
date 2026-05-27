@@ -80,6 +80,7 @@ The old `scripts/ai-flow` command and `.ai/ai-flow.toml` config still work as co
 ```bash
 python scripts/patchbay plan --task "..."
 python scripts/patchbay agent message "..." --json
+python scripts/patchbay agent message status --json
 python scripts/patchbay agent message readiness --json
 python scripts/patchbay web --port 8765
 python scripts/patchbay approve <run_id>
@@ -99,7 +100,7 @@ python scripts/patchbay agent message approve --run-id <run_id> --confirmation p
 python scripts/patchbay agent message continue --run-id <run_id> --background --json
 ```
 
-Background agent turns write `JOB.json`, append `agent` events, and preserve the plan/apply confirmation gates. `apply` remains foreground-only and requires explicit confirmation after tests and review pass. Readiness prompts such as `readiness`, `diagnose`, or `patchbay doctor` return the unified doctor report directly without creating a run.
+Background agent turns write `JOB.json`, append `agent` events, and preserve the plan/apply confirmation gates. `apply` remains foreground-only and requires explicit confirmation after tests and review pass. Local prompts such as `help`, `status`, `runs`, `readiness`, `diagnose`, or `patchbay doctor` return guidance, recent runs, or the unified doctor report directly without creating a model run.
 
 The web workbench exposes the same conversational flow and has a diagnostics drawer. Its Readiness tab calls the unified doctor checks without MCP stdio probing, so setup gaps are visible from the desktop UI without starting extra child processes.
 

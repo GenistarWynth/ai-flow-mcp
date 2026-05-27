@@ -332,6 +332,29 @@ describe("Workbench", () => {
     expect(await screen.findByRole("heading", { name: "Build a chat thread" })).toBeInTheDocument();
   });
 
+  it("shows a local agent reply when a new-task message does not create a run", async () => {
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      agentMessage: vi.fn().mockResolvedValue({
+        run_id: null,
+        action: "runs",
+        ok: true,
+        reply: "No Patchbay runs found. Send a task to start with a plan.",
+        runs: { count: 0, runs: [] }
+      })
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.type(screen.getByLabelText("给 Patchbay Agent 输入消息"), "status");
+    await userEvent.click(screen.getByRole("button", { name: "创建任务" }));
+
+    await waitFor(() => expect(client.agentMessage).toHaveBeenCalledWith("status", { include: { plan: true }, background: true }));
+    expect(await screen.findByText("No Patchbay runs found. Send a task to start with a plan.")).toBeVisible();
+    expect(client.getStatus).not.toHaveBeenCalled();
+  });
+
   it("maps approve intent through the confirmation gate", async () => {
     const client = createClient({
       listRuns: vi.fn().mockResolvedValue({ runs: [{ run_id: "run-ready", task: "Approve a plan", status: "PLANNED" }] }),

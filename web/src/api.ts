@@ -194,11 +194,17 @@ export type AgentActivity = {
 };
 
 export type AgentResponse = {
-  run_id: string;
+  run_id: string | null;
+  action?: string;
   ok?: boolean;
   reply?: string;
-  status?: RunStatus;
-  context?: HandoffContext;
+  status?: RunStatus | null;
+  context?: HandoffContext | null;
+  runs?: { count?: number; runs?: RunSummary[] };
+  recent_run?: RunSummary | null;
+  doctor?: DoctorReport;
+  capabilities?: { name: string; summary: string }[];
+  next_actions?: string[];
   diff?: string | null;
   background?: boolean;
   job?: Record<string, unknown>;
