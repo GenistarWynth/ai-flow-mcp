@@ -42,6 +42,59 @@ ACTION_TO_TOOL: dict[str, str] = {
 
 HUMAN_CONFIRMATION_ACTIONS = {"approve", "apply"}
 
+PHASE_LABELS: dict[str, str] = {
+    "plan": "规划",
+    "approve": "批准",
+    "write": "实现",
+    "test": "测试",
+    "review": "审查",
+    "fix": "修复",
+    "apply": "应用",
+    "cleanup": "清理",
+    "error": "错误",
+}
+
+ACTION_LABELS: dict[str, str] = {
+    "approve": "批准计划",
+    "write": "开始实现",
+    "test": "运行测试",
+    "review": "开始审查",
+    "fix": "执行修复",
+    "apply": "应用补丁",
+    "cleanup": "清理运行",
+    "start": "开始",
+    "success": "完成",
+    "gate": "门禁",
+    "error": "错误",
+    "failed": "失败",
+    "retry": "重试",
+    "approve_granted": "批准已记录",
+    "apply_granted": "应用已确认",
+    "apply_denied": "应用被阻止",
+}
+
+STATUS_LABELS: dict[str, str] = {
+    "NEW": "待规划",
+    "PLANNED": "等待批准",
+    "APPROVED": "等待实现",
+    "IMPLEMENTING": "实现中",
+    "IMPLEMENTED": "等待测试",
+    "TESTING": "测试中",
+    "TESTED": "等待审查",
+    "REVIEWING": "审查中",
+    "REVIEWED_PASS": "审查通过",
+    "REVIEWED_CHANGES_REQUESTED": "需要修复",
+    "FIXING": "修复中",
+    "APPLIED": "已应用",
+    "FAILED": "失败",
+    "RUNNING": "运行中",
+    "READY": "就绪",
+    "PASS": "通过",
+    "CHANGES_REQUESTED": "需要修改",
+    "SUCCESS": "成功",
+    "ERROR": "错误",
+}
+
 
 def build_handoff_context(
     *,
@@ -57,6 +110,7 @@ def build_handoff_context(
     timeline = sorted([*events, *traces], key=_timeline_sort_key)
     provider_trail = _provider_trail(run_path)
     next_actions = annotate_next_actions(status_data)
+    artifacts = describe_artifacts(run_path, status_data.get("artifacts", []))
     return {
         "run_id": status_data.get("run_id", run_path.name),
         "handoff_summary": _handoff_summary(status_data, next_actions),
@@ -65,8 +119,14 @@ def build_handoff_context(
         "gate_state": status_data.get("gate_state", {}),
         "next_actions": next_actions,
         "provider_trail": provider_trail,
-        "artifacts": describe_artifacts(run_path, status_data.get("artifacts", [])),
+        "artifacts": artifacts,
         "timeline": timeline,
+        "agent_activity": _agent_activity(
+            status_data=status_data,
+            next_actions=next_actions,
+            timeline=timeline,
+            artifacts=artifacts,
+        ),
         "cursors": {
             "event": _raw_line_count(run_path / "events.jsonl"),
             "trace": _raw_line_count(run_path / "trace.jsonl"),
@@ -160,6 +220,233 @@ def _handoff_summary(status_data: dict[str, Any], next_actions: list[dict[str, A
     else:
         next_text = "none"
     return f"Run {run_id} is {status} in phase {phase}; next safe action: {next_text}."
+
+
+def _agent_activity(
+    *,
+    status_data: dict[str, Any],
+    next_actions: list[dict[str, Any]],
+    timeline: list[dict[str, Any]],
+    artifacts: list[dict[str, str]],
+) -> dict[str, Any]:
+    status = str(status_data.get("status") or "")
+    phase = str(status_data.get("current_phase") or "")
+    gate_state = status_data.get("gate_state", {}) or {}
+    next_action = _primary_next_action(next_actions)
+    tone = _run_tone(status_data, next_action)
+    current_step = {
+        "phase": phase,
+        "label": _phase_label(phase),
+        "status": status,
+        "status_label": _status_label(status),
+        "summary": _current_step_summary(status_data, next_action),
+    }
+    messages = [_activity_message(item, index) for index, item in enumerate(timeline)]
+    if not messages:
+        messages = [_state_message(status_data)]
+    return {
+        "headline": _activity_headline(status_data, next_action),
+        "tone": tone,
+        "current_step": current_step,
+        "next_action": next_action,
+        "gate_cards": _gate_cards(status_data, gate_state),
+        "messages": messages,
+        "artifacts": artifacts,
+    }
+
+
+def _primary_next_action(next_actions: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not next_actions:
+        return None
+    selected = next((action for action in next_actions if action.get("safe")), next_actions[0])
+    action = dict(selected)
+    name = str(action.get("name") or "")
+    action["label"] = ACTION_LABELS.get(name, _phase_label(name))
+    return action
+
+
+def _activity_headline(status_data: dict[str, Any], next_action: dict[str, Any] | None) -> str:
+    run_id = status_data.get("run_id", "")
+    status = str(status_data.get("status") or "")
+    phase = str(status_data.get("current_phase") or "")
+    if status == "FAILED":
+        return f"Patchbay Agent 在{_phase_label(phase)}阶段遇到错误。"
+    if status == "APPLIED":
+        return "Patchbay Agent 已将审查通过的补丁应用到当前工作区。"
+    if status == "REVIEWED_CHANGES_REQUESTED":
+        return "Patchbay Agent 收到审查修改意见，下一步需要修复。"
+    if next_action:
+        return f"Patchbay Agent 已准备好执行：{next_action.get('label', next_action.get('name'))}。"
+    if phase:
+        return f"Patchbay Agent 当前处于{_phase_label(phase)}阶段。"
+    return f"Patchbay Agent 正在跟踪运行 {run_id}。"
+
+
+def _current_step_summary(status_data: dict[str, Any], next_action: dict[str, Any] | None) -> str:
+    if status_data.get("error"):
+        return str(status_data.get("error"))
+    if next_action:
+        return str(next_action.get("reason") or "")
+    status = str(status_data.get("status") or "")
+    if status == "APPLIED":
+        return "补丁已应用，可以清理本次运行。"
+    if status == "FAILED":
+        return str(status_data.get("suggested_next_action") or "检查日志后继续。")
+    return "暂无可执行动作。"
+
+
+def _gate_cards(status_data: dict[str, Any], gate_state: dict[str, Any]) -> list[dict[str, Any]]:
+    review_result = gate_state.get("review_result") or status_data.get("review_result")
+    ready_to_apply = bool(gate_state.get("ready_to_apply"))
+    status = str(status_data.get("status") or "")
+    return [
+        {
+            "key": "approval",
+            "label": "批准",
+            "status": "done" if gate_state.get("approved") else "pending",
+            "tone": "success" if gate_state.get("approved") else "idle",
+            "detail": "计划已批准" if gate_state.get("approved") else "等待人工批准计划",
+        },
+        {
+            "key": "tests",
+            "label": "测试",
+            "status": "pass" if gate_state.get("tests_passed") else "pending",
+            "tone": "success" if gate_state.get("tests_passed") else "idle",
+            "detail": "测试通过" if gate_state.get("tests_passed") else "等待测试证据",
+        },
+        {
+            "key": "review",
+            "label": "审查",
+            "status": review_result or "pending",
+            "tone": _review_tone(review_result),
+            "detail": _review_detail(review_result),
+        },
+        {
+            "key": "apply",
+            "label": "应用",
+            "status": "applied" if status == "APPLIED" else "ready" if ready_to_apply else "blocked",
+            "tone": "success" if status == "APPLIED" else "ready" if ready_to_apply else "blocked",
+            "detail": "已应用到当前工作区" if status == "APPLIED" else "可以应用" if ready_to_apply else "需通过测试和审查",
+        },
+    ]
+
+
+def _activity_message(item: dict[str, Any], fallback_index: int) -> dict[str, Any]:
+    phase = str(item.get("phase") or "")
+    action = str(item.get("action") or "")
+    status = str(item.get("status") or "")
+    source = str(item.get("source") or "event")
+    index = item.get("index", fallback_index)
+    return {
+        "id": f"{source}-{index}-{item.get('timestamp', fallback_index)}",
+        "kind": _message_kind(item),
+        "timestamp": item.get("timestamp", ""),
+        "phase": phase,
+        "title": _message_title(phase, action, status),
+        "body": str(item.get("detail") or ""),
+        "status": status,
+        "status_label": _status_label(status),
+        "tone": _event_tone(item),
+        "artifacts": item.get("artifact_paths", []),
+        "provider": item.get("provider", item.get("agent", "")),
+        "model": item.get("model", ""),
+        "tool": item.get("tool", item.get("next_action", "")),
+    }
+
+
+def _state_message(status_data: dict[str, Any]) -> dict[str, Any]:
+    status = str(status_data.get("status") or "")
+    phase = str(status_data.get("current_phase") or "")
+    return {
+        "id": "state-summary",
+        "kind": "state",
+        "timestamp": status_data.get("updated_at", ""),
+        "phase": phase,
+        "title": _message_title(phase, "status", status),
+        "body": _status_label(status),
+        "status": status,
+        "status_label": _status_label(status),
+        "tone": _run_tone(status_data, None),
+        "artifacts": [],
+        "provider": "",
+        "model": "",
+        "tool": "",
+    }
+
+
+def _message_kind(item: dict[str, Any]) -> str:
+    action = str(item.get("action") or "")
+    if action in {"gate", "approve_granted", "apply_granted", "apply_denied"}:
+        return "gate"
+    if str(item.get("status") or "").upper() in {"ERROR", "FAILED"} or action in {"error", "failed"}:
+        return "error"
+    if item.get("source") == "trace":
+        return "agent"
+    return "event"
+
+
+def _message_title(phase: str, action: str, status: str) -> str:
+    phase_text = _phase_label(phase)
+    action_text = ACTION_LABELS.get(action, action or "状态更新")
+    status_text = _status_label(status)
+    if status:
+        return f"{phase_text} · {action_text} · {status_text}"
+    return f"{phase_text} · {action_text}"
+
+
+def _run_tone(status_data: dict[str, Any], next_action: dict[str, Any] | None) -> str:
+    status = str(status_data.get("status") or "")
+    if status == "FAILED":
+        return "failed"
+    if status == "APPLIED":
+        return "success"
+    if status == "REVIEWED_CHANGES_REQUESTED":
+        return "blocked"
+    if status in {"IMPLEMENTING", "TESTING", "REVIEWING", "FIXING"}:
+        return "running"
+    if next_action:
+        return "ready" if next_action.get("safe") else "blocked"
+    return "idle"
+
+
+def _event_tone(item: dict[str, Any]) -> str:
+    status = str(item.get("status") or "").upper()
+    action = str(item.get("action") or "")
+    if status in {"ERROR", "FAILED"} or action in {"error", "failed", "apply_denied"}:
+        return "failed"
+    if status in {"CHANGES_REQUESTED"}:
+        return "blocked"
+    if status in {"PASS", "SUCCESS"} or action in {"success", "approve_granted", "apply_granted"}:
+        return "success"
+    if status in {"RUNNING"} or action in {"start", "retry"}:
+        return "running"
+    if status in {"READY"} or action == "gate":
+        return "ready"
+    return "idle"
+
+
+def _review_tone(review_result: Any) -> str:
+    if review_result == "PASS":
+        return "success"
+    if review_result == "CHANGES_REQUESTED":
+        return "blocked"
+    return "idle"
+
+
+def _review_detail(review_result: Any) -> str:
+    if review_result == "PASS":
+        return "审查通过"
+    if review_result == "CHANGES_REQUESTED":
+        return "审查要求修改"
+    return "等待审查"
+
+
+def _phase_label(phase: str) -> str:
+    return PHASE_LABELS.get(phase, phase or "空闲")
+
+
+def _status_label(status: str) -> str:
+    return STATUS_LABELS.get(status, status or "未知")
 
 
 def _event_timeline(run_path: Path, *, since: int = 0) -> list[dict[str, Any]]:

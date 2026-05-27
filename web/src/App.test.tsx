@@ -2,7 +2,83 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { Workbench } from "./App";
-import type { PatchbayClient } from "./api";
+import type { HandoffContext, PatchbayClient } from "./api";
+
+const readyContext: HandoffContext = {
+  run_id: "run-ready",
+  handoff_summary: "Run run-ready is REVIEWED_PASS in phase apply; next safe action: apply.",
+  status: "REVIEWED_PASS",
+  current_phase: "apply",
+  gate_state: { approved: true, tests_passed: true, review_result: "PASS", ready_to_apply: true },
+  next_actions: [
+    {
+      name: "apply",
+      safe: true,
+      tool: "patchbay_apply",
+      requires_human_confirmation: true,
+      reason: "Tests passed and review returned PASS; human confirmation is still required."
+    }
+  ],
+  provider_trail: [{ phase: "review", provider: "codex_cli", model: "gpt-5", status: "PASS", timestamp: "2026-05-24T10:02:00Z" }],
+  artifacts: [{ name: "REVIEW.md", purpose: "review verdict", path: ".ai/runs/run-ready/REVIEW.md" }],
+  timeline: [
+    {
+      source: "event",
+      index: 0,
+      timestamp: "2026-05-24T10:02:00Z",
+      phase: "review",
+      action: "success",
+      status: "PASS",
+      detail: "ready from context",
+      provider: "codex_cli",
+      artifact_paths: ["REVIEW.md"],
+      next_action: "apply"
+    }
+  ],
+  agent_activity: {
+    headline: "Patchbay Agent 已准备好执行：应用补丁。",
+    tone: "ready",
+    current_step: {
+      phase: "apply",
+      label: "应用",
+      status: "REVIEWED_PASS",
+      status_label: "审查通过",
+      summary: "Tests passed and review returned PASS; human confirmation is still required."
+    },
+    next_action: {
+      name: "apply",
+      label: "应用补丁",
+      safe: true,
+      tool: "patchbay_apply",
+      requires_human_confirmation: true,
+      reason: "Tests passed and review returned PASS; human confirmation is still required."
+    },
+    gate_cards: [
+      { key: "approval", label: "批准", status: "done", tone: "success", detail: "计划已批准" },
+      { key: "tests", label: "测试", status: "pass", tone: "success", detail: "测试通过" },
+      { key: "review", label: "审查", status: "PASS", tone: "success", detail: "审查通过" },
+      { key: "apply", label: "应用", status: "ready", tone: "ready", detail: "可以应用" }
+    ],
+    messages: [
+      {
+        id: "event-0",
+        kind: "event",
+        timestamp: "2026-05-24T10:02:00Z",
+        phase: "review",
+        title: "审查 · 完成 · 通过",
+        body: "ready from context",
+        status: "PASS",
+        status_label: "通过",
+        tone: "success",
+        artifacts: ["REVIEW.md"],
+        provider: "codex_cli",
+        model: "gpt-5",
+        tool: "patchbay_apply"
+      }
+    ]
+  },
+  cursors: { event: 1, trace: 0 }
+};
 
 function createClient(overrides: Partial<PatchbayClient> = {}): PatchbayClient {
   return {
@@ -29,39 +105,7 @@ function createClient(overrides: Partial<PatchbayClient> = {}): PatchbayClient {
         fix: { provider: "reasonix_cli", model: "", command_key: "reasonix" }
       }
     }),
-    getContext: vi.fn().mockResolvedValue({
-      run_id: "run-ready",
-      handoff_summary: "Run run-ready is REVIEWED_PASS in phase apply; next safe action: apply.",
-      status: "REVIEWED_PASS",
-      current_phase: "apply",
-      gate_state: { approved: true, tests_passed: true, review_result: "PASS", ready_to_apply: true },
-      next_actions: [
-        {
-          name: "apply",
-          safe: true,
-          tool: "patchbay_apply",
-          requires_human_confirmation: true,
-          reason: "Tests passed and review returned PASS; human confirmation is still required."
-        }
-      ],
-      provider_trail: [{ phase: "review", provider: "codex_cli", model: "gpt-5", status: "PASS", timestamp: "2026-05-24T10:02:00Z" }],
-      artifacts: [{ name: "REVIEW.md", purpose: "review verdict", path: ".ai/runs/run-ready/REVIEW.md" }],
-      timeline: [
-        {
-          source: "event",
-          index: 0,
-          timestamp: "2026-05-24T10:02:00Z",
-          phase: "review",
-          action: "success",
-          status: "PASS",
-          detail: "ready from context",
-          provider: "codex_cli",
-          artifact_paths: ["REVIEW.md"],
-          next_action: "apply"
-        }
-      ],
-      cursors: { event: 1, trace: 0 }
-    }),
+    getContext: vi.fn().mockResolvedValue(readyContext),
     getTrace: vi.fn().mockResolvedValue({
       total: 1,
       events: [
@@ -89,25 +133,27 @@ function createClient(overrides: Partial<PatchbayClient> = {}): PatchbayClient {
 }
 
 describe("Workbench", () => {
-  it("renders runs, phase progress, timeline fields, and provider details", async () => {
+  it("renders the unified Patchbay Agent activity view with diagnostics folded", async () => {
     const client = createClient();
 
     render(<Workbench client={client} />);
 
-    expect(await screen.findByText("Patchbay 可视化工作台")).toBeInTheDocument();
-    expect(await screen.findByText("Ship dashboard")).toBeInTheDocument();
-    expect(screen.getByText("Needs fix")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "run-ready" })).toBeInTheDocument();
-    expect(await screen.findByText(/当前阶段：应用/)).toBeInTheDocument();
-    expect(screen.getByText("门禁状态")).toBeInTheDocument();
-    expect(await screen.findByText(/patchbay_apply/)).toBeInTheDocument();
+    expect(await screen.findByText("Patchbay Agent")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Ship dashboard" })).toBeInTheDocument();
+    expect(await screen.findByText("Patchbay Agent 已准备好执行：应用补丁。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /应用补丁/i })).toBeInTheDocument();
+    expect(screen.getByText("计划已批准")).toBeInTheDocument();
+    expect(screen.getByText("测试通过")).toBeInTheDocument();
+    expect(screen.getAllByText("审查通过").length).toBeGreaterThan(0);
     expect(await screen.findByText("ready from context")).toBeInTheDocument();
-    expect(screen.getAllByText("审查")).not.toHaveLength(0);
+    expect(screen.getByRole("button", { name: "诊断" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("reasonix_cli")).not.toBeInTheDocument();
 
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
     await userEvent.click(screen.getByRole("tab", { name: "提供方" }));
 
-    expect(screen.getAllByText("reasonix_cli")).not.toHaveLength(0);
-    expect(screen.getAllByText("codex_cli")).not.toHaveLength(0);
+    expect(screen.getAllByText("reasonix_cli")[0]).toBeVisible();
+    expect(screen.getAllByText("codex_cli")[0]).toBeVisible();
     expect(client.getContext).toHaveBeenCalledWith("run-ready");
   });
 
@@ -116,24 +162,36 @@ describe("Workbench", () => {
 
     render(<Workbench client={client} />);
 
-    await screen.findByText("Ship dashboard");
+    await screen.findByRole("heading", { name: "Ship dashboard" });
     await userEvent.selectOptions(screen.getByLabelText("状态筛选"), "REVIEWED_CHANGES_REQUESTED");
     await userEvent.type(screen.getByLabelText("搜索运行"), "fix");
 
     expect(screen.queryByText("Ship dashboard")).not.toBeInTheDocument();
-    expect(screen.getByText("Needs fix")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Needs fix" })).toBeInTheDocument();
   });
 
-  it("polls trace incrementally after the initial load", async () => {
+  it("polls context incrementally and appends agent messages", async () => {
     const client = createClient({
       getContext: vi
         .fn()
         .mockResolvedValueOnce({
-          run_id: "run-ready",
-          status: "REVIEWED_PASS",
-          current_phase: "apply",
-          gate_state: { ready_to_apply: true },
-          next_actions: [{ name: "apply", safe: true, tool: "patchbay_apply", requires_human_confirmation: true, reason: "ready" }],
+          ...readyContext,
+          agent_activity: {
+            ...readyContext.agent_activity,
+            messages: [
+              {
+                id: "event-0",
+                kind: "event",
+                timestamp: "2026-05-24T10:02:00Z",
+                phase: "review",
+                title: "审查 · 开始 · 运行中",
+                body: "reviewing",
+                status: "RUNNING",
+                status_label: "运行中",
+                tone: "running"
+              }
+            ]
+          },
           timeline: [
             {
               source: "event",
@@ -143,29 +201,32 @@ describe("Workbench", () => {
               action: "start",
               status: "RUNNING",
               detail: "reviewing"
-            },
-            {
-              source: "event",
-              index: 1,
-              timestamp: "2026-05-24T10:03:00Z",
-              phase: "review",
-              action: "success",
-              status: "PASS",
-              detail: "ready"
             }
           ],
-          cursors: { event: 2, trace: 0 }
+          cursors: { event: 1, trace: 0 }
         })
         .mockResolvedValueOnce({
-          run_id: "run-ready",
-          status: "REVIEWED_PASS",
-          current_phase: "apply",
-          gate_state: { ready_to_apply: true },
-          next_actions: [{ name: "apply", safe: true, tool: "patchbay_apply", requires_human_confirmation: true, reason: "ready" }],
+          ...readyContext,
+          agent_activity: {
+            ...readyContext.agent_activity,
+            messages: [
+              {
+                id: "event-1",
+                kind: "gate",
+                timestamp: "2026-05-24T10:04:00Z",
+                phase: "apply",
+                title: "应用 · 门禁 · 就绪",
+                body: "ready to apply",
+                status: "READY",
+                status_label: "就绪",
+                tone: "ready"
+              }
+            ]
+          },
           timeline: [
             {
               source: "event",
-              index: 2,
+              index: 1,
               timestamp: "2026-05-24T10:04:00Z",
               phase: "apply",
               action: "gate",
@@ -173,15 +234,15 @@ describe("Workbench", () => {
               detail: "ready to apply"
             }
           ],
-          cursors: { event: 3, trace: 0 }
+          cursors: { event: 2, trace: 0 }
         })
     });
 
     render(<Workbench client={client} pollIntervalMs={20} />);
 
-    expect(await screen.findByText("ready")).toBeInTheDocument();
+    expect(await screen.findByText("reviewing")).toBeInTheDocument();
     await waitFor(() => {
-      expect(client.getContext).toHaveBeenLastCalledWith("run-ready", { since_event: 2 });
+      expect(client.getContext).toHaveBeenLastCalledWith("run-ready", { since_event: 1 });
     });
     expect(await screen.findByText("ready to apply")).toBeInTheDocument();
   });
@@ -206,6 +267,16 @@ describe("Workbench", () => {
   });
 
   it("disables apply when ready_to_apply is false", async () => {
+    const blockedContext = {
+      ...readyContext,
+      gate_state: { ready_to_apply: false },
+      next_actions: [],
+      agent_activity: {
+        ...readyContext.agent_activity,
+        next_action: null,
+        gate_cards: [{ key: "apply", label: "应用", status: "blocked", tone: "blocked" as const, detail: "等待门禁" }]
+      }
+    };
     const client = createClient({
       getStatus: vi.fn().mockResolvedValue({
         run_id: "run-ready",
@@ -216,15 +287,7 @@ describe("Workbench", () => {
         artifacts: [],
         effective_phase_providers: {}
       }),
-      getContext: vi.fn().mockResolvedValue({
-        run_id: "run-ready",
-        status: "REVIEWED_PASS",
-        current_phase: "apply",
-        gate_state: { ready_to_apply: false },
-        next_actions: [],
-        timeline: [],
-        cursors: { event: 0, trace: 0 }
-      })
+      getContext: vi.fn().mockResolvedValue(blockedContext)
     });
 
     render(<Workbench client={client} />);

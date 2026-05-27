@@ -74,6 +74,54 @@ export type ProviderTrailEntry = {
   timestamp?: string;
 };
 
+export type AgentTone = "idle" | "running" | "ready" | "blocked" | "success" | "failed";
+
+export type AgentStep = {
+  phase?: string;
+  label?: string;
+  status?: string;
+  status_label?: string;
+  summary?: string;
+};
+
+export type AgentGateCard = {
+  key: string;
+  label: string;
+  status?: string;
+  tone?: AgentTone;
+  detail?: string;
+};
+
+export type AgentMessage = {
+  id: string;
+  kind?: string;
+  timestamp?: string;
+  phase?: string;
+  title?: string;
+  body?: string;
+  status?: string;
+  status_label?: string;
+  tone?: AgentTone;
+  artifacts?: string[];
+  provider?: string;
+  model?: string;
+  tool?: string;
+};
+
+export type AgentAction = NextAction & {
+  label?: string;
+};
+
+export type AgentActivity = {
+  headline?: string;
+  tone?: AgentTone;
+  current_step?: AgentStep;
+  next_action?: AgentAction | null;
+  gate_cards?: AgentGateCard[];
+  messages?: AgentMessage[];
+  artifacts?: HandoffArtifact[];
+};
+
 export type HandoffContext = {
   run_id: string;
   handoff_summary?: string;
@@ -84,6 +132,7 @@ export type HandoffContext = {
   provider_trail?: ProviderTrailEntry[];
   artifacts?: HandoffArtifact[];
   timeline?: TraceEntry[];
+  agent_activity?: AgentActivity;
   cursors?: { event?: number; trace?: number };
 };
 

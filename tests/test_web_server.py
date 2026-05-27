@@ -83,6 +83,9 @@ class WebServerTest(unittest.TestCase):
         self.assertEqual(context["run_id"], self.run_id)
         self.assertEqual(context["timeline"][0]["source"], "event")
         self.assertIn("next_actions", context)
+        self.assertIn("agent_activity", context)
+        self.assertIn("headline", context["agent_activity"])
+        self.assertIn("messages", context["agent_activity"])
 
         _, events = self._request("GET", f"/api/runs/{self.run_id}/events")
         self.assertEqual(events["returned"], 1)

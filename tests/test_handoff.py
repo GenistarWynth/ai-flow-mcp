@@ -65,6 +65,15 @@ class HandoffContextTest(unittest.TestCase):
         self.assertEqual(context["next_actions"][0]["tool"], "patchbay_approve")
         self.assertTrue(context["next_actions"][0]["safe"])
         self.assertTrue(context["next_actions"][0]["requires_human_confirmation"])
+        activity = context["agent_activity"]
+        self.assertIn("Patchbay Agent", activity["headline"])
+        self.assertEqual(activity["tone"], "ready")
+        self.assertEqual(activity["current_step"]["label"], "规划")
+        self.assertEqual(activity["next_action"]["name"], "approve")
+        self.assertEqual(activity["next_action"]["tool"], "patchbay_approve")
+        self.assertEqual([card["key"] for card in activity["gate_cards"]], ["approval", "tests", "review", "apply"])
+        self.assertNotIn("provider", activity["headline"].lower())
+        self.assertEqual(activity["messages"][0]["kind"], "event")
         artifact = {item["name"]: item for item in context["artifacts"]}
         self.assertEqual(artifact["PLAN.md"]["purpose"], "approved plan")
         self.assertTrue(artifact["PLAN.md"]["path"].endswith("PLAN.md"))
@@ -88,6 +97,12 @@ class HandoffContextTest(unittest.TestCase):
         self.assertEqual(context["next_actions"][0]["tool"], "patchbay_apply")
         self.assertTrue(context["next_actions"][0]["safe"])
         self.assertTrue(context["next_actions"][0]["requires_human_confirmation"])
+        activity = context["agent_activity"]
+        self.assertEqual(activity["next_action"]["name"], "apply")
+        self.assertTrue(activity["next_action"]["requires_human_confirmation"])
+        apply_gate = next(card for card in activity["gate_cards"] if card["key"] == "apply")
+        self.assertEqual(apply_gate["status"], "ready")
+        self.assertEqual(apply_gate["tone"], "ready")
         self.assertIn("review", [item["phase"] for item in context["provider_trail"]])
 
     def test_context_can_merge_trace_when_requested_and_returns_cursors(self) -> None:
@@ -102,6 +117,9 @@ class HandoffContextTest(unittest.TestCase):
         self.assertEqual(context["timeline"][0]["index"], 1)
         self.assertEqual(context["timeline"][1]["source"], "trace")
         self.assertEqual(context["timeline"][1]["agent"], "reasonix_cli")
+        messages = context["agent_activity"]["messages"]
+        self.assertEqual(messages[1]["kind"], "agent")
+        self.assertEqual(messages[1]["provider"], "reasonix_cli")
 
     def test_context_cursors_track_next_raw_line_index(self) -> None:
         planned = self.cli_json("plan", "--task", "raw cursor context", "--mock")
