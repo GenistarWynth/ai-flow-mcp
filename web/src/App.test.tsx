@@ -53,6 +53,27 @@ const readyContext: HandoffContext = {
       requires_human_confirmation: true,
       reason: "Tests passed and review returned PASS; human confirmation is still required."
     },
+    conversation_state: {
+      task: "Ship dashboard",
+      status: "REVIEWED_PASS",
+      status_label: "审查通过",
+      phase: "apply",
+      phase_label: "应用",
+      tone: "ready",
+      next_step: "需要你确认后，Patchbay Agent 才会执行“应用补丁”。",
+      composer_placeholder: "输入“确认”或点击“应用补丁”继续",
+      suggestions: [
+        {
+          id: "apply",
+          label: "应用补丁",
+          action: "apply",
+          safe: true,
+          tool: "patchbay_apply",
+          requires_human_confirmation: true,
+          reason: "Tests passed and review returned PASS; human confirmation is still required."
+        }
+      ]
+    },
     gate_cards: [
       { key: "approval", label: "批准", status: "done", tone: "success", detail: "计划已批准" },
       { key: "tests", label: "测试", status: "pass", tone: "success", detail: "测试通过" },
@@ -80,8 +101,73 @@ const readyContext: HandoffContext = {
   cursors: { event: 1, trace: 0 }
 };
 
+const plannedContext: HandoffContext = {
+  ...readyContext,
+  run_id: "run-planned",
+  status: "PLANNED",
+  current_phase: "plan",
+  gate_state: { approved: false, tests_passed: false, review_result: null, ready_to_apply: false },
+  next_actions: [
+    {
+      name: "approve",
+      safe: true,
+      tool: "patchbay_approve",
+      requires_human_confirmation: true,
+      reason: "Plan is ready for human approval before implementation."
+    }
+  ],
+  agent_activity: {
+    ...readyContext.agent_activity,
+    headline: "Patchbay Agent 已准备好执行：批准计划。",
+    current_step: { phase: "plan", label: "规划", status: "PLANNED", status_label: "等待批准", summary: "Plan is ready for human approval before implementation." },
+    next_action: {
+      name: "approve",
+      label: "批准计划",
+      safe: true,
+      tool: "patchbay_approve",
+      requires_human_confirmation: true,
+      reason: "Plan is ready for human approval before implementation."
+    },
+    conversation_state: {
+      task: "Approve a plan",
+      status: "PLANNED",
+      status_label: "等待批准",
+      phase: "plan",
+      phase_label: "规划",
+      tone: "ready",
+      next_step: "需要你确认后，Patchbay Agent 才会执行“批准计划”。",
+      composer_placeholder: "输入“确认”或点击“批准计划”继续",
+      suggestions: [
+        {
+          id: "approve",
+          label: "批准计划",
+          action: "approve",
+          safe: true,
+          tool: "patchbay_approve",
+          requires_human_confirmation: true,
+          reason: "Plan is ready for human approval before implementation."
+        }
+      ]
+    },
+    messages: [
+      {
+        id: "state-summary",
+        kind: "state",
+        timestamp: "2026-05-24T10:02:00Z",
+        phase: "plan",
+        title: "规划 · 状态更新 · 等待批准",
+        body: "等待批准",
+        status: "PLANNED",
+        status_label: "等待批准",
+        tone: "ready"
+      }
+    ]
+  }
+};
+
 function createClient(overrides: Partial<PatchbayClient> = {}): PatchbayClient {
   return {
+    createRun: vi.fn().mockResolvedValue({ run_id: "run-new", status: "PLANNED" }),
     listRuns: vi.fn().mockResolvedValue({
       runs: [
         { run_id: "run-ready", task: "Ship dashboard", status: "REVIEWED_PASS", updated_at: "2026-05-24T10:00:00Z" },
@@ -133,19 +219,17 @@ function createClient(overrides: Partial<PatchbayClient> = {}): PatchbayClient {
 }
 
 describe("Workbench", () => {
-  it("renders the unified Patchbay Agent activity view with diagnostics folded", async () => {
+  it("renders a Codex-style thread and keeps orchestration details in the closed diagnostics drawer", async () => {
     const client = createClient();
 
     render(<Workbench client={client} />);
 
-    expect(await screen.findByText("Patchbay Agent")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Ship dashboard" })).toBeInTheDocument();
     expect(await screen.findByText("Patchbay Agent 已准备好执行：应用补丁。")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /应用补丁/i })).toBeInTheDocument();
-    expect(screen.getByText("计划已批准")).toBeInTheDocument();
-    expect(screen.getByText("测试通过")).toBeInTheDocument();
-    expect(screen.getAllByText("审查通过").length).toBeGreaterThan(0);
     expect(await screen.findByText("ready from context")).toBeInTheDocument();
+    expect(screen.getByLabelText("给 Patchbay Agent 输入消息")).toHaveAttribute("placeholder", "输入“确认”或点击“应用补丁”继续");
+    expect(screen.queryByLabelText("阶段操作")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("门禁状态")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "诊断" })).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText("reasonix_cli")).not.toBeInTheDocument();
 
@@ -166,132 +250,185 @@ describe("Workbench", () => {
     await userEvent.selectOptions(screen.getByLabelText("状态筛选"), "REVIEWED_CHANGES_REQUESTED");
     await userEvent.type(screen.getByLabelText("搜索运行"), "fix");
 
-    expect(screen.queryByText("Ship dashboard")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Ship dashboard" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Needs fix" })).toBeInTheDocument();
   });
 
-  it("polls context incrementally and appends agent messages", async () => {
+  it("creates a new plan run from the composer when no run is selected", async () => {
     const client = createClient({
-      getContext: vi
+      listRuns: vi
         .fn()
-        .mockResolvedValueOnce({
-          ...readyContext,
-          agent_activity: {
-            ...readyContext.agent_activity,
-            messages: [
-              {
-                id: "event-0",
-                kind: "event",
-                timestamp: "2026-05-24T10:02:00Z",
-                phase: "review",
-                title: "审查 · 开始 · 运行中",
-                body: "reviewing",
-                status: "RUNNING",
-                status_label: "运行中",
-                tone: "running"
-              }
-            ]
-          },
-          timeline: [
-            {
-              source: "event",
-              index: 0,
-              timestamp: "2026-05-24T10:02:00Z",
-              phase: "review",
-              action: "start",
-              status: "RUNNING",
-              detail: "reviewing"
-            }
-          ],
-          cursors: { event: 1, trace: 0 }
-        })
-        .mockResolvedValueOnce({
-          ...readyContext,
-          agent_activity: {
-            ...readyContext.agent_activity,
-            messages: [
-              {
-                id: "event-1",
-                kind: "gate",
-                timestamp: "2026-05-24T10:04:00Z",
-                phase: "apply",
-                title: "应用 · 门禁 · 就绪",
-                body: "ready to apply",
-                status: "READY",
-                status_label: "就绪",
-                tone: "ready"
-              }
-            ]
-          },
-          timeline: [
-            {
-              source: "event",
-              index: 1,
-              timestamp: "2026-05-24T10:04:00Z",
-              phase: "apply",
-              action: "gate",
-              status: "READY",
-              detail: "ready to apply"
-            }
-          ],
-          cursors: { event: 2, trace: 0 }
-        })
+        .mockResolvedValueOnce({ runs: [] })
+        .mockResolvedValueOnce({ runs: [{ run_id: "run-new", task: "Build a chat thread", status: "PLANNED" }] }),
+      getStatus: vi.fn().mockResolvedValue({
+        run_id: "run-new",
+        task: "Build a chat thread",
+        status: "PLANNED",
+        current_phase: "plan",
+        gate_state: {},
+        next_commands: ["approve"],
+        artifacts: [],
+        effective_phase_providers: {}
+      }),
+      getContext: vi.fn().mockResolvedValue({
+        ...plannedContext,
+        run_id: "run-new",
+        agent_activity: {
+          ...plannedContext.agent_activity,
+          conversation_state: {
+            ...plannedContext.agent_activity!.conversation_state!,
+            task: "Build a chat thread"
+          }
+        }
+      })
     });
 
-    render(<Workbench client={client} pollIntervalMs={20} />);
+    render(<Workbench client={client} />);
 
-    expect(await screen.findByText("reviewing")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(client.getContext).toHaveBeenLastCalledWith("run-ready", { since_event: 1 });
-    });
-    expect(await screen.findByText("ready to apply")).toBeInTheDocument();
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.type(screen.getByLabelText("给 Patchbay Agent 输入消息"), "Build a chat thread");
+    await userEvent.click(screen.getByRole("button", { name: "创建任务" }));
+
+    await waitFor(() => expect(client.createRun).toHaveBeenCalledWith("Build a chat thread"));
+    expect(await screen.findByRole("heading", { name: "Build a chat thread" })).toBeInTheDocument();
   });
 
-  it("requires confirmation before apply and cleanup, and gates apply readiness", async () => {
+  it("maps approve intent through the confirmation gate", async () => {
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [{ run_id: "run-ready", task: "Approve a plan", status: "PLANNED" }] }),
+      getStatus: vi.fn().mockResolvedValue({
+        run_id: "run-ready",
+        task: "Approve a plan",
+        status: "PLANNED",
+        current_phase: "plan",
+        gate_state: {},
+        next_commands: ["approve"],
+        artifacts: [],
+        effective_phase_providers: {}
+      }),
+      getContext: vi.fn().mockResolvedValue(plannedContext)
+    });
+
+    render(<Workbench client={client} />);
+
+    expect(await screen.findByText("Patchbay Agent 已准备好执行：批准计划。")).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("给 Patchbay Agent 输入消息"), "批准");
+    await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "确认批准计划" });
+    expect(client.runAction).not.toHaveBeenCalled();
+    await userEvent.click(within(dialog).getByRole("button", { name: "批准" }));
+    expect(client.runAction).toHaveBeenCalledWith("run-ready", "approve");
+  });
+
+  it("requires confirmation before apply and keeps blocked apply gated", async () => {
     const client = createClient();
 
     render(<Workbench client={client} />);
 
-    const apply = await screen.findByRole("button", { name: /应用已审查 diff/i });
-    await userEvent.click(apply);
+    await screen.findByText("Patchbay Agent 已准备好执行：应用补丁。");
+    await userEvent.click(screen.getByRole("button", { name: /^确认$/ }));
     expect(client.apply).not.toHaveBeenCalled();
 
-    const dialog = screen.getByRole("dialog", { name: /确认应用/i });
-    await userEvent.click(within(dialog).getByRole("button", { name: "确认" }));
+    const dialog = screen.getByRole("dialog", { name: /确认应用补丁/i });
+    await userEvent.click(within(dialog).getByRole("button", { name: "应用" }));
     expect(client.apply).toHaveBeenCalledWith("run-ready");
 
-    await userEvent.click(screen.getByRole("button", { name: /清理运行/i }));
-    expect(client.cleanup).not.toHaveBeenCalledTimes(1);
-    await userEvent.click(screen.getByRole("button", { name: "取消" }));
-    expect(client.cleanup).not.toHaveBeenCalled();
-  });
-
-  it("disables apply when ready_to_apply is false", async () => {
     const blockedContext = {
       ...readyContext,
       gate_state: { ready_to_apply: false },
-      next_actions: [],
+      next_actions: [
+        {
+          name: "apply",
+          safe: false,
+          tool: "patchbay_apply",
+          requires_human_confirmation: true,
+          reason: "Apply is blocked until tests pass and review returns PASS."
+        }
+      ],
       agent_activity: {
-        ...readyContext.agent_activity,
-        next_action: null,
-        gate_cards: [{ key: "apply", label: "应用", status: "blocked", tone: "blocked" as const, detail: "等待门禁" }]
+        ...readyContext.agent_activity!,
+        next_action: {
+          name: "apply",
+          label: "应用补丁",
+          safe: false,
+          tool: "patchbay_apply",
+          requires_human_confirmation: true,
+          reason: "Apply is blocked until tests pass and review returns PASS."
+        },
+        conversation_state: {
+          ...readyContext.agent_activity!.conversation_state!,
+          suggestions: [
+            {
+              id: "apply",
+              label: "应用补丁",
+              action: "apply",
+              safe: false,
+              requires_human_confirmation: true,
+              reason: "Apply is blocked until tests pass and review returns PASS."
+            }
+          ]
+        }
       }
     };
-    const client = createClient({
+    const blockedClient = createClient({
       getStatus: vi.fn().mockResolvedValue({
         run_id: "run-ready",
+        task: "Ship dashboard",
         status: "REVIEWED_PASS",
         current_phase: "apply",
         gate_state: { ready_to_apply: false },
-        next_commands: [],
+        next_commands: ["apply"],
         artifacts: [],
         effective_phase_providers: {}
       }),
       getContext: vi.fn().mockResolvedValue(blockedContext)
     });
 
+    render(<Workbench client={blockedClient} />);
+    await screen.findByText("Apply is blocked until tests pass and review returns PASS.");
+    await userEvent.click(screen.getAllByRole("button", { name: /应用补丁/i }).at(-1)!);
+
+    expect(await screen.findByRole("dialog", { name: "暂不能执行" })).toBeInTheDocument();
+    expect(blockedClient.apply).not.toHaveBeenCalled();
+  });
+
+  it("does not duplicate state-summary messages during empty incremental polling", async () => {
+    const client = createClient({
+      getContext: vi
+        .fn()
+        .mockResolvedValueOnce(plannedContext)
+        .mockResolvedValueOnce({
+          ...plannedContext,
+          timeline: [],
+          agent_activity: {
+            ...plannedContext.agent_activity!,
+            messages: []
+          },
+          cursors: { event: 1, trace: 0 }
+        })
+    });
+
+    render(<Workbench client={client} pollIntervalMs={20} />);
+
+    expect(await screen.findByText("等待批准")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(client.getContext).toHaveBeenLastCalledWith("run-ready", { since_event: 1 });
+    });
+    expect(screen.getAllByText("等待批准")).toHaveLength(3);
+  });
+
+  it("keeps free text as a local user message without mutating the run", async () => {
+    const client = createClient();
+
     render(<Workbench client={client} />);
 
-    expect(await screen.findByRole("button", { name: /应用已审查 diff/i })).toBeDisabled();
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await userEvent.type(screen.getByLabelText("给 Patchbay Agent 输入消息"), "这个 UI 应该更像一个对话线程");
+    await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+    expect(await screen.findByText("这个 UI 应该更像一个对话线程")).toBeInTheDocument();
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
   });
 });

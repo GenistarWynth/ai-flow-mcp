@@ -65,6 +65,7 @@ ACTION_LABELS: dict[str, str] = {
     "start": "开始",
     "success": "完成",
     "gate": "门禁",
+    "status": "状态更新",
     "error": "错误",
     "failed": "失败",
     "retry": "重试",
@@ -126,6 +127,7 @@ def build_handoff_context(
             next_actions=next_actions,
             timeline=timeline,
             artifacts=artifacts,
+            include_state_message=since_event <= 0 and since_trace <= 0,
         ),
         "cursors": {
             "event": _raw_line_count(run_path / "events.jsonl"),
@@ -228,6 +230,7 @@ def _agent_activity(
     next_actions: list[dict[str, Any]],
     timeline: list[dict[str, Any]],
     artifacts: list[dict[str, str]],
+    include_state_message: bool = True,
 ) -> dict[str, Any]:
     status = str(status_data.get("status") or "")
     phase = str(status_data.get("current_phase") or "")
@@ -242,17 +245,81 @@ def _agent_activity(
         "summary": _current_step_summary(status_data, next_action),
     }
     messages = [_activity_message(item, index) for index, item in enumerate(timeline)]
-    if not messages:
+    if not messages and include_state_message:
         messages = [_state_message(status_data)]
     return {
         "headline": _activity_headline(status_data, next_action),
         "tone": tone,
         "current_step": current_step,
         "next_action": next_action,
+        "conversation_state": _conversation_state(status_data, next_action, next_actions, tone),
         "gate_cards": _gate_cards(status_data, gate_state),
         "messages": messages,
         "artifacts": artifacts,
     }
+
+
+def _conversation_state(
+    status_data: dict[str, Any],
+    next_action: dict[str, Any] | None,
+    next_actions: list[dict[str, Any]],
+    tone: str,
+) -> dict[str, Any]:
+    status = str(status_data.get("status") or "")
+    phase = str(status_data.get("current_phase") or "")
+    task = str(status_data.get("task") or "")
+    suggestions = [_suggested_action(action) for action in next_actions]
+    return {
+        "task": task,
+        "status": status,
+        "status_label": _status_label(status),
+        "phase": phase,
+        "phase_label": _phase_label(phase),
+        "tone": tone,
+        "next_step": _conversation_next_step(status_data, next_action),
+        "composer_placeholder": _composer_placeholder(status_data, next_action),
+        "suggestions": suggestions,
+    }
+
+
+def _suggested_action(action: dict[str, Any]) -> dict[str, Any]:
+    name = str(action.get("name") or "")
+    return {
+        "id": name,
+        "label": ACTION_LABELS.get(name, _phase_label(name)),
+        "action": name,
+        "safe": bool(action.get("safe")),
+        "tool": action.get("tool", ACTION_TO_TOOL.get(name, f"patchbay_{name}")),
+        "requires_human_confirmation": bool(action.get("requires_human_confirmation")),
+        "reason": action.get("reason", ""),
+    }
+
+
+def _conversation_next_step(status_data: dict[str, Any], next_action: dict[str, Any] | None) -> str:
+    status = str(status_data.get("status") or "")
+    if next_action:
+        label = str(next_action.get("label") or next_action.get("name") or "下一步")
+        reason = str(next_action.get("reason") or "")
+        if next_action.get("requires_human_confirmation"):
+            return f"需要你确认后，Patchbay Agent 才会执行“{label}”。{reason}"
+        return f"可以继续执行“{label}”。{reason}"
+    if status == "APPLIED":
+        return "补丁已应用。你可以在诊断里查看产物，或清理本次运行。"
+    if status == "FAILED":
+        return str(status_data.get("suggested_next_action") or "运行遇到错误，请查看诊断日志。")
+    return "当前没有可执行动作。你可以查看诊断，或输入新任务创建新的运行。"
+
+
+def _composer_placeholder(status_data: dict[str, Any], next_action: dict[str, Any] | None) -> str:
+    if next_action:
+        label = str(next_action.get("label") or next_action.get("name") or "下一步")
+        if next_action.get("requires_human_confirmation"):
+            return f"输入“确认”或点击“{label}”继续"
+        return f"输入“继续”或点击“{label}”"
+    status = str(status_data.get("status") or "")
+    if status == "FAILED":
+        return "输入“修复”或打开诊断查看错误"
+    return "输入新任务，或写下本地备注"
 
 
 def _primary_next_action(next_actions: list[dict[str, Any]]) -> dict[str, Any] | None:

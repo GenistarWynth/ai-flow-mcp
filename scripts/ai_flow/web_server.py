@@ -149,6 +149,9 @@ class _Handler(SimpleHTTPRequestHandler):
             if method == "POST" and parsed.path == "/api/providers":
                 self._json(_add_provider(self.repo_root, payload))
                 return
+            if method == "POST" and parsed.path == "/api/runs":
+                self._json(_create_run(self.repo_root, payload))
+                return
             if method == "POST":
                 action = _action_route(parsed.path)
                 if action:
@@ -256,6 +259,16 @@ def _run_action(root: Path, run_id: str, action_name: str) -> dict[str, Any]:
                 suggested_next_action="Run test and review, then refresh run status before applying.",
             )
     return handler(root, run_id)
+
+
+def _create_run(root: Path, payload: dict[str, Any]) -> dict[str, Any]:
+    task = str(payload.get("task", "")).strip()
+    if not task:
+        raise SafetyError("POST /api/runs requires a non-empty task.", stage="plan")
+    background = bool(payload.get("background", False))
+    if background:
+        return service.start_background_phase(root, "plan", task=task)
+    return service.plan(root, task=task)
 
 
 def _add_provider(root: Path, payload: dict[str, Any]) -> dict[str, Any]:

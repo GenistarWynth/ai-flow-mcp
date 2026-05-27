@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   applyRun,
   cleanupRun,
+  createRun,
   fetchArtifact,
   fetchConfig,
   fetchContext,
@@ -64,5 +65,21 @@ describe("Patchbay API client", () => {
       ["/api/runs/run-1/actions/apply", { method: "POST" }],
       ["/api/runs/run-1/actions/cleanup", { method: "POST" }]
     ]);
+  });
+
+  it("creates a plan run from the composer endpoint", async () => {
+    const fetchMock = vi.fn(() => jsonResponse({ run_id: "run-new" }));
+    const client = { fetch: fetchMock };
+
+    await createRun("build a chat workbench", { background: true }, client);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/runs",
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ task: "build a chat workbench", background: true })
+      })
+    );
   });
 });

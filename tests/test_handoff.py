@@ -71,6 +71,11 @@ class HandoffContextTest(unittest.TestCase):
         self.assertEqual(activity["current_step"]["label"], "规划")
         self.assertEqual(activity["next_action"]["name"], "approve")
         self.assertEqual(activity["next_action"]["tool"], "patchbay_approve")
+        self.assertEqual(activity["conversation_state"]["task"], "handoff context")
+        self.assertEqual(activity["conversation_state"]["phase_label"], "规划")
+        self.assertEqual(activity["conversation_state"]["suggestions"][0]["action"], "approve")
+        self.assertTrue(activity["conversation_state"]["suggestions"][0]["requires_human_confirmation"])
+        self.assertIn("确认", activity["conversation_state"]["composer_placeholder"])
         self.assertEqual([card["key"] for card in activity["gate_cards"]], ["approval", "tests", "review", "apply"])
         self.assertNotIn("provider", activity["headline"].lower())
         self.assertEqual(activity["messages"][0]["kind"], "event")
@@ -137,6 +142,8 @@ class HandoffContextTest(unittest.TestCase):
         self.assertEqual(context["cursors"]["event"], 4)
         self.assertEqual(context["cursors"]["trace"], 3)
         self.assertEqual([item["source"] for item in context["timeline"]], [])
+        self.assertEqual(context["agent_activity"]["messages"], [])
+        self.assertIn("conversation_state", context["agent_activity"])
 
     def test_mcp_context_and_legacy_alias_wrap_same_payload(self) -> None:
         planned = self.cli_json("plan", "--task", "mcp context", "--mock")

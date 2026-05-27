@@ -112,11 +112,34 @@ export type AgentAction = NextAction & {
   label?: string;
 };
 
+export type SuggestedAction = {
+  id: string;
+  label: string;
+  action: string;
+  safe: boolean;
+  tool?: string;
+  requires_human_confirmation?: boolean;
+  reason?: string;
+};
+
+export type ConversationState = {
+  task?: string;
+  status?: string;
+  status_label?: string;
+  phase?: string;
+  phase_label?: string;
+  tone?: AgentTone;
+  next_step?: string;
+  composer_placeholder?: string;
+  suggestions?: SuggestedAction[];
+};
+
 export type AgentActivity = {
   headline?: string;
   tone?: AgentTone;
   current_step?: AgentStep;
   next_action?: AgentAction | null;
+  conversation_state?: ConversationState;
   gate_cards?: AgentGateCard[];
   messages?: AgentMessage[];
   artifacts?: HandoffArtifact[];
@@ -137,6 +160,7 @@ export type HandoffContext = {
 };
 
 export type PatchbayClient = {
+  createRun(task: string, options?: { background?: boolean }): Promise<{ run_id: string; [key: string]: unknown }>;
   listRuns(): Promise<{ count?: number; runs: RunSummary[] }>;
   getStatus(runId: string): Promise<RunStatus>;
   getContext(runId: string, options?: { since_event?: number; since_trace?: number; include_trace?: boolean }): Promise<HandoffContext>;
@@ -178,6 +202,14 @@ function query(params: Record<string, string | number | boolean | undefined>): s
 
 export function fetchRuns(client?: ClientOptions) {
   return requestJson<{ count?: number; runs: RunSummary[] }>("/api/runs", client);
+}
+
+export function createRun(task: string, options: { background?: boolean } = {}, client?: ClientOptions) {
+  return requestJson<{ run_id: string; [key: string]: unknown }>("/api/runs", client, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ task, background: Boolean(options.background) })
+  });
 }
 
 export function fetchStatus(runId: string, client?: ClientOptions) {
@@ -228,6 +260,7 @@ export function cleanupRun(runId: string, client?: ClientOptions) {
 
 export function createPatchbayClient(client?: ClientOptions): PatchbayClient {
   return {
+    createRun: (task, options) => createRun(task, options, client),
     listRuns: () => fetchRuns(client),
     getStatus: (runId) => fetchStatus(runId, client),
     getContext: (runId, options) => fetchContext(runId, options, client),

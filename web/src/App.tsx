@@ -1,38 +1,41 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Bot,
   Check,
-  ChevronDown,
   ChevronRight,
   CircleDot,
   FileText,
   GitPullRequest,
   MessageSquare,
   Play,
+  Plus,
   RefreshCw,
   Search,
+  Send,
   Settings,
   ShieldCheck,
-  Trash2
+  User
 } from "lucide-react";
 import {
   AgentActivity,
+  AgentAction,
   AgentMessage,
   createPatchbayClient,
   HandoffContext,
   PatchbayClient,
   RunStatus,
   RunSummary,
+  SuggestedAction,
   TraceEntry
 } from "./api";
 import "./styles.css";
 
-type TabName = "Trace" | "Log" | "Diff" | "Artifacts" | "Config" | "Providers";
-type ConfirmState = { action: "apply" | "cleanup"; title: string; body: string } | null;
+type TabName = "Overview" | "Trace" | "Log" | "Diff" | "Artifacts" | "Config" | "Providers";
+type ConfirmState = { action: string; title: string; body: string; safe: boolean; confirmLabel?: string } | null;
+type LocalMessage = { id: string; body: string; timestamp: string };
 
 const phases = ["plan", "approve", "write", "test", "review", "fix", "apply", "cleanup"];
-const phaseActions = ["approve", "write", "test", "review", "fix"];
 const phaseLabels: Record<string, string> = {
   plan: "规划",
   approve: "批准",
@@ -73,13 +76,14 @@ const statusLabels: Record<string, string> = {
   APPLIED: "已应用",
   FAILED: "失败",
   RUNNING: "运行中",
-  PASS: "通过",
   READY: "就绪",
+  PASS: "通过",
   SUCCESS: "成功",
   ERROR: "错误",
   CHANGES_REQUESTED: "需要修改"
 };
 const tabLabels: Record<TabName, string> = {
+  Overview: "状态",
   Trace: "活动",
   Log: "日志",
   Diff: "差异",
@@ -108,6 +112,17 @@ function timeLabel(timestamp?: string) {
   return timestamp ? timestamp.slice(11, 19) : "--:--:--";
 }
 
+function dedupeMessages(messages: AgentMessage[]) {
+  const order: string[] = [];
+  const byId = new Map<string, AgentMessage>();
+  messages.forEach((message, index) => {
+    const id = message.id || `message-${index}`;
+    if (!byId.has(id)) order.push(id);
+    byId.set(id, { ...message, id });
+  });
+  return order.map((id) => byId.get(id)!);
+}
+
 function mergeContext(current: HandoffContext | null, next: HandoffContext): HandoffContext {
   if (!current) return next;
   const currentMessages = current.agent_activity?.messages ?? [];
@@ -115,7 +130,7 @@ function mergeContext(current: HandoffContext | null, next: HandoffContext): Han
   const agentActivity = next.agent_activity
     ? {
         ...next.agent_activity,
-        messages: nextMessages.length ? [...currentMessages, ...nextMessages] : currentMessages
+        messages: dedupeMessages([...currentMessages, ...nextMessages])
       }
     : current.agent_activity;
   return { ...current, ...next, agent_activity: agentActivity };
@@ -126,6 +141,15 @@ function fallbackActivity(context: HandoffContext | null, status: RunStatus | nu
   const currentPhase = context?.current_phase ?? status?.current_phase ?? "";
   const currentStatus = context?.status ?? status?.status ?? "";
   const gateState = context?.gate_state ?? status?.gate_state ?? {};
+  const suggestions = (context?.next_actions ?? []).map((action) => ({
+    id: action.name,
+    label: commandLabel(action.name),
+    action: action.name,
+    safe: action.safe,
+    tool: action.tool,
+    requires_human_confirmation: action.requires_human_confirmation,
+    reason: action.reason
+  }));
   return {
     headline: nextAction
       ? `Patchbay Agent 已准备好执行：${commandLabel(nextAction.name)}。`
@@ -139,6 +163,17 @@ function fallbackActivity(context: HandoffContext | null, status: RunStatus | nu
       summary: nextAction?.reason ?? "暂无可执行动作。"
     },
     next_action: nextAction ? { ...nextAction, label: commandLabel(nextAction.name) } : null,
+    conversation_state: {
+      task: status?.task,
+      status: currentStatus,
+      status_label: statusLabel(currentStatus),
+      phase: currentPhase,
+      phase_label: phaseLabel(currentPhase),
+      tone: nextAction ? "ready" : "idle",
+      next_step: nextAction?.reason ?? "当前没有可执行动作。",
+      composer_placeholder: nextAction ? `输入“继续”或点击“${commandLabel(nextAction.name)}”` : "输入新任务，或写下本地备注",
+      suggestions
+    },
     gate_cards: [
       { key: "approval", label: "批准", tone: gateState.approved ? "success" : "idle", detail: gateState.approved ? "计划已批准" : "等待批准" },
       { key: "tests", label: "测试", tone: gateState.tests_passed ? "success" : "idle", detail: gateState.tests_passed ? "测试通过" : "等待测试" },
@@ -163,9 +198,103 @@ function fallbackActivity(context: HandoffContext | null, status: RunStatus | nu
   };
 }
 
+function suggestionsFor(activity: AgentActivity, context: HandoffContext | null): SuggestedAction[] {
+  const fromConversation = activity.conversation_state?.suggestions ?? [];
+  if (fromConversation.length) return fromConversation;
+  return (context?.next_actions ?? []).map((action) => ({
+    id: action.name,
+    label: commandLabel(action.name),
+    action: action.name,
+    safe: action.safe,
+    tool: action.tool,
+    requires_human_confirmation: action.requires_human_confirmation,
+    reason: action.reason
+  }));
+}
+
+function actionFromSuggestion(suggestion: SuggestedAction | AgentAction): SuggestedAction {
+  const action = "action" in suggestion ? suggestion.action : suggestion.name;
+  return {
+    id: "id" in suggestion ? suggestion.id : action,
+    label: suggestion.label ?? commandLabel(action),
+    action,
+    safe: suggestion.safe,
+    tool: suggestion.tool,
+    requires_human_confirmation: suggestion.requires_human_confirmation,
+    reason: suggestion.reason
+  };
+}
+
+function confirmCopy(action: SuggestedAction, readyToApply: boolean): ConfirmState {
+  if (!action.safe) {
+    return {
+      action: action.action,
+      title: "暂不能执行",
+      body: action.reason || `当前状态不允许执行“${action.label}”。`,
+      safe: false,
+      confirmLabel: "知道了"
+    };
+  }
+  if (action.action === "approve") {
+    return {
+      action: action.action,
+      title: "确认批准计划",
+      body: "批准后，Patchbay Agent 才会进入实现阶段。",
+      safe: true,
+      confirmLabel: "批准"
+    };
+  }
+  if (action.action === "apply") {
+    return {
+      action: action.action,
+      title: readyToApply ? "确认应用补丁" : "暂不能应用",
+      body: readyToApply ? "将已审查通过的 FINAL.diff 应用到当前工作区。" : "应用必须等待测试通过且审查为 PASS。",
+      safe: readyToApply,
+      confirmLabel: readyToApply ? "应用" : "知道了"
+    };
+  }
+  if (action.action === "cleanup") {
+    return {
+      action: action.action,
+      title: "确认清理运行",
+      body: "移除本次运行的 worktree 和临时资源。",
+      safe: true,
+      confirmLabel: "清理"
+    };
+  }
+  return null;
+}
+
+function resolveComposerIntent(text: string, suggestions: SuggestedAction[], primaryAction: AgentAction | null | undefined) {
+  const value = text.trim().toLowerCase();
+  if (!value || value.length > 24) return null;
+  const findAction = (name: string) => suggestions.find((item) => item.action === name);
+  const continueWords = ["继续", "下一步", "确认", "go", "continue", "next"];
+  if (continueWords.some((word) => value === word || value.includes(word))) {
+    if (primaryAction) return actionFromSuggestion(primaryAction);
+    return suggestions[0] ?? null;
+  }
+  const tokenMap: Array<[string, string[]]> = [
+    ["approve", ["批准", "approve"]],
+    ["write", ["实现", "写", "write"]],
+    ["test", ["测试", "test"]],
+    ["review", ["审查", "review"]],
+    ["fix", ["修复", "fix"]],
+    ["apply", ["应用", "apply"]],
+    ["cleanup", ["清理", "cleanup"]]
+  ];
+  for (const [action, tokens] of tokenMap) {
+    if (tokens.some((token) => value === token || value.includes(token))) {
+      return findAction(action) ?? { id: action, label: commandLabel(action), action, safe: false, reason: "这不是当前运行允许的下一步。" };
+    }
+  }
+  return null;
+}
+
 export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { client?: PatchbayClient; pollIntervalMs?: number }) {
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [selectedRun, setSelectedRun] = useState("");
+  const [newTaskMode, setNewTaskMode] = useState(false);
   const [status, setStatus] = useState<RunStatus | null>(null);
   const [context, setContext] = useState<HandoffContext | null>(null);
   const [trace, setTrace] = useState<TraceEntry[]>([]);
@@ -175,17 +304,26 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const [diff, setDiff] = useState("");
   const [artifactText, setArtifactText] = useState("");
   const [config, setConfig] = useState<unknown>(null);
-  const [activeTab, setActiveTab] = useState<TabName>("Trace");
+  const [activeTab, setActiveTab] = useState<TabName>("Overview");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmState>(null);
   const [error, setError] = useState("");
+  const [composer, setComposer] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [localMessages, setLocalMessages] = useState<Record<string, LocalMessage[]>>({});
 
-  const loadRuns = async () => {
+  const loadRuns = async (preferredRunId?: string) => {
     const result = await client.listRuns();
-    setRuns(result.runs ?? []);
-    if (!selectedRun && result.runs?.[0]) setSelectedRun(result.runs[0].run_id);
+    const nextRuns = result.runs ?? [];
+    setRuns(nextRuns);
+    if (preferredRunId) {
+      setSelectedRun(preferredRunId);
+      return nextRuns;
+    }
+    if (!selectedRun && !newTaskMode && nextRuns[0]) setSelectedRun(nextRuns[0].run_id);
+    return nextRuns;
   };
 
   useEffect(() => {
@@ -193,7 +331,15 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   }, []);
 
   useEffect(() => {
-    if (!selectedRun) return;
+    if (!selectedRun) {
+      setStatus(null);
+      setContext(null);
+      setTrace([]);
+      setRawTrace([]);
+      setSelectedMessage(null);
+      eventCursor.current = 0;
+      return;
+    }
     let cancelled = false;
     setTrace([]);
     setRawTrace([]);
@@ -261,6 +407,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   }, [runs, search, statusFilter]);
 
   useEffect(() => {
+    if (newTaskMode) return;
     if (!visibleRuns.length) {
       if (selectedRun) setSelectedRun("");
       return;
@@ -268,19 +415,24 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     if (!visibleRuns.some((run) => run.run_id === selectedRun)) {
       setSelectedRun(visibleRuns[0].run_id);
     }
-  }, [visibleRuns, selectedRun]);
+  }, [visibleRuns, selectedRun, newTaskMode]);
 
   const selectedSummary = useMemo(() => runs.find((run) => run.run_id === selectedRun), [runs, selectedRun]);
   const activity = context?.agent_activity ?? fallbackActivity(context, status);
+  const conversationState = activity.conversation_state;
   const gateState = context?.gate_state ?? status?.gate_state ?? {};
-  const readyToApply = Boolean(gateState.ready_to_apply);
-  const messages = activity.messages ?? [];
-  const primaryAction = activity.next_action;
-  const currentPhase = context?.current_phase ?? status?.current_phase ?? "";
   const currentStatus = selectedSummary?.status ?? context?.status ?? status?.status;
-  const headerMeta = selectedRun
-    ? `${statusLabel(currentStatus)} / ${activity.current_step?.label ?? phaseLabel(currentPhase)}`
-    : "选择一次运行，查看 Patchbay Agent 的统一活动流。";
+  const currentPhase = context?.current_phase ?? status?.current_phase ?? "";
+  const readyToApply = Boolean(gateState.ready_to_apply && (context?.status ?? status?.status) === "REVIEWED_PASS");
+  const messages = dedupeMessages(activity.messages ?? []);
+  const primaryAction = activity.next_action;
+  const suggestions = suggestionsFor(activity, context);
+  const selectedTask = selectedSummary?.task ?? conversationState?.task ?? status?.task ?? "";
+  const runKey = selectedRun || "__new__";
+  const localRunMessages = localMessages[runKey] ?? [];
+  const composerPlaceholder = selectedRun
+    ? conversationState?.composer_placeholder ?? "输入“继续”，或写下本地备注"
+    : "描述一个新任务，Patchbay Agent 会先生成计划";
 
   const loadContextNow = async () => {
     if (!selectedRun) return;
@@ -300,43 +452,109 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     await loadContextNow();
   };
 
-  const handleAction = (action?: string | null) => {
-    if (!action) return;
-    if (action === "apply") {
-      setConfirm({ action: "apply", title: "确认应用", body: "将已审查通过的 FINAL.diff 应用到当前工作区。" });
+  const handleAction = (candidate?: SuggestedAction | AgentAction | string | null) => {
+    if (!candidate) return;
+    const action =
+      typeof candidate === "string"
+        ? suggestions.find((item) => item.action === candidate) ?? { id: candidate, label: commandLabel(candidate), action: candidate, safe: candidate !== "apply" || readyToApply }
+        : actionFromSuggestion(candidate);
+    if (action.action === "apply" && !readyToApply) action.safe = false;
+    const confirmation = confirmCopy(action, readyToApply);
+    if (confirmation) {
+      setConfirm(confirmation);
       return;
     }
-    if (action === "cleanup") {
-      setConfirm({ action: "cleanup", title: "确认清理", body: "移除本次运行的 worktree 和临时资源。" });
+    if (!action.safe) {
+      setConfirm(confirmCopy(action, readyToApply));
       return;
     }
-    void runAction(action);
+    void runAction(action.action);
   };
 
   const confirmAction = async () => {
-    if (!confirm || !selectedRun) return;
+    if (!confirm) return;
+    if (!confirm.safe) {
+      setConfirm(null);
+      return;
+    }
+    if (!selectedRun) return;
     setError("");
-    if (confirm.action === "apply") await client.apply(selectedRun);
-    if (confirm.action === "cleanup") await client.cleanup(selectedRun);
+    const action = confirm.action;
     setConfirm(null);
+    if (action === "apply") await client.apply(selectedRun);
+    else if (action === "cleanup") await client.cleanup(selectedRun);
+    else await client.runAction(selectedRun, action);
     await loadRuns();
     setStatus(await client.getStatus(selectedRun));
     await loadContextNow();
   };
 
+  const appendLocalMessage = (body: string) => {
+    const timestamp = new Date().toISOString();
+    setLocalMessages((current) => ({
+      ...current,
+      [runKey]: [...(current[runKey] ?? []), { id: `local-${Date.now()}`, body, timestamp }]
+    }));
+  };
+
+  const submitComposer = async (event?: FormEvent) => {
+    event?.preventDefault();
+    const text = composer.trim();
+    if (!text || submitting) return;
+    setError("");
+    setSubmitting(true);
+    try {
+      if (!selectedRun) {
+        const created = await client.createRun(text);
+        setComposer("");
+        setNewTaskMode(false);
+        await loadRuns(created.run_id);
+        return;
+      }
+      const intent = resolveComposerIntent(text, suggestions, primaryAction);
+      setComposer("");
+      if (intent) {
+        handleAction(intent);
+      } else {
+        appendLocalMessage(text);
+      }
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      void submitComposer();
+    }
+  };
+
+  const startNewTask = () => {
+    setNewTaskMode(true);
+    setSelectedRun("");
+    setComposer("");
+    setError("");
+  };
+
   return (
-    <main className="workbench">
+    <main className={`workbench ${diagnosticsOpen ? "diagnostics-open" : ""}`}>
       <aside className="sidebar">
         <div className="brand">
           <GitPullRequest size={20} />
           <div>
             <strong>Patchbay Agent</strong>
-            <span>多 Agent 协作，一个工作界面</span>
+            <span>一个任务线程</span>
           </div>
+          <button className="icon-button" onClick={startNewTask} aria-label="新任务">
+            <Plus size={16} />
+          </button>
         </div>
         <label className="search">
           <Search size={15} />
-          <input aria-label="搜索运行" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索运行" />
+          <input aria-label="搜索运行" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索线程" />
         </label>
         <label className="filter">
           <span>状态</span>
@@ -349,12 +567,21 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
             <option value="FAILED">失败</option>
           </select>
         </label>
-        <div className="run-list">
+        <div className="run-list" aria-label="运行线程">
           {visibleRuns.map((run) => (
-            <button className={`run-item ${run.run_id === selectedRun ? "selected" : ""}`} key={run.run_id} onClick={() => setSelectedRun(run.run_id)}>
-              <span className="run-id">{run.run_id}</span>
-              <span className="run-task">{run.task}</span>
-              <span className="status-pill">{statusLabel(run.status)}</span>
+            <button
+              className={`run-item ${run.run_id === selectedRun ? "selected" : ""}`}
+              key={run.run_id}
+              onClick={() => {
+                setNewTaskMode(false);
+                setSelectedRun(run.run_id);
+              }}
+            >
+              <span className="run-task">{run.task || run.run_id}</span>
+              <span className="run-meta">
+                <span>{statusLabel(run.status)}</span>
+                <span>{run.run_id}</span>
+              </span>
             </button>
           ))}
         </div>
@@ -363,130 +590,106 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       <section className="center">
         <header className="topbar">
           <div>
-            <h1>{selectedSummary?.task || selectedRun || "未选择运行"}</h1>
-            <p>{headerMeta}</p>
+            <h1>{selectedRun ? selectedTask || selectedRun : "新任务"}</h1>
+            <p>{selectedRun ? `${statusLabel(currentStatus)} · ${activity.current_step?.label ?? phaseLabel(currentPhase)}` : "用一条消息开始新的 Patchbay 运行"}</p>
           </div>
-          <button className="icon-button" onClick={() => void loadRuns()} aria-label="刷新运行">
-            <RefreshCw size={17} />
-          </button>
+          <div className="topbar-actions">
+            <button className="icon-button" onClick={() => void loadRuns()} aria-label="刷新运行">
+              <RefreshCw size={17} />
+            </button>
+            <button className="detail-button" onClick={() => setDiagnosticsOpen((open) => !open)} aria-expanded={diagnosticsOpen}>
+              <ChevronRight size={16} />
+              诊断
+            </button>
+          </div>
         </header>
 
         {error ? <div className="error">{error}</div> : null}
 
-        <section className={`agent-hero tone-${activity.tone ?? "idle"}`}>
-          <div className="agent-mark">
-            <Bot size={24} />
-          </div>
-          <div className="agent-copy">
-            <span>{activity.current_step?.label ?? phaseLabel(currentPhase)}</span>
-            <strong>{activity.headline}</strong>
-            <p>{activity.current_step?.summary}</p>
-          </div>
-          <button
-            className="primary-action"
-            disabled={!primaryAction?.safe}
-            onClick={() => handleAction(primaryAction?.name)}
-          >
-            <Play size={15} />
-            {primaryAction?.label ?? "等待下一步"}
-          </button>
-        </section>
-
-        <section className="gate-strip" aria-label="门禁状态">
-          {(activity.gate_cards ?? []).map((card) => (
-            <div className={`gate-card tone-${card.tone ?? "idle"}`} key={card.key}>
-              <span>{card.label}</span>
-              <strong>{card.detail}</strong>
+        <section className="thread" aria-label="Patchbay Agent 对话线程">
+          {!selectedRun ? (
+            <div className="empty-thread">
+              <Bot size={28} />
+              <strong>告诉 Patchbay Agent 要做什么</strong>
+              <span>它会先生成计划，后续批准、实现、测试、审查和应用都从这个线程推进。</span>
             </div>
-          ))}
-        </section>
-
-        <section className="phase-strip" aria-label="阶段进度">
-          {phases.map((phase) => {
-            const currentStatusValue = context?.status ?? status?.status;
-            const isCurrent = currentPhase === phase;
-            const isDone = phase === "apply" ? currentStatusValue === "APPLIED" : phases.indexOf(phase) < phases.indexOf(currentPhase);
-            return (
-              <div className={`phase ${isCurrent ? "current" : ""} ${isDone ? "done" : ""}`} key={phase}>
-                {isDone ? <Check size={13} /> : <CircleDot size={11} />}
-                <b>{phaseLabel(phase)}</b>
-              </div>
-            );
-          })}
-        </section>
-
-        <section className="actions" aria-label="阶段操作">
-          {phaseActions.map((action) => (
-            <button
-              key={action}
-              onClick={() => void runAction(action)}
-              disabled={
-                context?.next_actions?.length
-                  ? !context.next_actions.some((next) => next.name === action && next.safe)
-                  : !status?.next_commands?.includes(action)
-              }
-            >
-              <Play size={14} />
-              {actionLabels[action] ?? `执行 ${phaseLabel(action)}`}
-            </button>
-          ))}
-          <button className="danger" disabled={!readyToApply} onClick={() => handleAction("apply")}>
-            <AlertTriangle size={14} />
-            应用已审查 diff
-          </button>
-          <button className="danger ghost" onClick={() => handleAction("cleanup")}>
-            <Trash2 size={14} />
-            清理运行
-          </button>
-        </section>
-
-        <section className="conversation" aria-label="Agent 活动流">
-          {messages.length ? (
-            messages.map((message) => (
-              <button
-                className={`message tone-${message.tone ?? "idle"} ${selectedMessage?.id === message.id ? "selected" : ""}`}
-                key={message.id}
-                onClick={() => setSelectedMessage(message)}
-              >
-                <span className="message-time">{timeLabel(message.timestamp)}</span>
-                <span className="message-icon">
-                  {message.kind === "gate" ? <ShieldCheck size={16} /> : message.kind === "agent" ? <Bot size={16} /> : <MessageSquare size={16} />}
-                </span>
-                <span className="message-main">
-                  <strong>{message.title}</strong>
-                  {message.body ? <small>{message.body}</small> : null}
-                </span>
-                <span className="message-status">{message.status_label ?? statusLabel(message.status)}</span>
-              </button>
-            ))
           ) : (
-            <div className="empty-state">暂无活动。Patchbay Agent 会在这里记录计划、实现、测试和审查进展。</div>
+            <>
+              <ChatBubble role="user" title="任务" body={selectedTask || selectedRun} />
+              <ChatBubble
+                role="assistant"
+                title={activity.headline ?? "Patchbay Agent 正在跟踪这次运行。"}
+                body={conversationState?.next_step ?? activity.current_step?.summary}
+                tone={activity.tone}
+              />
+              {messages.map((message) => (
+                <AgentEventBubble key={message.id} message={message} selected={selectedMessage?.id === message.id} onSelect={() => setSelectedMessage(message)} />
+              ))}
+              {localRunMessages.map((message) => (
+                <ChatBubble key={message.id} role="user" title="本地消息" body={message.body} timestamp={message.timestamp} />
+              ))}
+              <NextActionCard action={primaryAction} suggestions={suggestions} onAction={handleAction} />
+            </>
           )}
         </section>
+
+        <form className="composer" onSubmit={(event) => void submitComposer(event)}>
+          {selectedRun && suggestions.length ? (
+            <div className="suggestions" aria-label="建议动作">
+              {suggestions.map((suggestion) => (
+                <button className={`suggestion ${suggestion.safe ? "" : "blocked"}`} type="button" key={suggestion.id} onClick={() => handleAction(suggestion)}>
+                  {suggestion.safe ? <Play size={13} /> : <AlertTriangle size={13} />}
+                  {suggestion.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <div className="composer-box">
+            <textarea
+              aria-label="给 Patchbay Agent 输入消息"
+              value={composer}
+              rows={2}
+              onChange={(event) => setComposer(event.target.value)}
+              onKeyDown={handleComposerKeyDown}
+              placeholder={composerPlaceholder}
+            />
+            <button className="send-button" type="submit" disabled={submitting || !composer.trim()} aria-label={selectedRun ? "发送消息" : "创建任务"}>
+              <Send size={17} />
+            </button>
+          </div>
+        </form>
       </section>
 
-      <aside className={`details ${diagnosticsOpen ? "open" : ""}`}>
-        <button className="diagnostic-toggle" onClick={() => setDiagnosticsOpen((open) => !open)} aria-expanded={diagnosticsOpen}>
-          {diagnosticsOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          诊断
-        </button>
-        <div className="tabs" role="tablist">
-          {(["Trace", "Log", "Diff", "Artifacts", "Config", "Providers"] as TabName[]).map((tab) => (
-            <button role="tab" aria-selected={activeTab === tab} className={activeTab === tab ? "active" : ""} key={tab} onClick={() => setActiveTab(tab)}>
-              {tabLabels[tab]}
-            </button>
-          ))}
-        </div>
-        <DetailPanel
-          tab={activeTab}
-          message={selectedMessage}
-          rawTrace={rawTrace}
-          trace={trace}
-          diff={diff}
-          artifactText={artifactText}
-          config={config}
-          status={status}
-        />
+      <aside className="details" aria-label="诊断详情">
+        {diagnosticsOpen ? (
+          <>
+            <div className="details-head">
+              <strong>诊断</strong>
+              <button className="icon-button" onClick={() => setDiagnosticsOpen(false)} aria-label="关闭诊断">
+                <ChevronRight size={16} />
+              </button>
+            </div>
+            <div className="tabs" role="tablist">
+              {(["Overview", "Trace", "Log", "Diff", "Artifacts", "Config", "Providers"] as TabName[]).map((tab) => (
+                <button role="tab" aria-selected={activeTab === tab} className={activeTab === tab ? "active" : ""} key={tab} onClick={() => setActiveTab(tab)}>
+                  {tabLabels[tab]}
+                </button>
+              ))}
+            </div>
+            <DetailPanel
+              tab={activeTab}
+              message={selectedMessage}
+              rawTrace={rawTrace}
+              trace={trace}
+              diff={diff}
+              artifactText={artifactText}
+              config={config}
+              status={status}
+              context={context}
+              activity={activity}
+            />
+          </>
+        ) : null}
       </aside>
 
       {confirm ? (
@@ -495,15 +698,96 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
             <h2>{confirm.title}</h2>
             <p>{confirm.body}</p>
             <div className="modal-actions">
-              <button onClick={() => setConfirm(null)}>取消</button>
-              <button className="danger" onClick={() => void confirmAction()}>
-                确认
+              <button onClick={() => setConfirm(null)}>{confirm.safe ? "取消" : "关闭"}</button>
+              <button className={confirm.safe ? "danger" : ""} onClick={() => void confirmAction()}>
+                {confirm.confirmLabel ?? "确认"}
               </button>
             </div>
           </div>
         </div>
       ) : null}
     </main>
+  );
+}
+
+function ChatBubble({
+  role,
+  title,
+  body,
+  timestamp,
+  tone
+}: {
+  role: "user" | "assistant";
+  title: string;
+  body?: string;
+  timestamp?: string;
+  tone?: string;
+}) {
+  return (
+    <article className={`chat-bubble ${role} tone-${tone ?? "idle"}`}>
+      <div className="avatar">{role === "user" ? <User size={16} /> : <Bot size={16} />}</div>
+      <div className="bubble-body">
+        <div className="bubble-title">
+          <strong>{title}</strong>
+          {timestamp ? <span>{timeLabel(timestamp)}</span> : null}
+        </div>
+        {body ? <p>{body}</p> : null}
+      </div>
+    </article>
+  );
+}
+
+function AgentEventBubble({ message, selected, onSelect }: { message: AgentMessage; selected: boolean; onSelect: () => void }) {
+  return (
+    <button className={`chat-bubble event tone-${message.tone ?? "idle"} ${selected ? "selected" : ""}`} onClick={onSelect}>
+      <div className="avatar">{message.kind === "gate" ? <ShieldCheck size={16} /> : message.kind === "agent" ? <Bot size={16} /> : <MessageSquare size={16} />}</div>
+      <div className="bubble-body">
+        <div className="bubble-title">
+          <strong>{message.title}</strong>
+          <span>{timeLabel(message.timestamp)}</span>
+        </div>
+        {message.body ? <p>{message.body}</p> : null}
+        <small>{message.status_label ?? statusLabel(message.status)}</small>
+      </div>
+    </button>
+  );
+}
+
+function NextActionCard({
+  action,
+  suggestions,
+  onAction
+}: {
+  action: AgentAction | null | undefined;
+  suggestions: SuggestedAction[];
+  onAction: (action: SuggestedAction | AgentAction | string) => void;
+}) {
+  if (!action && !suggestions.length) {
+    return (
+      <div className="next-card idle">
+        <CircleDot size={16} />
+        <div>
+          <strong>等待下一步</strong>
+          <span>当前没有可执行动作。</span>
+        </div>
+      </div>
+    );
+  }
+  const primary = action ? actionFromSuggestion(action) : suggestions[0];
+  return (
+    <div className={`next-card ${primary?.safe ? "ready" : "blocked"}`} aria-label="下一步确认">
+      {primary?.safe ? <Play size={16} /> : <AlertTriangle size={16} />}
+      <div>
+        <strong>{primary?.label ?? "下一步"}</strong>
+        <span>{primary?.reason || "Patchbay Agent 已准备好继续。"}</span>
+      </div>
+      {primary ? (
+        <button onClick={() => onAction(primary)}>
+          {primary.safe ? <Play size={13} /> : <AlertTriangle size={13} />}
+          {primary.requires_human_confirmation ? "确认" : "执行"}
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -515,7 +799,9 @@ function DetailPanel({
   diff,
   artifactText,
   config,
-  status
+  status,
+  context,
+  activity
 }: {
   tab: TabName;
   message: AgentMessage | null;
@@ -525,7 +811,43 @@ function DetailPanel({
   artifactText: string;
   config: unknown;
   status: RunStatus | null;
+  context: HandoffContext | null;
+  activity: AgentActivity;
 }) {
+  if (tab === "Overview") {
+    const currentPhase = context?.current_phase ?? status?.current_phase ?? "";
+    const currentStatus = context?.status ?? status?.status ?? "";
+    return (
+      <div className="overview-panel">
+        <section>
+          <h2>阶段</h2>
+          <div className="phase-list">
+            {phases.map((phase) => {
+              const isCurrent = currentPhase === phase;
+              const isDone = phase === "apply" ? currentStatus === "APPLIED" : phases.indexOf(phase) < phases.indexOf(currentPhase);
+              return (
+                <div className={`phase-row ${isCurrent ? "current" : ""} ${isDone ? "done" : ""}`} key={phase}>
+                  {isDone ? <Check size={13} /> : <CircleDot size={11} />}
+                  <span>{phaseLabel(phase)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+        <section>
+          <h2>门禁状态</h2>
+          <div className="gate-list">
+            {(activity.gate_cards ?? []).map((card) => (
+              <div className={`gate-row tone-${card.tone ?? "idle"}`} key={card.key}>
+                <span>{card.label}</span>
+                <strong>{card.detail}</strong>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    );
+  }
   if (tab === "Trace") {
     return (
       <div className="diagnostic-body">
@@ -538,7 +860,23 @@ function DetailPanel({
     );
   }
   if (tab === "Diff") return <pre>{diff}</pre>;
-  if (tab === "Log" || tab === "Artifacts") return <pre>{artifactText}</pre>;
+  if (tab === "Log") return <pre>{artifactText}</pre>;
+  if (tab === "Artifacts") {
+    return (
+      <div className="artifacts-panel">
+        {(context?.artifacts ?? activity.artifacts ?? []).map((artifact) => (
+          <div className="artifact-row" key={artifact.name}>
+            <FileText size={15} />
+            <div>
+              <strong>{artifact.name}</strong>
+              <span>{artifact.purpose}</span>
+            </div>
+          </div>
+        ))}
+        <pre>{artifactText}</pre>
+      </div>
+    );
+  }
   if (tab === "Providers") {
     const providers = Object.entries(status?.effective_phase_providers ?? {});
     return (
@@ -550,6 +888,13 @@ function DetailPanel({
             <small>{provider.model || provider.command_key || "默认"}</small>
           </div>
         ))}
+        {(context?.provider_trail ?? []).map((item, index) => (
+          <div className="provider-item trail" key={`${item.phase}-${index}`}>
+            <span>{phaseLabel(item.phase)}</span>
+            <strong>{item.provider || "-"}</strong>
+            <small>{item.model || item.status || "已记录"}</small>
+          </div>
+        ))}
       </div>
     );
   }
@@ -557,7 +902,6 @@ function DetailPanel({
     <div className="config-view">
       <Settings size={18} />
       <pre>{JSON.stringify(config, null, 2)}</pre>
-      <FileText size={1} />
     </div>
   );
 }

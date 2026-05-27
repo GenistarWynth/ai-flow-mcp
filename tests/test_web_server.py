@@ -86,6 +86,7 @@ class WebServerTest(unittest.TestCase):
         self.assertIn("agent_activity", context)
         self.assertIn("headline", context["agent_activity"])
         self.assertIn("messages", context["agent_activity"])
+        self.assertIn("conversation_state", context["agent_activity"])
 
         _, events = self._request("GET", f"/api/runs/{self.run_id}/events")
         self.assertEqual(events["returned"], 1)
@@ -109,6 +110,26 @@ class WebServerTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(result["status"], "APPROVED")
         approve.assert_called_once_with(self.tmp, self.run_id)
+
+    def test_post_runs_creates_plan_run(self) -> None:
+        from scripts.ai_flow import web_server
+
+        with patch.object(web_server.service, "plan", return_value={"run_id": "run-new", "status": "PLANNED"}) as plan:
+            status, result = self._request("POST", "/api/runs", {"task": "new task"})
+
+        self.assertEqual(status, 200)
+        self.assertEqual(result["run_id"], "run-new")
+        plan.assert_called_once_with(self.tmp, task="new task")
+
+    def test_post_runs_can_start_background_plan(self) -> None:
+        from scripts.ai_flow import web_server
+
+        with patch.object(web_server.service, "start_background_phase", return_value={"run_id": "run-bg", "background": True}) as start:
+            status, result = self._request("POST", "/api/runs", {"task": "background task", "background": True})
+
+        self.assertEqual(status, 200)
+        self.assertEqual(result["run_id"], "run-bg")
+        start.assert_called_once_with(self.tmp, "plan", task="background task")
 
     def test_apply_action_is_rejected_until_gate_ready(self) -> None:
         from scripts.ai_flow import web_server
