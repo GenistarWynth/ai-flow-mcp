@@ -79,6 +79,8 @@ def agent_message(
         return _help_response()
     if intent == "runs":
         return _runs_response(root)
+    if intent == "missing_run":
+        return _missing_run_response(root, text)
     if background:
         return _start_background_agent(
             root,
@@ -547,9 +549,11 @@ def _classify_intent(message: str, *, has_run: bool, confirmation: str) -> str:
         return "doctor"
     if _is_help_intent(text):
         return "help"
-    if not has_run and _is_runs_intent(text):
-        return "runs"
     if not has_run:
+        if _is_runs_intent(text):
+            return "runs"
+        if _is_run_bound_intent(text):
+            return "missing_run"
         return "start"
     if _has_any(text, ("apply", "应用", "套用")):
         return "apply"
@@ -588,6 +592,51 @@ def _is_runs_intent(text: str) -> bool:
     if "status" in words:
         return bool(words & {"agent", "latest", "list", "patchbay", "recent", "run", "runs", "show", "current"})
     return "recent" in words and bool(words & {"run", "runs"})
+
+
+def _is_run_bound_intent(text: str) -> bool:
+    if text in {
+        "apply",
+        "approve",
+        "approved",
+        "confirm",
+        "continue",
+        "diff",
+        "events",
+        "log",
+        "logs",
+        "next",
+        "patch",
+        "review",
+        "resume",
+        "trace",
+        "应用",
+        "批准",
+        "确认",
+        "继续",
+        "下一步",
+        "补丁",
+        "变更",
+        "计划",
+        "日志",
+    }:
+        return True
+    words = _words(text)
+    if words & TASK_INTENT_WORDS:
+        return False
+    if words & {"approve", "approved", "confirm"}:
+        return bool(words & {"approval", "current", "latest", "patchbay", "plan", "run", "this"})
+    if words & {"continue", "resume"}:
+        return bool(words & {"current", "last", "latest", "phase", "run", "step", "this", "worktree"})
+    if "apply" in words:
+        return bool(words & {"changes", "diff", "final", "patch", "reviewed"})
+    if "next" in words:
+        return bool(words & {"phase", "run", "step"})
+    if words & {"artifact", "diff", "events", "log", "logs", "patch", "trace"}:
+        return bool(words & {"current", "get", "last", "latest", "open", "run", "show", "this", "view"})
+    if "review" in words:
+        return bool(words & {"current", "get", "last", "latest", "open", "run", "show", "this", "view"})
+    return False
 
 
 def _is_doctor_intent(text: str) -> bool:
@@ -662,6 +711,29 @@ def _runs_response(root: Path) -> dict[str, Any]:
     return _stateless_response(
         action="runs",
         reply=reply,
+        next_actions=next_actions,
+        extra={"runs": report, "recent_run": recent[0] if recent else None},
+    )
+
+
+def _missing_run_response(root: Path, text: str) -> dict[str, Any]:
+    report = service.runs(root, limit=5)
+    recent = list(report.get("runs") or [])
+    if recent:
+        latest = recent[0]
+        reply = (
+            f"`{text}` needs an existing run_id. Latest run is {latest.get('run_id')} "
+            f"({latest.get('status') or 'unknown'}); pass that run_id to inspect or continue it."
+        )
+        next_actions = ["status", "runs", "readiness"]
+    else:
+        reply = f"`{text}` needs an existing run_id, but no Patchbay runs were found. Send a task to start with a plan."
+        next_actions = ["start", "readiness"]
+    return _stateless_response(
+        action="missing_run",
+        reply=reply,
+        ok=False,
+        error=reply,
         next_actions=next_actions,
         extra={"runs": report, "recent_run": recent[0] if recent else None},
     )

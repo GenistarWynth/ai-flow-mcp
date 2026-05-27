@@ -147,6 +147,33 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertEqual(response["action"], "start")
         self.assertEqual(response["status"]["status"], "PLANNED")
 
+    def test_agent_continue_without_run_returns_local_guidance(self) -> None:
+        response = agent_message(self.repo, "continue")
+
+        self.assertEqual(response["action"], "missing_run")
+        self.assertFalse(response["ok"])
+        self.assertIsNone(response["run_id"])
+        self.assertIn("needs an existing run_id", response["reply"])
+        self.assertEqual(len(list((self.repo / ".ai" / "runs").iterdir())), 0)
+
+    def test_agent_apply_without_run_returns_local_guidance(self) -> None:
+        response = agent_message(self.repo, "apply")
+
+        self.assertEqual(response["action"], "missing_run")
+        self.assertFalse(response["ok"])
+        self.assertIsNone(response["run_id"])
+        self.assertIn("needs an existing run_id", response["reply"])
+
+    def test_agent_review_code_remains_a_new_task(self) -> None:
+        response = agent_message(self.repo, "review code quality")
+
+        self.assertEqual(response["action"], "start")
+        self.assertEqual(response["status"]["status"], "PLANNED")
+
+        approval_task = agent_message(self.repo, "approve user permissions flow")
+        self.assertEqual(approval_task["action"], "start")
+        self.assertEqual(approval_task["status"]["status"], "PLANNED")
+
     def test_agent_refuses_approval_without_confirmation(self) -> None:
         planned = agent_message(self.repo, "needs approval")
         run_id = planned["run_id"]
@@ -271,6 +298,27 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertEqual(payload["action"], "runs")
         self.assertEqual(payload["recent_run"]["run_id"], planned["run_id"])
 
+    def test_mcp_patchbay_agent_continue_without_run_returns_guidance(self) -> None:
+        from scripts.ai_flow import mcp_server
+
+        original_root = mcp_server.ROOT
+        try:
+            mcp_server.ROOT = self.repo
+            response = mcp_server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {"name": "patchbay_agent", "arguments": {"message": "continue"}},
+                }
+            )
+        finally:
+            mcp_server.ROOT = original_root
+
+        payload = json.loads(response["result"]["content"][0]["text"])
+        self.assertEqual(payload["action"], "missing_run")
+        self.assertFalse(payload["ok"])
+
     def test_cli_agent_message(self) -> None:
         response = self.cli_json("agent", "message", "cli agent task", "--include-plan")
 
@@ -291,6 +339,13 @@ class AgentWorkflowTests(AgentTestCase):
 
         self.assertEqual(response["action"], "runs")
         self.assertEqual(response["recent_run"]["run_id"], planned["run_id"])
+        self.assertIsNone(response["run_id"])
+
+    def test_cli_agent_continue_without_run_returns_local_guidance(self) -> None:
+        response = self.cli_json("agent", "message", "continue")
+
+        self.assertEqual(response["action"], "missing_run")
+        self.assertFalse(response["ok"])
         self.assertIsNone(response["run_id"])
 
     def test_agent_background_start_returns_pollable_job(self) -> None:

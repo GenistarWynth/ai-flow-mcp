@@ -118,9 +118,9 @@ scripts/patchbay apply <run_id>
 scripts/patchbay cleanup <run_id>
 ```
 
-`--background` is intended for the conversational agent path: planning and approve/continue turns return a pollable `run_id`, write `JOB.json`, and surface progress through `patchbay_status`, `patchbay_context`, and `patchbay_events`. Destructive apply remains foreground-only and still requires explicit confirmation.
+`--background` is intended for the conversational agent path: planning and approve/continue turns return a pollable `run_id`, write `JOB.json`, and surface progress through `patchbay_status`, `patchbay_context`, and `patchbay_events`. Destructive apply remains foreground-only and still requires explicit confirmation. If the user sends `continue`, `approve`, `apply`, `diff`, or `artifact` without a `run_id`, Patchbay returns local guidance instead of starting a new run.
 
-Web workbench 使用同一套对话式 Agent 流程。`patchbay_agent` 和 `scripts/patchbay agent message status --json` / `readiness --json` 可直接返回最近运行或统一 doctor 报告，不创建模型 run；诊断抽屉里的“就绪”页也会调用统一 doctor 检查项目初始化、配置、CLI 入口和 Skill 状态。Web 默认跳过 MCP stdio 探测，避免打开页面时启动额外子进程，需要完整 MCP 检查时再运行 `patchbay doctor --json` 或 `patchbay mcp doctor`。
+Web workbench 使用同一套对话式 Agent 流程。`patchbay_agent` 和 `scripts/patchbay agent message status --json` / `readiness --json` 可直接返回最近运行或统一 doctor 报告，不创建模型 run；`continue`、`approve`、`apply`、`diff`、`artifact` 这类没有 `run_id` 的消息会返回本地提示。诊断抽屉里的“就绪”页也会调用统一 doctor 检查项目初始化、配置、CLI 入口和 Skill 状态。Web 默认跳过 MCP stdio 探测，避免打开页面时启动额外子进程，需要完整 MCP 检查时再运行 `patchbay doctor --json` 或 `patchbay mcp doctor`。
 
 mock 模式：
 
