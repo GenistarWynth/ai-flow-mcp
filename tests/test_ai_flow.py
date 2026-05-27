@@ -1300,6 +1300,8 @@ class McpSchemaTests(unittest.TestCase):
         self.assertIn("phases.review", tools["patchbay_review"].lower())
         self.assertIn("patchbay_metrics", tools)
         self.assertIn("run_metrics", tools["patchbay_metrics"])
+        self.assertIn("patchbay_doctor", tools)
+        self.assertIn("read-only readiness", tools["patchbay_doctor"].lower())
 
         # Legacy aliases should still exist and mention alias status
         self.assertIn("ai_flow_plan", tools)
@@ -1311,11 +1313,11 @@ class McpSchemaTests(unittest.TestCase):
         names = {tool["name"] for tool in tools_response["result"]["tools"]}
         for canonical in ("patchbay_plan", "patchbay_approve", "patchbay_write", "patchbay_test",
                           "patchbay_review", "patchbay_fix", "patchbay_status", "patchbay_context",
-                          "patchbay_metrics", "patchbay_trace", "patchbay_diff", "patchbay_apply", "patchbay_agent"):
+                          "patchbay_metrics", "patchbay_doctor", "patchbay_trace", "patchbay_diff", "patchbay_apply", "patchbay_agent"):
             self.assertIn(canonical, names, f"{canonical} missing from tools/list")
         for legacy in ("ai_flow_plan", "ai_flow_approve", "ai_flow_write", "ai_flow_test",
                        "ai_flow_review", "ai_flow_fix", "ai_flow_status", "ai_flow_context",
-                       "ai_flow_metrics", "ai_flow_trace", "ai_flow_diff", "ai_flow_apply", "ai_flow_agent"):
+                       "ai_flow_metrics", "ai_flow_doctor", "ai_flow_trace", "ai_flow_diff", "ai_flow_apply", "ai_flow_agent"):
             self.assertIn(legacy, names, f"{legacy} missing from tools/list")
 
 

@@ -35,8 +35,8 @@ timeout = 900
 
 ## 功能概览
 
-- CLI 流程：`agent message`、`web`、`plan`、`approve`、`write`、`test`、`review`、`fix`、`status`、`context`、`metrics`、`trace`、`diff`、`apply`、`cleanup`。
-- MCP 工具：`patchbay_agent`、`patchbay_plan`、`patchbay_approve`、`patchbay_write`、`patchbay_test`、`patchbay_review`、`patchbay_fix`、`patchbay_status`、`patchbay_context`、`patchbay_metrics`、`patchbay_events`、`patchbay_trace`、`patchbay_runs`、`patchbay_artifact`、`patchbay_config_show`、`patchbay_config_phase_set`、`patchbay_config_command_set`、`patchbay_config_test_add`、`patchbay_config_provider_add_cli`、`patchbay_diff`、`patchbay_apply`。
+- CLI 流程：`doctor`、`agent message`、`web`、`plan`、`approve`、`write`、`test`、`review`、`fix`、`status`、`context`、`metrics`、`trace`、`diff`、`apply`、`cleanup`。
+- MCP 工具：`patchbay_agent`、`patchbay_plan`、`patchbay_approve`、`patchbay_write`、`patchbay_test`、`patchbay_review`、`patchbay_fix`、`patchbay_status`、`patchbay_context`、`patchbay_metrics`、`patchbay_doctor`、`patchbay_events`、`patchbay_trace`、`patchbay_runs`、`patchbay_artifact`、`patchbay_config_show`、`patchbay_config_phase_set`、`patchbay_config_command_set`、`patchbay_config_test_add`、`patchbay_config_provider_add_cli`、`patchbay_diff`、`patchbay_apply`。
 - 兼容旧 MCP 工具名：`ai_flow_*`。
 - 默认使用隔离 git worktree，避免直接污染当前工作区。
 - 每次运行都会在 `.ai/runs/<run_id>/` 下落盘计划、diff、日志和状态。
@@ -71,6 +71,7 @@ copy .ai\patchbay.example.toml .ai\patchbay.toml
 
 ```bash
 patchbay config     # 交互式向导，无需手动编辑
+patchbay doctor     # 统一检查 config/MCP/Skill 是否就绪
 patchbay config --doctor     # 验证解析后的阶段配置
 patchbay config --set-key models.planner --set-value claude-opus-4-7
 ```
@@ -158,9 +159,9 @@ patchbay mcp install gemini         # Gemini CLI
 codex mcp add patchbay -- python scripts/patchbay_mcp_server.py
 ```
 
-Claude Desktop、Claude Code、Gemini CLI 或其他 MCP host 使用各自等价的 MCP server 注册方式即可。运行 `patchbay mcp doctor` 验证服务器是否可达。
+Claude Desktop、Claude Code、Gemini CLI 或其他 MCP host 使用各自等价的 MCP server 注册方式即可。运行 `patchbay doctor` 做完整就绪检查，或运行 `patchbay mcp doctor` 只验证服务器是否可达。
 
-`patchbay mcp doctor` 会真正启动 stdio MCP server，发送 `initialize` 和 `tools/list`，并检查 `patchbay_agent`、`patchbay_plan`、`patchbay_context` 等核心工具是否存在。Codex、Claude Code、Gemini 的 install 命令当前会打印 host 注册命令；Claude Desktop 会直接写入 JSON 配置。
+`patchbay doctor` 是只读检查，会汇总项目初始化、阶段配置、CLI shim/已安装命令、MCP 可达性和工具列表、内置 Skill 源、Codex Skill 安装状态。`patchbay mcp doctor` 会真正启动 stdio MCP server，发送 `initialize` 和 `tools/list`，并检查 `patchbay_agent`、`patchbay_plan`、`patchbay_context`、`patchbay_metrics`、`patchbay_doctor` 等核心工具是否存在。Codex、Claude Code、Gemini 的 install 命令当前会打印 host 注册命令；Claude Desktop 会直接写入 JSON 配置。
 
 安装后可用的 MCP 工具包括：
 
@@ -174,6 +175,7 @@ Claude Desktop、Claude Code、Gemini CLI 或其他 MCP host 使用各自等价�
 - `patchbay_status`
 - `patchbay_context`
 - `patchbay_metrics`
+- `patchbay_doctor`
 - `patchbay_events`
 - `patchbay_trace`
 - `patchbay_runs`

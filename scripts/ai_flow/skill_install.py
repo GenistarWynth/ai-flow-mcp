@@ -58,6 +58,38 @@ def run_skill_print(cwd: Path, host: str = "codex") -> dict[str, Any]:
     return {"host": "codex", "source": str(source), "files": files}
 
 
+def run_skill_doctor(cwd: Path, host: str = "codex", *, path: str | Path | None = None) -> dict[str, Any]:
+    if host.lower() != "codex":
+        raise AiFlowError("Only Codex Skill diagnostics are currently supported.", stage="skill")
+    source = _find_skill_source()
+    skills_root = _skills_root(path)
+    destination = skills_root / SKILL_NAME
+    source_files: list[str] = []
+    if source:
+        source_files = [
+            str(file_path.relative_to(source)).replace("\\", "/")
+            for file_path in sorted(source.rglob("*"))
+            if file_path.is_file()
+        ]
+    missing_source_files = [
+        file_name
+        for file_name in ("SKILL.md", "agents/openai.yaml", "references/install.md")
+        if file_name not in source_files
+    ]
+    return {
+        "host": "codex",
+        "ok": bool(source) and not missing_source_files,
+        "source": str(source) if source else "",
+        "source_exists": bool(source),
+        "source_file_count": len(source_files),
+        "missing_source_files": missing_source_files,
+        "skills_root": str(skills_root),
+        "destination": str(destination),
+        "installed": (destination / "SKILL.md").exists(),
+        "install_command": "patchbay skill install codex",
+    }
+
+
 def _skills_root(path: str | Path | None) -> Path:
     if path:
         return Path(path).expanduser().resolve()
@@ -68,8 +100,15 @@ def _skills_root(path: str | Path | None) -> Path:
 
 
 def _skill_source() -> Path:
+    found = _find_skill_source()
+    if found:
+        return found
+    searched = ", ".join(str(path) for path in SKILL_SOURCE_CANDIDATES)
+    raise AiFlowError(f"Missing bundled Skill source. Searched: {searched}", stage="skill")
+
+
+def _find_skill_source() -> Path | None:
     for candidate in SKILL_SOURCE_CANDIDATES:
         if (candidate / "SKILL.md").exists():
             return candidate
-    searched = ", ".join(str(path) for path in SKILL_SOURCE_CANDIDATES)
-    raise AiFlowError(f"Missing bundled Skill source. Searched: {searched}", stage="skill")
+    return None

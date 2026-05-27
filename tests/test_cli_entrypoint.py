@@ -20,6 +20,7 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertIn("plan", help_text)
         self.assertIn("write", help_text)
         self.assertIn("review", help_text)
+        self.assertIn("doctor", help_text)
         self.assertIn("status", help_text)
         self.assertIn("events", help_text)
         self.assertIn("metrics", help_text)
@@ -87,6 +88,7 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertIn("patchbay_agent", TOOLS)
         self.assertIn("patchbay_events", TOOLS)
         self.assertIn("patchbay_metrics", TOOLS)
+        self.assertIn("patchbay_doctor", TOOLS)
         self.assertIn("patchbay_config_show", TOOLS)
         self.assertIn("patchbay_config_phase_set", TOOLS)
         self.assertIn("patchbay_config_command_set", TOOLS)
@@ -96,6 +98,7 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertIn("ai_flow_agent", TOOLS)
         self.assertIn("ai_flow_events", TOOLS)
         self.assertIn("ai_flow_metrics", TOOLS)
+        self.assertIn("ai_flow_doctor", TOOLS)
 
     def test_mcp_initialize(self) -> None:
         from scripts.ai_flow.mcp_server import handle
@@ -114,14 +117,21 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertIn("patchbay_agent", tool_names)
         self.assertIn("patchbay_events", tool_names)
         self.assertIn("patchbay_metrics", tool_names)
+        self.assertIn("patchbay_doctor", tool_names)
         self.assertIn("ai_flow_agent", tool_names)
         self.assertIn("ai_flow_events", tool_names)
         self.assertIn("ai_flow_metrics", tool_names)
+        self.assertIn("ai_flow_doctor", tool_names)
 
     def test_agent_and_skill_parsers(self) -> None:
         from scripts.ai_flow.cli import build_parser
 
         parser = build_parser()
+        doctor = parser.parse_args(["doctor", "--root", "C:/tmp/repo", "--skip-mcp", "--json"])
+        self.assertEqual(doctor.command, "doctor")
+        self.assertEqual(doctor.root, "C:/tmp/repo")
+        self.assertTrue(doctor.skip_mcp)
+
         agent = parser.parse_args(["agent", "message", "continue", "--run-id", "run-1", "--confirmation", "plan_approved", "--background", "--json"])
         self.assertEqual(agent.command, "agent")
         self.assertEqual(agent.agent_command, "message")

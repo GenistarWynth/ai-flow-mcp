@@ -2,8 +2,8 @@
 
 ``patchbay config`` (no args) runs a guided prompt sequence that writes or
 updates ``.ai/patchbay.toml``.  ``patchbay config set <key> <value>`` allows
-non-interactive key-value edits.  ``patchbay doctor`` validates the resolved
-phase configuration.
+non-interactive key-value edits.  ``patchbay config --doctor`` validates the
+resolved phase configuration.
 """
 
 from __future__ import annotations

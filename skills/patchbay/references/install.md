@@ -32,10 +32,11 @@ Codex, Claude Code, and Gemini currently print the host command to run. Claude D
 Verify the server:
 
 ```bash
+patchbay doctor
 patchbay mcp doctor
 ```
 
-Doctor starts the stdio MCP server, sends initialize/tools/list, and checks required tools such as `patchbay_agent`, `patchbay_plan`, and `patchbay_context`.
+`patchbay doctor` is the unified read-only setup check for project initialization, phase config, CLI entry points, MCP tools, bundled Skill source, and Codex Skill installation. `patchbay mcp doctor` focuses on stdio MCP server reachability, sends initialize/tools/list, and checks required tools such as `patchbay_agent`, `patchbay_plan`, `patchbay_context`, `patchbay_metrics`, and `patchbay_doctor`.
 
 ## Skill
 

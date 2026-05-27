@@ -44,6 +44,20 @@ class SkillInstallTest(unittest.TestCase):
         self.assertTrue(result["dry_run"])
         self.assertFalse((target / "patchbay").exists())
 
+    def test_skill_doctor_reports_source_and_install_state(self) -> None:
+        from scripts.ai_flow.skill_install import run_skill_doctor, run_skill_install
+
+        target = self.tmp / "skills-root"
+        before = run_skill_doctor(self.tmp, path=target)
+        self.assertTrue(before["ok"])
+        self.assertTrue(before["source_exists"])
+        self.assertFalse(before["installed"])
+
+        run_skill_install(self.tmp, path=target)
+        after = run_skill_doctor(self.tmp, path=target)
+        self.assertTrue(after["installed"])
+        self.assertEqual(Path(after["destination"]), target / "patchbay")
+
 
 if __name__ == "__main__":
     unittest.main()

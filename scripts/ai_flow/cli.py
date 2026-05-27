@@ -10,6 +10,7 @@ from typing import Any, Callable
 from . import service
 from .agent import agent_message
 from .config_wizard import run_config_wizard
+from .doctor import run_doctor
 from .errors import AiFlowError
 from .mcp_install import run_mcp_install, run_mcp_doctor
 from .skill_install import run_skill_install, run_skill_print
@@ -111,6 +112,12 @@ def build_parser() -> argparse.ArgumentParser:
     web.add_argument("--host", default="127.0.0.1", help="Host interface to bind.")
     web.add_argument("--port", type=int, default=0, help="Port to bind; 0 selects a free port.")
     _add_json(web)
+
+    doctor = sub.add_parser("doctor", help="Run unified CLI/config/MCP/Skill readiness checks.")
+    doctor.add_argument("--root", default="", help="Repository root to inspect.")
+    doctor.add_argument("--skip-mcp", action="store_true", help="Skip stdio MCP server probing.")
+    doctor.add_argument("--skill-path", default="", help="Codex skills root to inspect.")
+    _add_json(doctor)
 
     agent = sub.add_parser("agent", help="Conversational Patchbay Agent entry point.")
     agent_sub = agent.add_subparsers(dest="agent_command", required=True)
@@ -354,6 +361,12 @@ def dispatch(args: argparse.Namespace, cwd: Path) -> Any:
     handlers: dict[str, Callable[[argparse.Namespace, Path], Any]] = {
         "init": lambda a, c: service.init_project(c),
         "web": lambda a, c: serve_web(c, host=a.host, port=a.port, json_output=bool(getattr(a, "json", False))),
+        "doctor": lambda a, c: run_doctor(
+            c,
+            root=getattr(a, "root", "") or None,
+            include_mcp=not bool(getattr(a, "skip_mcp", False)),
+            skill_path=getattr(a, "skill_path", "") or None,
+        ),
         "agent": lambda a, c: agent_message(
             c,
             a.message,

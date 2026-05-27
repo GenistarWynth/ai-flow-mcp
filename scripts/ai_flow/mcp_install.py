@@ -172,7 +172,15 @@ def run_mcp_doctor(cwd: Path, *, root: str | Path | None = None) -> dict[str, An
 
 
 def _probe_mcp_server(root: Path) -> dict[str, Any]:
-    required = {"patchbay_agent", "patchbay_plan", "patchbay_context", "patchbay_events", "patchbay_apply"}
+    required = {
+        "patchbay_agent",
+        "patchbay_plan",
+        "patchbay_context",
+        "patchbay_metrics",
+        "patchbay_events",
+        "patchbay_apply",
+        "patchbay_doctor",
+    }
     messages = [
         {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
         {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}},

@@ -11,10 +11,12 @@ if __package__ in {None, ""}:
     from ai_flow.agent import agent_message
     from ai_flow import service
     from ai_flow.config_wizard import run_config_wizard
+    from ai_flow.doctor import run_doctor
 else:
     from .agent import agent_message
     from . import service
     from .config_wizard import run_config_wizard
+    from .doctor import run_doctor
 
 
 ROOT = Path(os.environ.get("PATCHBAY_ROOT") or Path.cwd())
@@ -77,6 +79,10 @@ def patchbay_context(
 
 def patchbay_metrics(run_id: str) -> dict[str, Any]:
     return service.metrics(ROOT, run_id)
+
+
+def patchbay_doctor(include_mcp: bool = True, skill_path: str = "") -> dict[str, Any]:
+    return run_doctor(ROOT, include_mcp=include_mcp, skill_path=skill_path or None)
 
 
 def patchbay_events(run_id: str, since: int = 0, phase: str = "") -> dict[str, Any]:
@@ -173,6 +179,7 @@ CANONICAL_TOOLS: dict[str, Callable[..., Any]] = {
     "patchbay_status": patchbay_status,
     "patchbay_context": patchbay_context,
     "patchbay_metrics": patchbay_metrics,
+    "patchbay_doctor": patchbay_doctor,
     "patchbay_events": patchbay_events,
     "patchbay_trace": patchbay_trace,
     "patchbay_runs": patchbay_runs,
@@ -197,6 +204,7 @@ LEGACY_TOOLS: dict[str, Callable[..., Any]] = {
     "ai_flow_status": patchbay_status,
     "ai_flow_context": patchbay_context,
     "ai_flow_metrics": patchbay_metrics,
+    "ai_flow_doctor": patchbay_doctor,
     "ai_flow_events": patchbay_events,
     "ai_flow_trace": patchbay_trace,
     "ai_flow_runs": patchbay_runs,
@@ -249,6 +257,18 @@ def _tool_schema(name: str) -> dict[str, Any]:
     elif name.endswith("_metrics"):
         properties = {"run_id": {"type": "string"}}
         required = ["run_id"]
+    elif name.endswith("_doctor"):
+        properties = {
+            "include_mcp": {
+                "type": "boolean",
+                "description": "Probe the stdio MCP server and verify required tools (default true).",
+            },
+            "skill_path": {
+                "type": "string",
+                "description": "Optional Codex skills root to inspect.",
+            },
+        }
+        required = []
     elif name.endswith("_runs"):
         properties = {"limit": {"type": "integer"}}
         required = []
@@ -310,6 +330,7 @@ def _tool_schema(name: str) -> dict[str, Any]:
         "patchbay_status": "Return current run status and artifacts, including latest cross-phase event.",
         "patchbay_context": "Return the unified handoff digest for resuming a run across MCP hosts, CLI sessions, and the web workbench.",
         "patchbay_metrics": "Return only run_metrics efficiency evidence: phase durations, attempts, event/trace counts, provider usage, and known cost/token fields.",
+        "patchbay_doctor": "Run unified read-only readiness checks for CLI shims, config, MCP reachability/tools, bundled Skill source, and Skill installation state.",
         "patchbay_events": "Return the append-only event log (JSONL stream) for a run so any host can see what every phase/agent did.",
         "patchbay_trace": "Return the structured trace log (JSONL stream) for lower-level agent/tool activity with redacted raw payloads.",
         "patchbay_runs": "List recent Patchbay runs.",

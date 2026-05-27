@@ -12,6 +12,7 @@ uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay-mcp --root
 # 交互式配置（无需手动编辑 TOML）
 patchbay config                      # 交互式向导
 patchbay config --set-key models.planner --set-value claude-opus-4-7   # 单键设置
+patchbay doctor                      # 统一检查 config/MCP/Skill 就绪状态
 patchbay config --doctor             # 验证配置
 
 # MCP 注册（无需手动编辑 JSON）
@@ -19,7 +20,7 @@ patchbay mcp install codex           # Codex CLI / Codex Desktop
 patchbay mcp install claude          # Claude Code
 patchbay mcp install claude-desktop  # Claude Desktop
 patchbay mcp install gemini          # Gemini CLI
-patchbay mcp doctor                  # 启动 stdio server 并检查核心工具
+patchbay mcp doctor                  # 只检查 stdio server 和核心工具
 
 # Codex Skill
 patchbay skill install codex
@@ -83,6 +84,7 @@ Writer 实现入口：
 
 ```bash
 # CLI
+scripts/patchbay doctor --json            # 统一查看安装、配置、MCP、Skill 是否就绪
 scripts/patchbay context <run_id>          # 推荐：一次性查看 handoff 摘要、门禁、下一步、产物和时间线
 scripts/patchbay events <run_id>           # 展示完整事件日志
 scripts/patchbay events <run_id> --phase plan  # 按阶段筛选
@@ -143,6 +145,8 @@ patchbay mcp install gemini         # Gemini CLI
 patchbay mcp doctor                 # 实际启动 server 并验证 tools/list
 ```
 
+优先运行 `patchbay doctor --json` 获取完整只读诊断：项目初始化、配置解析、CLI 入口、MCP tools/list、Skill 源和 Codex Skill 安装状态都会汇总到一个结果里。需要聚焦 MCP 时再运行 `patchbay mcp doctor`。
+
 Codex、Claude Code、Gemini 当前会打印注册命令；Claude Desktop 会直接写配置。
 
 手动注册：
@@ -158,7 +162,7 @@ claude mcp add patchbay -- python scripts/patchbay_mcp_server.py
 # Gemini CLI: 使用对应的 MCP server 注册方式
 ```
 
-MCP 只调用已有服务函数，不复制业务逻辑。工具名使用 `patchbay_*`（包括 `patchbay_agent`、`patchbay_context`、`patchbay_metrics`、`patchbay_events`、`patchbay_runs`、`patchbay_artifact` 和 `patchbay_config_*` 配置工具），旧的 `ai_flow_*` 作为兼容别名保留。无论通过哪个 host 调用，流程和门禁保持一致。
+MCP 只调用已有服务函数，不复制业务逻辑。工具名使用 `patchbay_*`（包括 `patchbay_agent`、`patchbay_context`、`patchbay_metrics`、`patchbay_doctor`、`patchbay_events`、`patchbay_runs`、`patchbay_artifact` 和 `patchbay_config_*` 配置工具），旧的 `ai_flow_*` 作为兼容别名保留。无论通过哪个 host 调用，流程和门禁保持一致。
 
 ## Codex Skill
 
