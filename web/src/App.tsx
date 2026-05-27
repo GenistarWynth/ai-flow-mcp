@@ -298,6 +298,10 @@ function confirmationForAction(action: string): "plan_approved" | "apply_approve
   return undefined;
 }
 
+function shouldAutopilot(action: string) {
+  return ["continue", "write", "test", "review", "fix"].includes(action);
+}
+
 export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { client?: PatchbayClient; pollIntervalMs?: number }) {
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [selectedRun, setSelectedRun] = useState("");
@@ -469,6 +473,14 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const runAction = async (action: string) => {
     if (!selectedRun) return;
     setError("");
+    if (shouldAutopilot(action)) {
+      const response = await client.agentMessage("continue", {
+        runId: selectedRun,
+        include: { diff: true, review: true }
+      });
+      await refreshRun(selectedRun, response);
+      return;
+    }
     await client.runAction(selectedRun, action);
     await refreshRun(selectedRun);
   };
@@ -513,6 +525,12 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     } else if (action === "cleanup") {
       await client.cleanup(selectedRun);
       await refreshRun(selectedRun);
+    } else if (shouldAutopilot(action)) {
+      const response = await client.agentMessage("continue", {
+        runId: selectedRun,
+        include: { diff: true, review: true }
+      });
+      await refreshRun(selectedRun, response);
     } else {
       await client.runAction(selectedRun, action);
       await refreshRun(selectedRun);

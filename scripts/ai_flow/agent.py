@@ -238,6 +238,21 @@ def agent_autopilot(
                     "Implementation passed tests and review. Review the diff, then explicitly approve apply.",
                     requires_confirmation=_confirmation("apply_approval", "apply", APPLY_CONFIRMATION),
                 )
+            if status_value == REVIEWED_PASS:
+                tests_status = str(current.get("tests_status") or "NOT_RUN")
+                _append_agent_event(
+                    root,
+                    run_id,
+                    action="blocked",
+                    status="BLOCKED",
+                    detail=f"Review passed, but apply is blocked because tests_status is {tests_status}.",
+                    next_action="configure_tests",
+                )
+                return _autopilot_result(
+                    root,
+                    run_id,
+                    f"Review passed, but apply is blocked because tests_status is {tests_status}. Configure tests or explicitly allow skipped tests.",
+                )
             if status_value in {IMPLEMENTING, TESTING, REVIEWING, FIXING}:
                 return _autopilot_result(root, run_id, "A Patchbay phase is already running. Poll status, context, or events for progress.")
             if status_value == FAILED:

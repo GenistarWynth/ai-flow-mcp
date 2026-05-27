@@ -326,6 +326,78 @@ describe("Workbench", () => {
     });
   });
 
+  it("advances implementation phases through agent autopilot", async () => {
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({
+        runs: [{ run_id: "run-ready", task: "Implement through autopilot", status: "APPROVED" }]
+      }),
+      getStatus: vi.fn().mockResolvedValue({
+        run_id: "run-ready",
+        task: "Implement through autopilot",
+        status: "APPROVED",
+        current_phase: "write",
+        gate_state: { approved: true, tests_passed: false, review_result: null, ready_to_apply: false },
+        next_commands: ["write"],
+        artifacts: [],
+        effective_phase_providers: {}
+      }),
+      getContext: vi.fn().mockResolvedValue({
+        ...plannedContext,
+        status: "APPROVED",
+        current_phase: "write",
+        next_actions: [
+          {
+            name: "write",
+            safe: true,
+            tool: "patchbay_write",
+            requires_human_confirmation: false,
+            reason: "Plan was approved; writer may work inside the isolated worktree."
+          }
+        ],
+        agent_activity: {
+          ...plannedContext.agent_activity!,
+          headline: "Patchbay Agent 已准备好执行：开始实现。",
+          next_action: {
+            name: "write",
+            label: "开始实现",
+            safe: true,
+            tool: "patchbay_write",
+            requires_human_confirmation: false,
+            reason: "Plan was approved; writer may work inside the isolated worktree."
+          },
+          conversation_state: {
+            ...plannedContext.agent_activity!.conversation_state!,
+            composer_placeholder: "输入“继续”或点击“开始实现”",
+            suggestions: [
+              {
+                id: "write",
+                label: "开始实现",
+                action: "write",
+                safe: true,
+                tool: "patchbay_write",
+                requires_human_confirmation: false,
+                reason: "Plan was approved; writer may work inside the isolated worktree."
+              }
+            ]
+          }
+        }
+      })
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByText("Patchbay Agent 已准备好执行：开始实现。");
+    await userEvent.click(screen.getByRole("button", { name: /执行/ }));
+
+    await waitFor(() =>
+      expect(client.agentMessage).toHaveBeenCalledWith("continue", {
+        runId: "run-ready",
+        include: { diff: true, review: true }
+      })
+    );
+    expect(client.runAction).not.toHaveBeenCalled();
+  });
+
   it("requires confirmation before apply and keeps blocked apply gated", async () => {
     const client = createClient();
 
