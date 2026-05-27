@@ -2,7 +2,7 @@
 
 [中文说明](README.zh-CN.md)
 
-Patchbay is a local patch orchestration server for teams of coding agents. Any MCP-capable client can be the front door: Codex Desktop, Claude Desktop, Claude Code, Codex CLI, Gemini CLI, or another host that can call MCP tools.
+Patchbay is a local patch orchestration server for teams of coding agents. Any MCP-capable client can be the front door: Codex Desktop, Claude Desktop, Claude Code, Codex CLI, Gemini CLI, or another host that can call MCP tools. It also ships a local conversational Agent UI for a Codex/Claude Code-style workflow over the same audited phases.
 
 The default workflow uses Claude Code as the read-only planner, Reasonix ACP as the default Agent writer, local test commands as factual verification, and Codex CLI as the read-only reviewer. Those role bindings are configuration, not the product boundary.
 
@@ -37,8 +37,10 @@ Legacy `[models]`, `[commands]`, and `[writer].provider` keys remain supported a
 
 ## What It Provides
 
+- Conversational Agent UI: `patchbay agent serve --host 127.0.0.1 --port 8765 --open`.
 - CLI workflow: `plan`, `approve`, `write`, `test`, `review`, `fix`, `status`, `diff`, `apply`, `cleanup`.
-- MCP tools: `patchbay_plan`, `patchbay_approve`, `patchbay_write`, `patchbay_test`, `patchbay_review`, `patchbay_fix`, `patchbay_status`, `patchbay_events`, `patchbay_runs`, `patchbay_artifact`, `patchbay_config_show`, `patchbay_config_phase_set`, `patchbay_config_command_set`, `patchbay_config_test_add`, `patchbay_config_provider_add_cli`, `patchbay_diff`, `patchbay_apply`.
+- MCP primary tool: `patchbay_agent`.
+- MCP phase/expert tools: `patchbay_plan`, `patchbay_approve`, `patchbay_write`, `patchbay_test`, `patchbay_review`, `patchbay_fix`, `patchbay_status`, `patchbay_events`, `patchbay_runs`, `patchbay_artifact`, `patchbay_config_show`, `patchbay_config_phase_set`, `patchbay_config_command_set`, `patchbay_config_test_add`, `patchbay_config_provider_add_cli`, `patchbay_diff`, `patchbay_apply`.
 - Legacy MCP aliases: `ai_flow_*`.
 - Isolated git worktrees by default.
 - File-backed run artifacts under `.ai/runs/<run_id>/`.
@@ -75,6 +77,16 @@ The old `scripts/ai-flow` command and `.ai/ai-flow.toml` config still work as co
 
 ## CLI Usage
 
+Start the local conversational UI:
+
+```bash
+python scripts/patchbay agent serve --host 127.0.0.1 --port 8765 --open
+```
+
+The UI binds locally by default, shows the active run timeline and artifacts, and preserves the two human gates: approve the plan before implementation, approve apply before touching the current workspace.
+
+Lower-level phase commands remain available for scripts and debugging:
+
 ```bash
 python scripts/patchbay plan --task "..."
 python scripts/patchbay approve <run_id>
@@ -108,6 +120,8 @@ codex mcp add patchbay -- python scripts/patchbay_mcp_server.py
 ```
 
 Use the equivalent MCP server registration command for other MCP hosts. Run `patchbay mcp doctor` to verify the server is reachable.
+
+For MCP hosts, prefer `patchbay_agent` for normal use. It accepts a natural-language `message`, optional `run_id`, and explicit `confirmation` values (`plan_approved` or `apply_approved`) for the two gates. The lower-level `patchbay_*` phase tools remain stable for precise control and troubleshooting.
 
 ## Configuration
 

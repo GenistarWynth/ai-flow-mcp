@@ -1385,6 +1385,31 @@ def cleanup(cwd: Path, run_id: str) -> dict[str, Any]:
     return status(cwd, run_id)
 
 
+def agent_message(
+    cwd: Path,
+    message: str,
+    *,
+    run_id: str | None = None,
+    confirmation: str = "none",
+    include: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    from .agent import agent_message as _agent_message
+
+    return _agent_message(cwd, message, run_id=run_id, confirmation=confirmation, include=include)
+
+
+def agent_status(cwd: Path, run_id: str, *, since: int = 0, include: dict[str, Any] | None = None) -> dict[str, Any]:
+    from .agent import agent_status as _agent_status
+
+    return _agent_status(cwd, run_id, since=since, include=include)
+
+
+def agent_autopilot(cwd: Path, run_id: str, *, max_fix_rounds: int | None = None) -> dict[str, Any]:
+    from .agent import agent_autopilot as _agent_autopilot
+
+    return _agent_autopilot(cwd, run_id, max_fix_rounds=max_fix_rounds)
+
+
 def _mark_failure_if_possible(run_path: Path, exc: Exception, stage: str) -> None:
     if not (run_path / "STATUS.json").exists():
         return

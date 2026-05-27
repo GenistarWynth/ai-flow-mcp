@@ -30,7 +30,10 @@ Each workflow phase can be independently bound to a provider and model in
   supported as defaults for phases that are not explicitly configured.
 - Legacy `scripts/ai-flow` entry point and `.ai/ai-flow.toml` config file are
   retained as compatibility aliases for `scripts/patchbay` and `.ai/patchbay.toml`.
-- MCP tools are exposed as `patchbay_*` with `ai_flow_*` legacy aliases.
+- The conversational UI is served with `patchbay agent serve`; MCP hosts can use
+  `patchbay_agent` as the primary conversation tool.
+- Lower-level MCP tools are exposed as `patchbay_*` with `ai_flow_*` legacy
+  aliases for phase-level control and compatibility.
 
 ## Workflow
 
@@ -65,6 +68,8 @@ secret-like files, absolute paths, and path-traversal patterns.
 configuration, mock mode, and safety enforcement are implemented.
 
 **Recently shipped (v0.1.0 → current):**
+- **Conversational Agent UI**: local Python Web UI with chat, run timeline, status, artifacts, diff, and explicit plan/apply approval gates.
+- **`patchbay_agent` MCP tool**: single conversational entry point for MCP hosts, backed by the same service-layer phase state machine.
 - **Cross-host visibility**: `events.jsonl` per run + `patchbay events` CLI + `patchbay_events` MCP tool. Any host can inspect what every phase/agent did, including provider, model, action, and timestamps.
 - **Free phase-to-provider routing**: Any configured provider that advertises a role (plan/write/review/fix) can be assigned to any phase. Unsupported assignments fail with a clear error.
 - **Interactive configuration**: `patchbay config` wizard + `patchbay config set k v` + `patchbay doctor`. No hand-editing TOML required.

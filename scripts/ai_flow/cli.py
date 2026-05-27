@@ -64,6 +64,20 @@ def mcp_dispatch(cwd: Path, args: argparse.Namespace) -> Any:
     )
 
 
+def agent_dispatch(cwd: Path, args: argparse.Namespace) -> Any:
+    agent_cmd = getattr(args, "agent_command", "")
+    if agent_cmd == "serve":
+        from .agent_server import run_agent_server
+
+        return run_agent_server(
+            cwd,
+            host=args.host,
+            port=args.port,
+            open_browser=bool(getattr(args, "open_browser", False)),
+        )
+    raise AiFlowError("Missing agent subcommand. Try: patchbay agent serve", stage="agent")
+
+
 def _print_result(data: Any, *, as_json: bool = False) -> None:
     if as_json:
         print(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True))
@@ -204,6 +218,14 @@ def build_parser() -> argparse.ArgumentParser:
     mcp_doctor.add_argument("--root", default="", help="Repository root to inspect.")
     _add_json(mcp_doctor)
 
+    agent = sub.add_parser("agent", help="Run the local conversational Patchbay Agent UI.")
+    agent_sub = agent.add_subparsers(dest="agent_command", required=True)
+
+    agent_serve = agent_sub.add_parser("serve", help="Serve the local Patchbay Agent web UI.")
+    agent_serve.add_argument("--host", default="127.0.0.1", help="Host address to bind.")
+    agent_serve.add_argument("--port", type=int, default=8765, help="Port to bind.")
+    agent_serve.add_argument("--open", action="store_true", dest="open_browser", help="Open the UI in the default browser.")
+
     diff = sub.add_parser("diff", help="Print run final diff.")
     diff.add_argument("run_id")
 
@@ -297,6 +319,7 @@ def dispatch(args: argparse.Namespace, cwd: Path) -> Any:
         "artifact": lambda a, c: service.artifact(c, a.run_id, a.artifact, tail=a.tail),
         "config": lambda a, c: config_wizard_run(c, a),
         "mcp": lambda a, c: mcp_dispatch(c, a),
+        "agent": lambda a, c: agent_dispatch(c, a),
         "diff": lambda a, c: service.diff(c, a.run_id),
         "apply": lambda a, c: service.apply(c, a.run_id),
         "cleanup": lambda a, c: service.cleanup(c, a.run_id),

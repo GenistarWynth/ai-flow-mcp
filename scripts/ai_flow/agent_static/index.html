@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Patchbay 对话 Agent</title>
+    <link rel="stylesheet" href="/static/agent.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-block">
+          <div class="brand-mark">P</div>
+          <div>
+            <p class="eyebrow">本地多 Agent 编排</p>
+            <h1>Patchbay 对话 Agent</h1>
+          </div>
+        </div>
+        <div class="run-summary">
+          <p id="runLabel">暂无运行</p>
+          <div class="status-pill" id="statusPill">空闲</div>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="chat-pane" aria-label="Agent 对话">
+          <div class="pane-header">
+            <div>
+              <h2>会话</h2>
+              <p>描述任务、审阅计划、批准应用都在这里完成。</p>
+            </div>
+            <span class="live-indicator">本地运行</span>
+          </div>
+
+          <div class="messages" id="messages"></div>
+
+          <div class="confirm-row" id="confirmRow" hidden>
+            <div>
+              <strong>需要确认</strong>
+              <span>高风险动作必须由你明确批准。</span>
+            </div>
+            <div class="confirm-actions">
+              <button id="approveButton" type="button" hidden>批准计划</button>
+              <button id="applyButton" type="button" hidden>应用变更</button>
+            </div>
+          </div>
+
+          <form class="composer" id="composer">
+            <textarea id="messageInput" rows="3" placeholder="告诉 Patchbay 要做什么，例如：优化登录流程的错误提示"></textarea>
+            <button type="submit">发送</button>
+          </form>
+        </section>
+
+        <aside class="side-pane" aria-label="运行详情">
+          <section class="panel status-panel">
+            <div class="panel-heading">
+              <div>
+                <h2>状态</h2>
+                <p>当前阶段和门禁</p>
+              </div>
+              <button id="refreshButton" type="button">刷新</button>
+            </div>
+            <pre id="statusBox">{}</pre>
+          </section>
+
+          <section class="panel timeline-panel">
+            <div class="panel-heading">
+              <div>
+                <h2>时间线</h2>
+                <p>阶段事件和 Agent 决策</p>
+              </div>
+            </div>
+            <ol class="timeline" id="timeline"></ol>
+          </section>
+
+          <section class="panel artifact-panel">
+            <div class="panel-heading">
+              <div>
+                <h2>产物</h2>
+                <p>计划、审查、测试和最终 diff</p>
+              </div>
+            </div>
+            <div class="artifact-tabs">
+              <button type="button" data-artifact="PLAN.md">计划</button>
+              <button type="button" data-artifact="REVIEW.md">审查</button>
+              <button type="button" data-artifact="TEST.log">测试</button>
+              <button type="button" data-artifact="FINAL.diff">差异</button>
+            </div>
+            <pre id="artifactBox">选择一个产物查看内容。</pre>
+          </section>
+        </aside>
+      </main>
+    </div>
+    <script src="/static/agent.js"></script>
+  </body>
+</html>

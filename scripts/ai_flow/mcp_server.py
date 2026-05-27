@@ -118,7 +118,23 @@ def patchbay_apply(run_id: str) -> dict[str, Any]:
     return service.apply(ROOT, run_id)
 
 
+def patchbay_agent(
+    message: str,
+    run_id: str = "",
+    confirmation: str = "none",
+    include: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return service.agent_message(
+        ROOT,
+        message,
+        run_id=run_id or None,
+        confirmation=confirmation or "none",
+        include=include or {},
+    )
+
+
 CANONICAL_TOOLS: dict[str, Callable[..., Any]] = {
+    "patchbay_agent": patchbay_agent,
     "patchbay_plan": patchbay_plan,
     "patchbay_approve": patchbay_approve,
     "patchbay_write": patchbay_write,
@@ -162,7 +178,33 @@ TOOLS: dict[str, Callable[..., Any]] = {**CANONICAL_TOOLS, **LEGACY_TOOLS}
 
 
 def _tool_schema(name: str) -> dict[str, Any]:
-    if name.endswith("_plan"):
+    if name == "patchbay_agent":
+        properties: dict[str, Any] = {
+            "message": {
+                "type": "string",
+                "description": "Natural-language task or instruction for the Patchbay conversational agent.",
+            },
+            "run_id": {"type": "string", "description": "Existing run id to continue or inspect."},
+            "confirmation": {
+                "type": "string",
+                "enum": ["none", "plan_approved", "apply_approved"],
+                "description": "Explicit confirmation for plan/apply gates.",
+            },
+            "include": {
+                "type": "object",
+                "properties": {
+                    "plan": {"type": "boolean"},
+                    "review": {"type": "boolean"},
+                    "diff": {"type": "boolean"},
+                    "events_since": {"type": "integer"},
+                    "event_phase": {"type": "string"},
+                    "artifact": {"type": "string"},
+                    "artifact_tail": {"type": "integer"},
+                },
+            },
+        }
+        required = ["message"]
+    elif name.endswith("_plan"):
         properties: dict[str, Any] = {"task": {"type": "string"}}
         properties["background"] = {"type": "boolean", "description": "Start phase in the background and poll events."}
         required = ["task"]
@@ -217,6 +259,7 @@ def _tool_schema(name: str) -> dict[str, Any]:
         required = ["run_id"]
 
     descriptions: dict[str, str] = {
+        "patchbay_agent": "Primary conversational Patchbay Agent tool. Starts, resumes, advances, and applies runs while preserving plan/apply approval gates.",
         "patchbay_plan": "Run the planning phase (host-agnostic — provider configurable via [phases.plan] in .ai/patchbay.toml).",
         "patchbay_approve": "Approve the plan so the writer phase can proceed.",
         "patchbay_write": "Run the implementation phase (provider configurable via [phases.write] / [writer].provider).",

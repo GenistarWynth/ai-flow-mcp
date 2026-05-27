@@ -107,6 +107,26 @@ scripts/patchbay write <run_id> --mock
 scripts/patchbay review <run_id> --mock
 ```
 
+## Conversational Agent UI
+
+```bash
+scripts/patchbay agent serve --host 127.0.0.1 --port 8765 --open
+```
+
+The local Agent UI is the recommended human-facing workflow. It keeps one chat
+surface for the task, run timeline, status, artifacts, and final diff. It uses
+the same `plan -> approve -> write -> test -> review -> fix -> apply` services
+underneath, and it preserves both approval gates:
+
+- implementation starts only after explicit plan approval;
+- apply runs only after tests pass, review passes, and the user explicitly
+  approves applying the diff.
+
+For MCP hosts, prefer `patchbay_agent` as the conversational entry point. The
+lower-level `patchbay_plan`, `patchbay_write`, `patchbay_review`, and related
+tools remain stable expert/debug APIs. Legacy `ai_flow_*` names remain aliases
+for compatibility.
+
 ## MCP 使用方式
 
 当用户要求“走多模型流程”时，先运行 plan 并展示 `.ai/runs/<run_id>/PLAN.md`。只有用户确认计划后，才能 approve/write/test/review。未经用户确认，不要 apply。

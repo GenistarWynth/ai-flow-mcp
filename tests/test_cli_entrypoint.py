@@ -24,6 +24,7 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertIn("events", help_text)
         self.assertIn("config", help_text)
         self.assertIn("mcp", help_text)
+        self.assertIn("agent", help_text)
         self.assertIn("apply", help_text)
         self.assertIn("diff", help_text)
         self.assertIn("cleanup", help_text)
@@ -87,6 +88,7 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertIn("patchbay_config_command_set", TOOLS)
         self.assertIn("patchbay_config_test_add", TOOLS)
         self.assertIn("patchbay_config_provider_add_cli", TOOLS)
+        self.assertIn("patchbay_agent", TOOLS)
         self.assertIn("ai_flow_plan", TOOLS)
         self.assertIn("ai_flow_events", TOOLS)
 
@@ -104,6 +106,7 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertIsNotNone(response)
         assert response is not None
         tool_names = [t["name"] for t in response["result"]["tools"]]
+        self.assertIn("patchbay_agent", tool_names)
         self.assertIn("patchbay_events", tool_names)
         self.assertIn("ai_flow_events", tool_names)
 
