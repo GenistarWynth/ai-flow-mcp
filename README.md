@@ -100,6 +100,8 @@ python scripts/patchbay agent message continue --run-id <run_id> --background --
 
 Background agent turns write `JOB.json`, append `agent` events, and preserve the plan/apply confirmation gates. `apply` remains foreground-only and requires explicit confirmation after tests and review pass.
 
+The web workbench exposes the same conversational flow and has a diagnostics drawer. Its Readiness tab calls the unified doctor checks without MCP stdio probing, so setup gaps are visible from the desktop UI without starting extra child processes.
+
 Mock mode can validate the workflow without model credentials:
 
 ```bash

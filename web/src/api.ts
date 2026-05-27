@@ -65,6 +65,21 @@ export type RunStatus = {
   run_metrics?: RunMetrics;
 };
 
+export type DoctorCheck = {
+  ok?: boolean;
+  skipped?: boolean;
+  note?: string;
+  error?: string | null;
+  [key: string]: unknown;
+};
+
+export type DoctorReport = {
+  ok?: boolean;
+  root?: string;
+  checks?: Record<string, DoctorCheck>;
+  next_actions?: string[];
+};
+
 export type TraceEntry = {
   index?: number;
   seq?: number;
@@ -228,6 +243,7 @@ export type PatchbayClient = {
   getDiff(runId: string): Promise<{ text?: string; diff?: string }>;
   getArtifact(runId: string, artifact: string, options?: { tail?: number }): Promise<{ text: string }>;
   getConfig(): Promise<unknown>;
+  getDoctor(options?: { include_mcp?: boolean; skill_path?: string }): Promise<DoctorReport>;
   runAction(runId: string, action: string): Promise<unknown>;
   apply(runId: string): Promise<unknown>;
   cleanup(runId: string): Promise<unknown>;
@@ -321,6 +337,10 @@ export function fetchConfig(client?: ClientOptions) {
   return requestJson<unknown>("/api/config", client);
 }
 
+export function fetchDoctor(options: { include_mcp?: boolean; skill_path?: string } = {}, client?: ClientOptions) {
+  return requestJson<DoctorReport>(`/api/doctor${query(options)}`, client);
+}
+
 export function postRunAction(runId: string, action: string, client?: ClientOptions) {
   return requestJson<unknown>(`/api/runs/${encodeURIComponent(runId)}/actions/${encodeURIComponent(action)}`, client, { method: "POST" });
 }
@@ -344,6 +364,7 @@ export function createPatchbayClient(client?: ClientOptions): PatchbayClient {
     getDiff: (runId) => fetchDiff(runId, client),
     getArtifact: (runId, artifact, options) => fetchArtifact(runId, artifact, options, client),
     getConfig: () => fetchConfig(client),
+    getDoctor: (options) => fetchDoctor(options, client),
     runAction: (runId, action) => postRunAction(runId, action, client),
     apply: (runId) => applyRun(runId, client),
     cleanup: (runId) => cleanupRun(runId, client)

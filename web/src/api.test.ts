@@ -7,6 +7,7 @@ import {
   fetchConfig,
   fetchContext,
   fetchDiff,
+  fetchDoctor,
   fetchRuns,
   fetchStatus,
   fetchTrace,
@@ -29,6 +30,7 @@ describe("Patchbay API client", () => {
       if (url.endsWith("/api/runs/run-1/diff")) return jsonResponse({ diff: "diff --git" });
       if (url.endsWith("/api/runs/run-1/artifact/PLAN.md?tail=60")) return jsonResponse({ text: "plan" });
       if (url.endsWith("/api/config")) return jsonResponse({ phases: {} });
+      if (url.endsWith("/api/doctor")) return jsonResponse({ ok: false, checks: {} });
       throw new Error(`unexpected URL ${url}`);
     });
 
@@ -41,6 +43,7 @@ describe("Patchbay API client", () => {
     await fetchDiff("run-1", client);
     await fetchArtifact("run-1", "PLAN.md", { tail: 60 }, client);
     await fetchConfig(client);
+    await fetchDoctor({}, client);
 
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
       "/api/runs",
@@ -49,7 +52,8 @@ describe("Patchbay API client", () => {
       "/api/runs/run-1/trace?since=3",
       "/api/runs/run-1/diff",
       "/api/runs/run-1/artifact/PLAN.md?tail=60",
-      "/api/config"
+      "/api/config",
+      "/api/doctor"
     ]);
   });
 

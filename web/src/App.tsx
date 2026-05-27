@@ -23,6 +23,7 @@ import {
   AgentAction,
   AgentMessage,
   createPatchbayClient,
+  DoctorReport,
   HandoffContext,
   PatchbayClient,
   RunMetrics,
@@ -33,7 +34,7 @@ import {
 } from "./api";
 import "./styles.css";
 
-type TabName = "Overview" | "Trace" | "Log" | "Diff" | "Artifacts" | "Config" | "Providers";
+type TabName = "Overview" | "Readiness" | "Trace" | "Log" | "Diff" | "Artifacts" | "Config" | "Providers";
 type ConfirmState = { action: string; title: string; body: string; safe: boolean; confirmLabel?: string } | null;
 type LocalMessage = { id: string; body: string; timestamp: string };
 
@@ -88,6 +89,7 @@ const statusLabels: Record<string, string> = {
 };
 const tabLabels: Record<TabName, string> = {
   Overview: "状态",
+  Readiness: "就绪",
   Trace: "活动",
   Log: "日志",
   Diff: "差异",
@@ -369,6 +371,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const [diff, setDiff] = useState("");
   const [artifactText, setArtifactText] = useState("");
   const [config, setConfig] = useState<unknown>(null);
+  const [doctor, setDoctor] = useState<DoctorReport | null>(null);
   const [activeTab, setActiveTab] = useState<TabName>("Overview");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -398,6 +401,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
 
   useEffect(() => {
     void loadRuns().catch((err) => setError(String(err)));
+    void client.getDoctor({ include_mcp: false }).then(setDoctor).catch((err) => setError(String(err)));
   }, []);
 
   useEffect(() => {
@@ -819,7 +823,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
               </button>
             </div>
             <div className="tabs" role="tablist">
-              {(["Overview", "Trace", "Log", "Diff", "Artifacts", "Config", "Providers"] as TabName[]).map((tab) => (
+              {(["Overview", "Readiness", "Trace", "Log", "Diff", "Artifacts", "Config", "Providers"] as TabName[]).map((tab) => (
                 <button role="tab" aria-selected={activeTab === tab} className={activeTab === tab ? "active" : ""} key={tab} onClick={() => setActiveTab(tab)}>
                   {tabLabels[tab]}
                 </button>
@@ -833,6 +837,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
               diff={diff}
               artifactText={artifactText}
               config={config}
+              doctor={doctor}
               status={activeStatus}
               context={activeContext}
               activity={activity}
@@ -989,6 +994,50 @@ function MetricsGrid({ metrics }: { metrics?: RunMetrics | null }) {
   );
 }
 
+function DoctorPanel({ report }: { report?: DoctorReport | null }) {
+  const checks = Object.entries(report?.checks ?? {});
+  return (
+    <div className="doctor-panel">
+      <div className={`doctor-summary ${report?.ok ? "ready" : "blocked"}`}>
+        {report?.ok ? <Check size={16} /> : <AlertTriangle size={16} />}
+        <div>
+          <strong>{report?.ok ? "环境就绪" : "需要处理"}</strong>
+          <span>{report?.root ?? "正在读取 Patchbay doctor 结果"}</span>
+        </div>
+      </div>
+      {report?.next_actions?.length ? (
+        <section>
+          <h2>下一步</h2>
+          <div className="doctor-actions">
+            {report.next_actions.map((action) => (
+              <span key={action}>{action}</span>
+            ))}
+          </div>
+        </section>
+      ) : null}
+      <section>
+        <h2>检查项</h2>
+        <div className="doctor-checks">
+          {checks.length ? (
+            checks.map(([name, check]) => (
+              <div className={`doctor-check ${check.ok ? "ready" : check.skipped ? "idle" : "blocked"}`} key={name}>
+                <span>{name}</span>
+                <strong>{check.ok ? "通过" : check.skipped ? "跳过" : "需处理"}</strong>
+                {check.error || check.note ? <small>{String(check.error ?? check.note)}</small> : null}
+              </div>
+            ))
+          ) : (
+            <div className="doctor-check idle">
+              <span>doctor</span>
+              <strong>加载中</strong>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function DetailPanel({
   tab,
   message,
@@ -997,6 +1046,7 @@ function DetailPanel({
   diff,
   artifactText,
   config,
+  doctor,
   status,
   context,
   activity
@@ -1008,6 +1058,7 @@ function DetailPanel({
   diff: string;
   artifactText: string;
   config: unknown;
+  doctor: DoctorReport | null;
   status: RunStatus | null;
   context: HandoffContext | null;
   activity: AgentActivity;
@@ -1051,6 +1102,7 @@ function DetailPanel({
       </div>
     );
   }
+  if (tab === "Readiness") return <DoctorPanel report={doctor} />;
   if (tab === "Trace") {
     return (
       <div className="diagnostic-body">

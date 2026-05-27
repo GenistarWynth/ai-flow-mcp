@@ -204,6 +204,11 @@ class WebServerTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("resolved", config)
 
+        status, doctor = self._request("GET", "/api/doctor")
+        self.assertEqual(status, 200)
+        self.assertIn("checks", doctor)
+        self.assertTrue(doctor["checks"]["mcp"]["skipped"])
+
         _, updated = self._request("PUT", "/api/config", {"key": "models.planner", "value": "mock-model"})
         self.assertEqual(updated["set"], {"models.planner": "mock-model"})
 

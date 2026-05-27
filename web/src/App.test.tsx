@@ -229,6 +229,17 @@ function createClient(overrides: Partial<PatchbayClient> = {}): PatchbayClient {
     getDiff: vi.fn().mockResolvedValue({ diff: "diff --git a/web b/web" }),
     getArtifact: vi.fn().mockResolvedValue({ text: "artifact text" }),
     getConfig: vi.fn().mockResolvedValue({ phases: { write: { provider: "reasonix_cli" } } }),
+    getDoctor: vi.fn().mockResolvedValue({
+      ok: false,
+      root: "C:/repo",
+      checks: {
+        repo: { ok: true },
+        config: { ok: true },
+        mcp: { ok: true, skipped: true, note: "Skipped by web workbench." },
+        skill: { ok: true, installed: false }
+      },
+      next_actions: ["Run `patchbay skill install codex` so Codex can discover the Patchbay Skill."]
+    }),
     runAction: vi.fn().mockResolvedValue({ ok: true }),
     apply: vi.fn().mockResolvedValue({ ok: true }),
     cleanup: vi.fn().mockResolvedValue({ ok: true }),
@@ -262,6 +273,11 @@ describe("Workbench", () => {
     expect(screen.getAllByText("reasonix_cli")[0]).toBeVisible();
     expect(screen.getAllByText("codex_cli")[0]).toBeVisible();
     expect(client.getContext).toHaveBeenCalledWith("run-ready");
+
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+    expect(await screen.findByText("需要处理")).toBeVisible();
+    expect(screen.getByText(/patchbay skill install codex/)).toBeVisible();
+    expect(client.getDoctor).toHaveBeenCalledWith({ include_mcp: false });
   });
 
   it("filters the run list by search and status", async () => {

@@ -12,6 +12,7 @@ from .agent import agent_message
 from . import service
 from .config import config_path, load_config
 from .config_wizard import run_config_wizard
+from .doctor import run_doctor
 from .errors import AiFlowError, SafetyError, StateError
 from .state import REVIEWED_PASS
 
@@ -93,6 +94,15 @@ class _Handler(SimpleHTTPRequestHandler):
                 return
             if path == "/api/config":
                 self._json(run_config_wizard(self.repo_root, show=True))
+                return
+            if path == "/api/doctor":
+                self._json(
+                    run_doctor(
+                        self.repo_root,
+                        include_mcp=_bool_query(query, "include_mcp", False),
+                        skill_path=_str_query(query, "skill_path"),
+                    )
+                )
                 return
             if path == "/api/providers":
                 cfg = load_config(self.repo_root)
