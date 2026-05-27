@@ -8,9 +8,11 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import service
+from .agent import agent_message
 from .config_wizard import run_config_wizard
 from .errors import AiFlowError
 from .mcp_install import run_mcp_install, run_mcp_doctor
+from .skill_install import run_skill_install, run_skill_print
 from .web_server import serve as serve_web
 
 
@@ -65,6 +67,18 @@ def mcp_dispatch(cwd: Path, args: argparse.Namespace) -> Any:
     )
 
 
+def skill_dispatch(cwd: Path, args: argparse.Namespace) -> Any:
+    skill_cmd = getattr(args, "skill_command", "")
+    if skill_cmd == "install":
+        return run_skill_install(cwd, host=args.host, path=getattr(args, "path", "") or None, dry_run=bool(getattr(args, "dry_run", False)))
+    if skill_cmd == "print":
+        return run_skill_print(cwd, host=args.host)
+    raise AiFlowError(
+        "Missing skill subcommand. Try: patchbay skill install codex",
+        stage="skill",
+    )
+
+
 def _print_result(data: Any, *, as_json: bool = False) -> None:
     if as_json:
         print(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True))
@@ -97,6 +111,23 @@ def build_parser() -> argparse.ArgumentParser:
     web.add_argument("--host", default="127.0.0.1", help="Host interface to bind.")
     web.add_argument("--port", type=int, default=0, help="Port to bind; 0 selects a free port.")
     _add_json(web)
+
+    agent = sub.add_parser("agent", help="Conversational Patchbay Agent entry point.")
+    agent_sub = agent.add_subparsers(dest="agent_command", required=True)
+    agent_message_parser = agent_sub.add_parser("message", help="Send a natural-language message to Patchbay Agent.")
+    agent_message_parser.add_argument("message", nargs="?", default="", help="Task or instruction.")
+    agent_message_parser.add_argument("--run-id", default="", help="Existing run id to continue.")
+    agent_message_parser.add_argument(
+        "--confirmation",
+        default="none",
+        choices=["none", "plan_approved", "apply_approved"],
+        help="Explicit confirmation token for plan/apply gates.",
+    )
+    agent_message_parser.add_argument("--max-fix-rounds", type=int, default=None, help="Optional cap for this agent turn.")
+    agent_message_parser.add_argument("--include-plan", action="store_true", help="Include PLAN.md in the response.")
+    agent_message_parser.add_argument("--include-review", action="store_true", help="Include REVIEW.md in the response.")
+    agent_message_parser.add_argument("--include-diff", action="store_true", help="Include FINAL.diff in the response.")
+    _add_json(agent_message_parser)
 
     plan = sub.add_parser("plan", help="Run read-only Claude planner.")
     plan.add_argument("--task", required=True, help="Task to plan.")
@@ -224,6 +255,17 @@ def build_parser() -> argparse.ArgumentParser:
     mcp_doctor.add_argument("--root", default="", help="Repository root to inspect.")
     _add_json(mcp_doctor)
 
+    skill = sub.add_parser("skill", help="Install or print the Patchbay Codex Skill bundle.")
+    skill_sub = skill.add_subparsers(dest="skill_command")
+    skill_install = skill_sub.add_parser("install", help="Install Patchbay as a Codex Skill.")
+    skill_install.add_argument("host", nargs="?", default="codex", help="Skill host: codex.")
+    skill_install.add_argument("--path", default="", help="Destination skills root; defaults to $CODEX_HOME/skills or ~/.codex/skills.")
+    skill_install.add_argument("--dry-run", action="store_true", help="Show destination without copying files.")
+    _add_json(skill_install)
+    skill_print = skill_sub.add_parser("print", help="Print the Patchbay Skill files for inspection.")
+    skill_print.add_argument("host", nargs="?", default="codex", help="Skill host: codex.")
+    _add_json(skill_print)
+
     diff = sub.add_parser("diff", help="Print run final diff.")
     diff.add_argument("run_id")
 
@@ -307,6 +349,18 @@ def dispatch(args: argparse.Namespace, cwd: Path) -> Any:
     handlers: dict[str, Callable[[argparse.Namespace, Path], Any]] = {
         "init": lambda a, c: service.init_project(c),
         "web": lambda a, c: serve_web(c, host=a.host, port=a.port, json_output=bool(getattr(a, "json", False))),
+        "agent": lambda a, c: agent_message(
+            c,
+            a.message,
+            run_id=a.run_id or None,
+            confirmation=a.confirmation,
+            max_fix_rounds=a.max_fix_rounds,
+            include={
+                "plan": bool(getattr(a, "include_plan", False)),
+                "review": bool(getattr(a, "include_review", False)),
+                "diff": bool(getattr(a, "include_diff", False)),
+            },
+        ),
         "plan": lambda a, c: service.start_background_phase(c, "plan", task=a.task, mock=a.mock, run_id=a.run_id or None) if a.background else service.plan(c, task=a.task, mock=a.mock, run_id=a.run_id or None),
         "approve": lambda a, c: service.approve(c, a.run_id),
         "write": lambda a, c: service.start_background_phase(c, "write", run_id=a.run_id, mock=a.mock) if a.background else service.write(c, a.run_id, mock=a.mock),
@@ -327,6 +381,7 @@ def dispatch(args: argparse.Namespace, cwd: Path) -> Any:
         "artifact": lambda a, c: service.artifact(c, a.run_id, a.artifact, tail=a.tail),
         "config": lambda a, c: config_wizard_run(c, a),
         "mcp": lambda a, c: mcp_dispatch(c, a),
+        "skill": lambda a, c: skill_dispatch(c, a),
         "diff": lambda a, c: service.diff(c, a.run_id),
         "apply": lambda a, c: service.apply(c, a.run_id),
         "cleanup": lambda a, c: service.cleanup(c, a.run_id),

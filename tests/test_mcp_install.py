@@ -5,14 +5,47 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
+from textwrap import dedent
 
 
 class McpInstallTest(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = Path(tempfile.mkdtemp())
         (self.tmp / "scripts" / "patchbay_mcp_server.py").parent.mkdir(parents=True, exist_ok=True)
-        (self.tmp / "scripts" / "patchbay_mcp_server.py").write_text("# stub\n")
+        (self.tmp / "scripts" / "patchbay_mcp_server.py").write_text(
+            dedent(
+                r'''
+                import json
+                import sys
+
+                TOOLS = [
+                    {"name": "patchbay_agent"},
+                    {"name": "patchbay_plan"},
+                    {"name": "patchbay_context"},
+                    {"name": "patchbay_events"},
+                    {"name": "patchbay_apply"},
+                ]
+
+                for line in sys.stdin:
+                    if not line.strip():
+                        continue
+                    message = json.loads(line)
+                    method = message.get("method")
+                    if "id" not in message:
+                        continue
+                    if method == "initialize":
+                        result = {"serverInfo": {"name": "patchbay-test", "version": "0.0.0"}}
+                    elif method == "tools/list":
+                        result = {"tools": TOOLS}
+                    else:
+                        result = {}
+                    print(json.dumps({"jsonrpc": "2.0", "id": message["id"], "result": result}), flush=True)
+                '''
+            ).lstrip(),
+            encoding="utf-8",
+        )
 
         import subprocess
         subprocess.run(["git", "init"], cwd=str(self.tmp), capture_output=True, check=True)
@@ -88,6 +121,32 @@ class McpInstallTest(unittest.TestCase):
         self.assertIn("server_command", result)
         self.assertTrue(result["server_script_exists"])
         self.assertIn("codex", result["supported_hosts"])
+        self.assertTrue(result["server_reachable"])
+        self.assertTrue(result["required_tools_present"])
+        self.assertEqual(result["missing_tools"], [])
+        self.assertEqual(result["server_info"]["name"], "patchbay-test")
+
+    def test_mcp_doctor_probes_stdio_server(self) -> None:
+        from scripts.ai_flow import mcp_install
+
+        with unittest.mock.patch.object(
+            mcp_install,
+            "_probe_mcp_server",
+            return_value={
+                "ok": True,
+                "tool_count": 21,
+                "required_tools_present": True,
+                "missing_tools": [],
+                "server_info": {"name": "patchbay"},
+                "error": None,
+            },
+        ) as probe:
+            result = mcp_install.run_mcp_doctor(self.tmp)
+
+        probe.assert_called_once()
+        self.assertTrue(result["server_reachable"])
+        self.assertEqual(result["tool_count"], 21)
+        self.assertTrue(result["required_tools_present"])
 
     def test_mcp_doctor_includes_root(self) -> None:
         from scripts.ai_flow.mcp_install import run_mcp_doctor

@@ -78,6 +78,16 @@ class AiFlowTestCase(unittest.TestCase):
         planned = self.cli_json("plan", "--task", "mock end to end", "--mock")
         return planned["run_id"]
 
+    def allow_apply_without_tests(self) -> None:
+        path = self.repo / ".ai" / "patchbay.toml"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        existing = path.read_text(encoding="utf-8") if path.exists() else ""
+        if "[workflow]" in existing:
+            text = existing + "\nallow_apply_without_tests = true\n"
+        else:
+            text = existing + "\n[workflow]\nallow_apply_without_tests = true\n"
+        path.write_text(text, encoding="utf-8")
+
 
 class ParsingTests(unittest.TestCase):
     def test_claude_planner_uses_bare_plan_print_mode(self) -> None:
@@ -688,6 +698,7 @@ default_branch_prefix = "legacy-prefix"
             self.assertIn(name, status["artifacts"])
 
     def test_mock_full_flow_can_apply(self) -> None:
+        self.allow_apply_without_tests()
         run_id = self.create_planned_run()
         self.cli_json("approve", run_id)
         self.cli_json("write", run_id, "--mock")
@@ -695,6 +706,26 @@ default_branch_prefix = "legacy-prefix"
         self.cli_json("review", run_id, "--mock")
         self.cli_json("apply", run_id)
         self.assertTrue((self.repo / "PATCHBAY_MOCK_OUTPUT.md").exists())
+
+    def test_no_test_commands_do_not_allow_apply_by_default(self) -> None:
+        run_id = self.create_planned_run()
+        self.cli_json("approve", run_id)
+        self.cli_json("write", run_id, "--mock")
+        tested = self.cli_json("test", run_id)
+        self.assertFalse(tested["tests_passed"])
+        self.assertEqual(tested["tests_status"], "SKIPPED")
+        self.cli_json("review", run_id, "--mock")
+        status = self.cli_json("status", run_id)
+        self.assertFalse(status["gate_state"]["ready_to_apply"])
+        self.assertEqual(status["gate_state"]["tests_status"], "SKIPPED")
+
+        result = self.cli("apply", run_id)
+
+        self.assertNotEqual(result.returncode, 0)
+        failed = self.cli_json("status", run_id)
+        self.assertEqual(failed["status"], "FAILED")
+        self.assertEqual(failed["stage"], "apply")
+        self.assertIn("tests_passed is false", failed["error"])
 
     def test_worktree_creation_failure_records_error(self) -> None:
         run_id = self.create_planned_run()
@@ -865,6 +896,7 @@ test = []
         self.assertNotEqual(third.returncode, 0)
 
     def test_dirty_workspace_apply_fails(self) -> None:
+        self.allow_apply_without_tests()
         run_id = self.create_planned_run()
         self.cli_json("approve", run_id)
         self.cli_json("write", run_id, "--mock")
@@ -878,6 +910,7 @@ test = []
         self.assertEqual(status["stage"], "git")
 
     def test_apply_rejects_executor_provider_config(self) -> None:
+        self.allow_apply_without_tests()
         run_id = self.create_planned_run()
         self.cli_json("approve", run_id)
         self.cli_json("write", run_id, "--mock")
@@ -886,6 +919,9 @@ test = []
         (self.repo / ".ai" / "patchbay.toml").write_text(
             """[phases.apply]
 provider = "codex_cli"
+
+[workflow]
+allow_apply_without_tests = true
 
 [commands_allowlist]
 test = []
@@ -1272,10 +1308,12 @@ class McpSchemaTests(unittest.TestCase):
         tools_response = handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
         names = {tool["name"] for tool in tools_response["result"]["tools"]}
         for canonical in ("patchbay_plan", "patchbay_approve", "patchbay_write", "patchbay_test",
-                          "patchbay_review", "patchbay_fix", "patchbay_status", "patchbay_diff", "patchbay_apply"):
+                          "patchbay_review", "patchbay_fix", "patchbay_status", "patchbay_context",
+                          "patchbay_trace", "patchbay_diff", "patchbay_apply", "patchbay_agent"):
             self.assertIn(canonical, names, f"{canonical} missing from tools/list")
         for legacy in ("ai_flow_plan", "ai_flow_approve", "ai_flow_write", "ai_flow_test",
-                       "ai_flow_review", "ai_flow_fix", "ai_flow_status", "ai_flow_diff", "ai_flow_apply"):
+                       "ai_flow_review", "ai_flow_fix", "ai_flow_status", "ai_flow_context",
+                       "ai_flow_trace", "ai_flow_diff", "ai_flow_apply", "ai_flow_agent"):
             self.assertIn(legacy, names, f"{legacy} missing from tools/list")
 
 

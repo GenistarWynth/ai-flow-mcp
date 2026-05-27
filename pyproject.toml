@@ -29,4 +29,4 @@ packages = ["ai_flow", "ai_flow.adapters", "ai_flow.prompts"]
 py-modules = ["patchbay_mcp_server"]
 
 [tool.setuptools.package-data]
-"ai_flow" = ["prompts/*.md", "web_static/**"]
+"ai_flow" = ["prompts/*.md", "web_static/**", "skill_templates/**"]

@@ -24,6 +24,8 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertIn("events", help_text)
         self.assertIn("config", help_text)
         self.assertIn("mcp", help_text)
+        self.assertIn("agent", help_text)
+        self.assertIn("skill", help_text)
         self.assertIn("apply", help_text)
         self.assertIn("diff", help_text)
         self.assertIn("cleanup", help_text)
@@ -81,6 +83,7 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertIsNotNone(handle)
         self.assertIsNotNone(main)
         self.assertIn("patchbay_plan", TOOLS)
+        self.assertIn("patchbay_agent", TOOLS)
         self.assertIn("patchbay_events", TOOLS)
         self.assertIn("patchbay_config_show", TOOLS)
         self.assertIn("patchbay_config_phase_set", TOOLS)
@@ -88,6 +91,7 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertIn("patchbay_config_test_add", TOOLS)
         self.assertIn("patchbay_config_provider_add_cli", TOOLS)
         self.assertIn("ai_flow_plan", TOOLS)
+        self.assertIn("ai_flow_agent", TOOLS)
         self.assertIn("ai_flow_events", TOOLS)
 
     def test_mcp_initialize(self) -> None:
@@ -104,8 +108,26 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertIsNotNone(response)
         assert response is not None
         tool_names = [t["name"] for t in response["result"]["tools"]]
+        self.assertIn("patchbay_agent", tool_names)
         self.assertIn("patchbay_events", tool_names)
+        self.assertIn("ai_flow_agent", tool_names)
         self.assertIn("ai_flow_events", tool_names)
+
+    def test_agent_and_skill_parsers(self) -> None:
+        from scripts.ai_flow.cli import build_parser
+
+        parser = build_parser()
+        agent = parser.parse_args(["agent", "message", "continue", "--run-id", "run-1", "--confirmation", "plan_approved", "--json"])
+        self.assertEqual(agent.command, "agent")
+        self.assertEqual(agent.agent_command, "message")
+        self.assertEqual(agent.run_id, "run-1")
+        self.assertEqual(agent.confirmation, "plan_approved")
+
+        skill = parser.parse_args(["skill", "install", "codex", "--dry-run", "--json"])
+        self.assertEqual(skill.command, "skill")
+        self.assertEqual(skill.skill_command, "install")
+        self.assertEqual(skill.host, "codex")
+        self.assertTrue(skill.dry_run)
 
 
 if __name__ == "__main__":

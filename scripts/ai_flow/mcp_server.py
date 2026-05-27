@@ -8,9 +8,11 @@ from typing import Any, Callable
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ai_flow.agent import agent_message
     from ai_flow import service
     from ai_flow.config_wizard import run_config_wizard
 else:
+    from .agent import agent_message
     from . import service
     from .config_wizard import run_config_wizard
 
@@ -137,7 +139,25 @@ def patchbay_apply(run_id: str) -> dict[str, Any]:
     return service.apply(ROOT, run_id)
 
 
+def patchbay_agent(
+    message: str,
+    run_id: str = "",
+    confirmation: str = "none",
+    include: dict[str, Any] | None = None,
+    max_fix_rounds: int | None = None,
+) -> dict[str, Any]:
+    return agent_message(
+        ROOT,
+        message,
+        run_id=run_id or None,
+        confirmation=confirmation or "none",
+        include=include or {},
+        max_fix_rounds=max_fix_rounds,
+    )
+
+
 CANONICAL_TOOLS: dict[str, Callable[..., Any]] = {
+    "patchbay_agent": patchbay_agent,
     "patchbay_plan": patchbay_plan,
     "patchbay_approve": patchbay_approve,
     "patchbay_write": patchbay_write,
@@ -160,6 +180,7 @@ CANONICAL_TOOLS: dict[str, Callable[..., Any]] = {
 }
 
 LEGACY_TOOLS: dict[str, Callable[..., Any]] = {
+    "ai_flow_agent": patchbay_agent,
     "ai_flow_plan": patchbay_plan,
     "ai_flow_approve": patchbay_approve,
     "ai_flow_write": patchbay_write,
@@ -185,7 +206,23 @@ TOOLS: dict[str, Callable[..., Any]] = {**CANONICAL_TOOLS, **LEGACY_TOOLS}
 
 
 def _tool_schema(name: str) -> dict[str, Any]:
-    if name.endswith("_plan"):
+    if name.endswith("_agent"):
+        properties: dict[str, Any] = {
+            "message": {
+                "type": "string",
+                "description": "Natural-language task or instruction for the conversational Patchbay Agent.",
+            },
+            "run_id": {"type": "string", "description": "Existing run id to continue or inspect."},
+            "confirmation": {
+                "type": "string",
+                "enum": ["none", "plan_approved", "apply_approved"],
+                "description": "Explicit confirmation for plan/apply gates.",
+            },
+            "include": {"type": "object", "description": "Optional artifact/diff include flags."},
+            "max_fix_rounds": {"type": "integer", "description": "Optional fix-loop cap for this agent turn."},
+        }
+        required = ["message"]
+    elif name.endswith("_plan"):
         properties: dict[str, Any] = {"task": {"type": "string"}}
         properties["background"] = {"type": "boolean", "description": "Start phase in the background and poll events."}
         required = ["task"]
@@ -248,6 +285,7 @@ def _tool_schema(name: str) -> dict[str, Any]:
         required = ["run_id"]
 
     descriptions: dict[str, str] = {
+        "patchbay_agent": "Primary conversational Patchbay Agent tool. Starts, resumes, advances, and applies runs while preserving plan/apply approval gates.",
         "patchbay_plan": "Run the planning phase (host-agnostic — provider configurable via [phases.plan] in .ai/patchbay.toml).",
         "patchbay_approve": "Approve the plan so the writer phase can proceed.",
         "patchbay_write": "Run the implementation phase (provider configurable via [phases.write] / [writer].provider).",

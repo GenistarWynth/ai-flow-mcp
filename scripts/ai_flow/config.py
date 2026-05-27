@@ -41,6 +41,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "worktree_root": "../.patchbay-worktrees",
         "fail_on_dirty_workspace": True,
         "apply_to_current_workspace_only_after_review_pass": True,
+        "allow_apply_without_tests": False,
     },
     "commands_allowlist": {
         "test": [

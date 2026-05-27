@@ -10,6 +10,7 @@ import {
   fetchRuns,
   fetchStatus,
   fetchTrace,
+  postAgentMessage,
   postRunAction
 } from "./api";
 
@@ -79,6 +80,27 @@ describe("Patchbay API client", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ task: "build a chat workbench", background: true })
+      })
+    );
+  });
+
+  it("posts conversational agent messages with run and confirmation context", async () => {
+    const fetchMock = vi.fn(() => jsonResponse({ run_id: "run-1", ok: true }));
+    const client = { fetch: fetchMock };
+
+    await postAgentMessage("approve", { runId: "run-1", confirmation: "plan_approved", include: { plan: true } }, client);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/agent/message",
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: "approve",
+          run_id: "run-1",
+          confirmation: "plan_approved",
+          include: { plan: true }
+        })
       })
     );
   });

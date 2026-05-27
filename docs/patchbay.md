@@ -11,14 +11,22 @@ uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay-mcp --root
 
 # 交互式配置（无需手动编辑 TOML）
 patchbay config                      # 交互式向导
-patchbay config set models.planner claude-opus-4-7   # 单键设置
-patchbay doctor                      # 验证配置
+patchbay config --set-key models.planner --set-value claude-opus-4-7   # 单键设置
+patchbay config --doctor             # 验证配置
 
 # MCP 注册（无需手动编辑 JSON）
 patchbay mcp install codex           # Codex CLI / Codex Desktop
 patchbay mcp install claude          # Claude Code
 patchbay mcp install claude-desktop  # Claude Desktop
 patchbay mcp install gemini          # Gemini CLI
+patchbay mcp doctor                  # 启动 stdio server 并检查核心工具
+
+# Codex Skill
+patchbay skill install codex
+
+# 本地对话式 workbench
+patchbay web --port 8765
+patchbay agent message "..." --json
 ```
 
 ## 环境准备
@@ -82,12 +90,14 @@ scripts/patchbay events <run_id> --since 5     # 从第 5 条事件开始
 scripts/patchbay status <run_id>           # status 现在包含 latest_event 和 event_count
 ```
 
-MCP 工具 `patchbay_context` 是跨 host 恢复上下文的首选入口；`patchbay_events` 和 `patchbay_status` 仍可用于聚焦查看。每条事件记录包含 `phase`、`provider`、`model`、`action`、`status`、`timestamp`、`detail`、`artifact_paths`、`duration_ms` 和 `next_action`。
+MCP 工具 `patchbay_agent` 是对话式入口，能启动、恢复和推进运行，但仍保留计划批准和 apply 确认门禁。`patchbay_context` 是跨 host 恢复上下文的首选只读入口；`patchbay_events` 和 `patchbay_status` 仍可用于聚焦查看。每条事件记录包含 `phase`、`provider`、`model`、`action`、`status`、`timestamp`、`detail`、`artifact_paths`、`duration_ms` 和 `next_action`。
 
 ## 常用命令
 
 ```bash
 scripts/patchbay plan --task "..."
+scripts/patchbay agent message "..."
+scripts/patchbay web --port 8765
 scripts/patchbay approve <run_id>
 scripts/patchbay write <run_id>
 scripts/patchbay test <run_id>
@@ -116,16 +126,18 @@ scripts/patchbay review <run_id> --mock
 
 ## MCP
 
-CLI 跑通后可以把同一套流程作为 MCP 工具暴露给任意 MCP host。Patchbay 提供了自动化注册命令：
+CLI 跑通后可以把同一套流程作为 MCP 工具暴露给任意 MCP host。Patchbay 提供注册辅助命令：
 
 ```bash
-# 自动化 — 无需手动编辑 JSON/TOML
+# 注册辅助
 patchbay mcp install codex          # Codex CLI / Codex Desktop
 patchbay mcp install claude         # Claude Code
 patchbay mcp install claude-desktop # Claude Desktop（直接编辑配置文件）
 patchbay mcp install gemini         # Gemini CLI
-patchbay mcp doctor                 # 验证服务器可达
+patchbay mcp doctor                 # 实际启动 server 并验证 tools/list
 ```
+
+Codex、Claude Code、Gemini 当前会打印注册命令；Claude Desktop 会直接写配置。
 
 手动注册：
 
@@ -140,7 +152,18 @@ claude mcp add patchbay -- python scripts/patchbay_mcp_server.py
 # Gemini CLI: 使用对应的 MCP server 注册方式
 ```
 
-MCP 只调用已有服务函数，不复制业务逻辑。工具名使用 `patchbay_*`（包括 `patchbay_events`、`patchbay_runs`、`patchbay_artifact` 和 `patchbay_config_*` 配置工具），旧的 `ai_flow_*` 作为兼容别名保留。无论通过哪个 host 调用，流程和门禁保持一致。
+MCP 只调用已有服务函数，不复制业务逻辑。工具名使用 `patchbay_*`（包括 `patchbay_agent`、`patchbay_context`、`patchbay_events`、`patchbay_runs`、`patchbay_artifact` 和 `patchbay_config_*` 配置工具），旧的 `ai_flow_*` 作为兼容别名保留。无论通过哪个 host 调用，流程和门禁保持一致。
+
+## Codex Skill
+
+Patchbay 同时提供 Codex Skill 分发形态：
+
+```bash
+patchbay skill install codex
+patchbay skill print codex --json
+```
+
+Skill 负责让 Codex 在“走多模型流程”/“multi-agent workflow”等场景自动遵守 Patchbay 流程；MCP server 负责提供工具调用。
 
 ## 故障排查
 
@@ -155,6 +178,7 @@ MCP 只调用已有服务函数，不复制业务逻辑。工具名使用 `patch
 ## 安全说明
 
 Patchbay 拒绝修改 repo 外路径、`.git/`、`.env*`、secret-like 文件、绝对路径 patch、路径穿越 patch，并要求测试命令在 allowlist 中。
+默认情况下没有测试命令会记录为 `tests_status = SKIPPED`，不会解锁 apply。只有显式设置 `workflow.allow_apply_without_tests = true` 时，跳过测试才会被视为允许 apply。
 
 ## 清理 worktree
 

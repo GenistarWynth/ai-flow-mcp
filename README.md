@@ -37,13 +37,13 @@ Legacy `[models]`, `[commands]`, and `[writer].provider` keys remain supported a
 
 ## What It Provides
 
-- CLI workflow: `plan`, `approve`, `write`, `test`, `review`, `fix`, `status`, `diff`, `apply`, `cleanup`.
-- MCP tools: `patchbay_plan`, `patchbay_approve`, `patchbay_write`, `patchbay_test`, `patchbay_review`, `patchbay_fix`, `patchbay_status`, `patchbay_context`, `patchbay_events`, `patchbay_trace`, `patchbay_runs`, `patchbay_artifact`, `patchbay_config_show`, `patchbay_config_phase_set`, `patchbay_config_command_set`, `patchbay_config_test_add`, `patchbay_config_provider_add_cli`, `patchbay_diff`, `patchbay_apply`.
+- CLI workflow: `agent message`, `web`, `plan`, `approve`, `write`, `test`, `review`, `fix`, `status`, `context`, `trace`, `diff`, `apply`, `cleanup`.
+- MCP tools: `patchbay_agent`, `patchbay_plan`, `patchbay_approve`, `patchbay_write`, `patchbay_test`, `patchbay_review`, `patchbay_fix`, `patchbay_status`, `patchbay_context`, `patchbay_events`, `patchbay_trace`, `patchbay_runs`, `patchbay_artifact`, `patchbay_config_show`, `patchbay_config_phase_set`, `patchbay_config_command_set`, `patchbay_config_test_add`, `patchbay_config_provider_add_cli`, `patchbay_diff`, `patchbay_apply`.
 - Legacy MCP aliases: `ai_flow_*`.
 - Isolated git worktrees by default.
 - File-backed run artifacts under `.ai/runs/<run_id>/`.
 - Human approval gate before implementation.
-- Patch safety checks and read-only reviewer verification.
+- Patch safety checks, read-only reviewer verification, and a default apply gate that treats skipped tests as not passed unless `workflow.allow_apply_without_tests = true`.
 - **Cross-host visibility**: `patchbay context <run_id>` / `patchbay_context` is the preferred resume call. It returns the current gate state, next safe action, provider trail, artifacts, and timeline in one handoff digest. `patchbay events <run_id>` and `patchbay_status` remain available for focused inspection.
 
 ## Quick Start
@@ -66,7 +66,8 @@ cp .ai/patchbay.example.toml .ai/patchbay.toml
 
 ```bash
 patchbay config     # Interactive wizard — no hand-editing required
-patchbay doctor     # Validate your resolved phase configuration
+patchbay config --doctor     # Validate your resolved phase configuration
+patchbay config --set-key models.planner --set-value claude-opus-4-7
 ```
 
 Edit `.ai/patchbay.toml` for your local CLI commands, model names, provider, and test allowlist. Do not commit `.ai/patchbay.toml`; it is intentionally ignored.
@@ -77,6 +78,8 @@ The old `scripts/ai-flow` command and `.ai/ai-flow.toml` config still work as co
 
 ```bash
 python scripts/patchbay plan --task "..."
+python scripts/patchbay agent message "..." --json
+python scripts/patchbay web --port 8765
 python scripts/patchbay approve <run_id>
 python scripts/patchbay write <run_id>
 python scripts/patchbay test <run_id>
@@ -109,6 +112,17 @@ codex mcp add patchbay -- python scripts/patchbay_mcp_server.py
 ```
 
 Use the equivalent MCP server registration command for other MCP hosts. Run `patchbay mcp doctor` to verify the server is reachable.
+
+`patchbay mcp doctor` starts the stdio MCP server, sends `initialize` and `tools/list`, and verifies required tools including `patchbay_agent`, `patchbay_plan`, and `patchbay_context`. For Codex, Claude Code, and Gemini, `mcp install` prints the registration command to run; Claude Desktop writes its JSON config in place.
+
+## Codex Skill Install
+
+Patchbay also ships as a Codex Skill. The Skill teaches Codex when to invoke the gated workflow; the MCP server provides the tools.
+
+```bash
+patchbay skill install codex
+patchbay skill print codex --json
+```
 
 ## Configuration
 

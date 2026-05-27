@@ -167,6 +167,7 @@ const plannedContext: HandoffContext = {
 
 function createClient(overrides: Partial<PatchbayClient> = {}): PatchbayClient {
   return {
+    agentMessage: vi.fn().mockResolvedValue({ run_id: "run-new", status: { run_id: "run-new", status: "PLANNED" } }),
     createRun: vi.fn().mockResolvedValue({ run_id: "run-new", status: "PLANNED" }),
     listRuns: vi.fn().mockResolvedValue({
       runs: [
@@ -289,7 +290,7 @@ describe("Workbench", () => {
     await userEvent.type(screen.getByLabelText("给 Patchbay Agent 输入消息"), "Build a chat thread");
     await userEvent.click(screen.getByRole("button", { name: "创建任务" }));
 
-    await waitFor(() => expect(client.createRun).toHaveBeenCalledWith("Build a chat thread"));
+    await waitFor(() => expect(client.agentMessage).toHaveBeenCalledWith("Build a chat thread", { include: { plan: true } }));
     expect(await screen.findByRole("heading", { name: "Build a chat thread" })).toBeInTheDocument();
   });
 
@@ -318,7 +319,11 @@ describe("Workbench", () => {
     const dialog = await screen.findByRole("dialog", { name: "确认批准计划" });
     expect(client.runAction).not.toHaveBeenCalled();
     await userEvent.click(within(dialog).getByRole("button", { name: "批准" }));
-    expect(client.runAction).toHaveBeenCalledWith("run-ready", "approve");
+    expect(client.agentMessage).toHaveBeenCalledWith("approve", {
+      runId: "run-ready",
+      confirmation: "plan_approved",
+      include: { diff: false, review: false }
+    });
   });
 
   it("requires confirmation before apply and keeps blocked apply gated", async () => {
@@ -332,7 +337,11 @@ describe("Workbench", () => {
 
     const dialog = screen.getByRole("dialog", { name: /确认应用补丁/i });
     await userEvent.click(within(dialog).getByRole("button", { name: "应用" }));
-    expect(client.apply).toHaveBeenCalledWith("run-ready");
+    expect(client.agentMessage).toHaveBeenCalledWith("apply", {
+      runId: "run-ready",
+      confirmation: "apply_approved",
+      include: { diff: true, review: true }
+    });
 
     const blockedContext = {
       ...readyContext,
@@ -418,7 +427,7 @@ describe("Workbench", () => {
     expect(screen.getAllByText("等待批准")).toHaveLength(3);
   });
 
-  it("keeps free text as a local user message without mutating the run", async () => {
+  it("sends free text through the conversational agent endpoint", async () => {
     const client = createClient();
 
     render(<Workbench client={client} />);
@@ -430,5 +439,9 @@ describe("Workbench", () => {
     expect(await screen.findByText("这个 UI 应该更像一个对话线程")).toBeInTheDocument();
     expect(client.runAction).not.toHaveBeenCalled();
     expect(client.apply).not.toHaveBeenCalled();
+    expect(client.agentMessage).toHaveBeenCalledWith("这个 UI 应该更像一个对话线程", {
+      runId: "run-ready",
+      include: { diff: true, review: true }
+    });
   });
 });

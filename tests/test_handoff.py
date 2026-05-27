@@ -37,6 +37,11 @@ class HandoffContextTest(unittest.TestCase):
         run(["git", "config", "user.email", "patchbay@example.test"], self.repo)
         run(["git", "config", "user.name", "Patchbay tests"], self.repo)
         (self.repo / "README.md").write_text("# Handoff Repo\n", encoding="utf-8")
+        (self.repo / ".ai").mkdir(parents=True, exist_ok=True)
+        (self.repo / ".ai" / "patchbay.toml").write_text(
+            "[workflow]\nallow_apply_without_tests = true\n",
+            encoding="utf-8",
+        )
         (self.repo / ".gitignore").write_text(
             ".ai/runs/\n.ai/logs/\n.ai/worktrees/\n.ai/patchbay.toml\n.patchbay-worktrees/\n",
             encoding="utf-8",

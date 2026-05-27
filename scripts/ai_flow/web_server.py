@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
+from .agent import agent_message
 from . import service
 from .config import config_path, load_config
 from .config_wizard import run_config_wizard
@@ -151,6 +152,18 @@ class _Handler(SimpleHTTPRequestHandler):
                 return
             if method == "POST" and parsed.path == "/api/runs":
                 self._json(_create_run(self.repo_root, payload))
+                return
+            if method == "POST" and parsed.path == "/api/agent/message":
+                self._json(
+                    agent_message(
+                        self.repo_root,
+                        str(payload.get("message", "")),
+                        run_id=str(payload.get("run_id", "") or "") or None,
+                        confirmation=str(payload.get("confirmation", "none") or "none"),
+                        include=payload.get("include") if isinstance(payload.get("include"), dict) else {},
+                        max_fix_rounds=_optional_payload_int(payload.get("max_fix_rounds")),
+                    )
+                )
                 return
             if method == "POST":
                 action = _action_route(parsed.path)
@@ -336,6 +349,15 @@ def _optional_int_query(query: dict[str, list[str]], name: str) -> int | None:
     if name not in query:
         return None
     return _int_query(query, name, 0)
+
+
+def _optional_payload_int(value: object) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
 
 
 def _str_query(query: dict[str, list[str]], name: str) -> str | None:

@@ -18,6 +18,7 @@ import {
   User
 } from "lucide-react";
 import {
+  AgentResponse,
   AgentActivity,
   AgentAction,
   AgentMessage,
@@ -291,6 +292,12 @@ function resolveComposerIntent(text: string, suggestions: SuggestedAction[], pri
   return null;
 }
 
+function confirmationForAction(action: string): "plan_approved" | "apply_approved" | undefined {
+  if (action === "approve") return "plan_approved";
+  if (action === "apply") return "apply_approved";
+  return undefined;
+}
+
 export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { client?: PatchbayClient; pollIntervalMs?: number }) {
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [selectedRun, setSelectedRun] = useState("");
@@ -434,22 +441,36 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     ? conversationState?.composer_placeholder ?? "输入“继续”，或写下本地备注"
     : "描述一个新任务，Patchbay Agent 会先生成计划";
 
-  const loadContextNow = async () => {
-    if (!selectedRun) return;
-    const nextContext = await client.getContext(selectedRun);
+  const loadContextNow = async (runId = selectedRun) => {
+    if (!runId) return;
+    const nextContext = await client.getContext(runId);
     setContext(nextContext);
     setTrace(nextContext.timeline ?? []);
     setSelectedMessage(nextContext.agent_activity?.messages?.[0] ?? null);
     eventCursor.current = nextContext.cursors?.event ?? 0;
   };
 
+  const refreshRun = async (runId: string, agentResponse?: AgentResponse) => {
+    await loadRuns(runId);
+    if (agentResponse?.status) setStatus(agentResponse.status);
+    else setStatus(await client.getStatus(runId));
+    if (agentResponse?.context) {
+      setContext(agentResponse.context);
+      setTrace(agentResponse.context.timeline ?? []);
+      setSelectedMessage(agentResponse.context.agent_activity?.messages?.[0] ?? null);
+      eventCursor.current = agentResponse.context.cursors?.event ?? 0;
+    } else {
+      await loadContextNow(runId);
+    }
+    const nextDiff = await client.getDiff(runId);
+    setDiff(nextDiff.text ?? nextDiff.diff ?? "");
+  };
+
   const runAction = async (action: string) => {
     if (!selectedRun) return;
     setError("");
     await client.runAction(selectedRun, action);
-    await loadRuns();
-    setStatus(await client.getStatus(selectedRun));
-    await loadContextNow();
+    await refreshRun(selectedRun);
   };
 
   const handleAction = (candidate?: SuggestedAction | AgentAction | string | null) => {
@@ -481,12 +502,21 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     setError("");
     const action = confirm.action;
     setConfirm(null);
-    if (action === "apply") await client.apply(selectedRun);
-    else if (action === "cleanup") await client.cleanup(selectedRun);
-    else await client.runAction(selectedRun, action);
-    await loadRuns();
-    setStatus(await client.getStatus(selectedRun));
-    await loadContextNow();
+    const confirmation = confirmationForAction(action);
+    if (confirmation) {
+      const response = await client.agentMessage(action, {
+        runId: selectedRun,
+        confirmation,
+        include: { diff: action === "apply", review: action === "apply" }
+      });
+      await refreshRun(selectedRun, response);
+    } else if (action === "cleanup") {
+      await client.cleanup(selectedRun);
+      await refreshRun(selectedRun);
+    } else {
+      await client.runAction(selectedRun, action);
+      await refreshRun(selectedRun);
+    }
   };
 
   const appendLocalMessage = (body: string) => {
@@ -505,7 +535,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     setSubmitting(true);
     try {
       if (!selectedRun) {
-        const created = await client.createRun(text);
+        const created = await client.agentMessage(text, { include: { plan: true } });
         setComposer("");
         setNewTaskMode(false);
         await loadRuns(created.run_id);
@@ -517,6 +547,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         handleAction(intent);
       } else {
         appendLocalMessage(text);
+        const response = await client.agentMessage(text, { runId: selectedRun, include: { diff: true, review: true } });
+        await refreshRun(selectedRun, response);
       }
     } catch (err) {
       setError(String(err));

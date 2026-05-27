@@ -883,13 +883,23 @@ def test(cwd: Path, run_id: str) -> dict[str, Any]:
             write_text(run_path / "TEST.log", "")
             if not commands:
                 append_text(run_path / "TEST.log", "No test commands selected.\n")
-                result = set_status(run_path, TESTED, tests_passed=True)
+                allow_without_tests = bool(cfg.get("workflow", {}).get("allow_apply_without_tests", False))
+                result = set_status(
+                    run_path,
+                    TESTED,
+                    tests_passed=allow_without_tests,
+                    tests_status="SKIPPED_ALLOWED" if allow_without_tests else "SKIPPED",
+                )
                 append_event(
                     run_path,
                     phase="test",
-                    action="success",
-                    status="TESTED",
-                    detail="No test commands selected.",
+                    action="skipped_allowed" if allow_without_tests else "skipped",
+                    status="SKIPPED_ALLOWED" if allow_without_tests else "SKIPPED",
+                    detail=(
+                        "No test commands selected; workflow.allow_apply_without_tests=true permits apply."
+                        if allow_without_tests
+                        else "No test commands selected; apply remains blocked until tests are configured or allow_apply_without_tests is enabled."
+                    ),
                     run_id=run_id,
                     artifact_paths=["TEST.log"],
                     next_action="review",
@@ -911,7 +921,7 @@ def test(cwd: Path, run_id: str) -> dict[str, Any]:
                         stage="test",
                         suggested_next_action="Run `scripts/patchbay fix <run_id>` after inspecting TEST.log.",
                     )
-            result = set_status(run_path, TESTED, tests_passed=True)
+            result = set_status(run_path, TESTED, tests_passed=True, tests_status="PASSED")
             append_event(
                 run_path,
                 phase="test",
@@ -947,6 +957,14 @@ def _review_prompt(run_path: Path) -> str:
     ).rstrip() + "\n"
 
 
+def _tests_phase_completed(status: dict[str, Any]) -> bool:
+    return bool(status.get("tests_passed")) or str(status.get("tests_status") or "") in {
+        "PASSED",
+        "SKIPPED",
+        "SKIPPED_ALLOWED",
+    }
+
+
 def review(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
     root = resolve_root(cwd)
     run_path, status = _load_run(root, run_id)
@@ -978,7 +996,7 @@ def review(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
             if (
                 status.get("status") == FAILED
                 and status.get("stage") in {"git", "review"}
-                and status.get("tests_passed")
+                and _tests_phase_completed(status)
                 and not status.get("review_result")
             ):
                 allowed_statuses.add(FAILED)
@@ -1134,6 +1152,7 @@ def fix(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 IMPLEMENTED,
                 fix_iterations=iterations + 1,
                 tests_passed=False,
+                tests_status="NOT_RUN",
                 review_result=None,
             )
             append_event(
@@ -1240,6 +1259,7 @@ def _gate_state(data: dict[str, Any]) -> dict[str, Any]:
     return {
         "approved": str(data.get("status")) not in {"NEW", PLANNED},
         "tests_passed": bool(data.get("tests_passed")),
+        "tests_status": data.get("tests_status", "NOT_RUN"),
         "review_result": data.get("review_result"),
         "ready_to_apply": data.get("status") == REVIEWED_PASS and bool(data.get("tests_passed")),
     }
@@ -1473,6 +1493,7 @@ default_branch_prefix = "patchbay"
 worktree_root = "../.patchbay-worktrees"
 fail_on_dirty_workspace = true
 apply_to_current_workspace_only_after_review_pass = true
+allow_apply_without_tests = false # set true only for demo/mock repos that intentionally skip tests
 
 [commands_allowlist]
 test = [

@@ -14,6 +14,7 @@ local Patchbay MCP server.  Supported hosts:
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,13 @@ def _server_command(root: Path) -> str:
     return f"patchbay-mcp --root {root}"
 
 
+def _server_argv(root: Path) -> list[str]:
+    server_path = root / SERVER_SCRIPT
+    if server_path.exists():
+        return [sys.executable, str(server_path), "--root", str(root)]
+    return ["patchbay-mcp", "--root", str(root)]
+
+
 def install_codex(root: Path, dry_run: bool = False, *, host_name: str = "codex") -> dict[str, Any]:
     """Print the ``codex mcp add`` command for Codex CLI / Codex Desktop."""
     cmd = _server_command(root)
@@ -56,8 +64,7 @@ def install_claude(root: Path, dry_run: bool = False, *, host_name: str = "claud
 
 def install_claude_desktop(root: Path, dry_run: bool = False, *, host_name: str = "claude-desktop") -> dict[str, Any]:
     """Generate the Claude Desktop config snippet and optionally write it."""
-    cmd = _server_command(root)
-    args = cmd.split()
+    args = _server_argv(root)
     entry = {
         "command": args[0],
         "args": args[1:],
@@ -149,9 +156,64 @@ def run_mcp_doctor(cwd: Path, *, root: str | Path | None = None) -> dict[str, An
     """Validate that the MCP server can be reached and tools are listed."""
     repo_root = Path(root).expanduser().resolve() if root else _repo_root(cwd)
     server_cmd = _server_command(repo_root)
+    probe = _probe_mcp_server(repo_root)
     return {
         "server_command": server_cmd,
         "server_script_exists": (repo_root / SERVER_SCRIPT).exists(),
         "supported_hosts": sorted(HOST_HANDLERS.keys()),
-        "note": "MCP tools are exposed via the server. Verify with your MCP host after registration.",
+        "server_reachable": probe["ok"],
+        "tool_count": probe.get("tool_count", 0),
+        "required_tools_present": probe.get("required_tools_present", False),
+        "missing_tools": probe.get("missing_tools", []),
+        "server_info": probe.get("server_info", {}),
+        "error": probe.get("error"),
+        "note": "Doctor starts the stdio MCP server and verifies initialize/tools/list.",
+    }
+
+
+def _probe_mcp_server(root: Path) -> dict[str, Any]:
+    required = {"patchbay_agent", "patchbay_plan", "patchbay_context", "patchbay_events", "patchbay_apply"}
+    messages = [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+        {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+    ]
+    try:
+        completed = subprocess.run(
+            _server_argv(root),
+            cwd=str(root),
+            input="\n".join(json.dumps(message) for message in messages) + "\n",
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+            check=False,
+        )
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+    if completed.returncode != 0:
+        return {"ok": False, "error": (completed.stderr or completed.stdout or f"server exited {completed.returncode}").strip()}
+    responses: list[dict[str, Any]] = []
+    for line in completed.stdout.splitlines():
+        if not line.strip():
+            continue
+        try:
+            parsed = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            responses.append(parsed)
+    initialize = next((item for item in responses if item.get("id") == 1), {})
+    tools_response = next((item for item in responses if item.get("id") == 2), {})
+    tools = tools_response.get("result", {}).get("tools", [])
+    names = {str(tool.get("name")) for tool in tools if isinstance(tool, dict)}
+    missing = sorted(required - names)
+    return {
+        "ok": bool(initialize.get("result")) and not missing,
+        "server_info": initialize.get("result", {}).get("serverInfo", {}),
+        "tool_count": len(tools),
+        "required_tools_present": not missing,
+        "missing_tools": missing,
+        "error": None if not missing else "Missing required tools: " + ", ".join(missing),
     }

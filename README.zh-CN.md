@@ -35,13 +35,13 @@ timeout = 900
 
 ## 功能概览
 
-- CLI 流程：`plan`、`approve`、`write`、`test`、`review`、`fix`、`status`、`diff`、`apply`、`cleanup`。
-- MCP 工具：`patchbay_plan`、`patchbay_approve`、`patchbay_write`、`patchbay_test`、`patchbay_review`、`patchbay_fix`、`patchbay_status`、`patchbay_context`、`patchbay_events`、`patchbay_trace`、`patchbay_runs`、`patchbay_artifact`、`patchbay_config_show`、`patchbay_config_phase_set`、`patchbay_config_command_set`、`patchbay_config_test_add`、`patchbay_config_provider_add_cli`、`patchbay_diff`、`patchbay_apply`。
+- CLI 流程：`agent message`、`web`、`plan`、`approve`、`write`、`test`、`review`、`fix`、`status`、`context`、`trace`、`diff`、`apply`、`cleanup`。
+- MCP 工具：`patchbay_agent`、`patchbay_plan`、`patchbay_approve`、`patchbay_write`、`patchbay_test`、`patchbay_review`、`patchbay_fix`、`patchbay_status`、`patchbay_context`、`patchbay_events`、`patchbay_trace`、`patchbay_runs`、`patchbay_artifact`、`patchbay_config_show`、`patchbay_config_phase_set`、`patchbay_config_command_set`、`patchbay_config_test_add`、`patchbay_config_provider_add_cli`、`patchbay_diff`、`patchbay_apply`。
 - 兼容旧 MCP 工具名：`ai_flow_*`。
 - 默认使用隔离 git worktree，避免直接污染当前工作区。
 - 每次运行都会在 `.ai/runs/<run_id>/` 下落盘计划、diff、日志和状态。
 - 实现前必须经过人工确认计划。
-- 应用补丁前会做路径与安全检查。
+- 应用补丁前会做路径与安全检查；默认情况下“没有测试命令”不算测试通过，除非显式设置 `workflow.allow_apply_without_tests = true`。
 - reviewer 默认只读，并检查审查阶段没有修改 worktree。
 
 ## 快速开始
@@ -71,7 +71,8 @@ copy .ai\patchbay.example.toml .ai\patchbay.toml
 
 ```bash
 patchbay config     # 交互式向导，无需手动编辑
-patchbay doctor     # 验证解析后的阶段配置
+patchbay config --doctor     # 验证解析后的阶段配置
+patchbay config --set-key models.planner --set-value claude-opus-4-7
 ```
 
 然后编辑 `.ai/patchbay.toml`，配置本机命令、模型名、writer provider 和测试命令 allowlist。
@@ -86,6 +87,8 @@ patchbay doctor     # 验证解析后的阶段配置
 
 ```bash
 python scripts/patchbay plan --task "为 xxx 增加 yyy，并补测试"
+python scripts/patchbay agent message "为 xxx 增加 yyy，并补测试" --json
+python scripts/patchbay web --port 8765
 python scripts/patchbay approve <run_id>
 python scripts/patchbay write <run_id>
 python scripts/patchbay test <run_id>
@@ -146,8 +149,11 @@ codex mcp add patchbay -- python scripts/patchbay_mcp_server.py
 
 Claude Desktop、Claude Code、Gemini CLI 或其他 MCP host 使用各自等价的 MCP server 注册方式即可。运行 `patchbay mcp doctor` 验证服务器是否可达。
 
+`patchbay mcp doctor` 会真正启动 stdio MCP server，发送 `initialize` 和 `tools/list`，并检查 `patchbay_agent`、`patchbay_plan`、`patchbay_context` 等核心工具是否存在。Codex、Claude Code、Gemini 的 install 命令当前会打印 host 注册命令；Claude Desktop 会直接写入 JSON 配置。
+
 安装后可用的 MCP 工具包括：
 
+- `patchbay_agent`
 - `patchbay_plan`
 - `patchbay_approve`
 - `patchbay_write`
@@ -167,6 +173,15 @@ Claude Desktop、Claude Code、Gemini CLI 或其他 MCP host 使用各自等价�
 - `patchbay_config_provider_add_cli`
 - `patchbay_diff`
 - `patchbay_apply`
+
+## Codex Skill 安装
+
+Patchbay 同时提供 Codex Skill。Skill 负责让 Codex 在合适场景遵守 Patchbay 的门禁流程；MCP server 负责提供实际工具。
+
+```bash
+patchbay skill install codex
+patchbay skill print codex --json
+```
 
 MCP 只是调用 `scripts.ai_flow.service` 中的同一套业务逻辑，不复制另一份流程。
 

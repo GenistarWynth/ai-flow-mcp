@@ -145,6 +145,28 @@ export type AgentActivity = {
   artifacts?: HandoffArtifact[];
 };
 
+export type AgentResponse = {
+  run_id: string;
+  ok?: boolean;
+  reply?: string;
+  status?: RunStatus;
+  context?: HandoffContext;
+  diff?: string | null;
+  requires_confirmation?: {
+    type?: string;
+    required_action?: string;
+    confirmation?: "plan_approved" | "apply_approved";
+  } | null;
+  error?: string | null;
+};
+
+export type AgentMessageOptions = {
+  runId?: string;
+  confirmation?: "none" | "plan_approved" | "apply_approved";
+  include?: Record<string, unknown>;
+  maxFixRounds?: number;
+};
+
 export type HandoffContext = {
   run_id: string;
   handoff_summary?: string;
@@ -160,6 +182,7 @@ export type HandoffContext = {
 };
 
 export type PatchbayClient = {
+  agentMessage(message: string, options?: AgentMessageOptions): Promise<AgentResponse>;
   createRun(task: string, options?: { background?: boolean }): Promise<{ run_id: string; [key: string]: unknown }>;
   listRuns(): Promise<{ count?: number; runs: RunSummary[] }>;
   getStatus(runId: string): Promise<RunStatus>;
@@ -212,6 +235,20 @@ export function createRun(task: string, options: { background?: boolean } = {}, 
   });
 }
 
+export function postAgentMessage(message: string, options: AgentMessageOptions = {}, client?: ClientOptions) {
+  return requestJson<AgentResponse>("/api/agent/message", client, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message,
+      run_id: options.runId ?? "",
+      confirmation: options.confirmation ?? "none",
+      include: options.include ?? {},
+      max_fix_rounds: options.maxFixRounds
+    })
+  });
+}
+
 export function fetchStatus(runId: string, client?: ClientOptions) {
   return requestJson<RunStatus>(`/api/runs/${encodeURIComponent(runId)}/status`, client);
 }
@@ -260,6 +297,7 @@ export function cleanupRun(runId: string, client?: ClientOptions) {
 
 export function createPatchbayClient(client?: ClientOptions): PatchbayClient {
   return {
+    agentMessage: (message, options) => postAgentMessage(message, options, client),
     createRun: (task, options) => createRun(task, options, client),
     listRuns: () => fetchRuns(client),
     getStatus: (runId) => fetchStatus(runId, client),
