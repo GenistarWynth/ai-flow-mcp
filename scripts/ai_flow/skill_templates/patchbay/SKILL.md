@@ -50,7 +50,7 @@ If `patchbay_*` MCP tools are available, prefer them over shell commands:
 
 - `patchbay_agent` for conversational start/resume/advance while preserving gates. Use `background: true` for long planning or implementation turns, then poll `patchbay_context` or `patchbay_events`.
 - `patchbay_plan`, `patchbay_approve`, `patchbay_write`, `patchbay_test`, `patchbay_review`, `patchbay_fix`, `patchbay_apply` for explicit phase control.
-- `patchbay_context` for cross-host handoff status, next safe action, timeline, gate state, artifacts, and provider trail.
+- `patchbay_context` for cross-host handoff status, next safe action, timeline, gate state, artifacts, provider trail, and `run_metrics` efficiency evidence.
 - `patchbay_events` and `patchbay_trace` for focused diagnostics.
 
 Legacy `ai_flow_*` aliases are compatible, but use `patchbay_*` names for new work.

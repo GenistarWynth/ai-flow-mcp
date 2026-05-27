@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import datetime
 import json
 import os
 import subprocess
@@ -818,6 +819,7 @@ def write(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 )
             cfg = load_config(root)
             write_phase = resolve_phase(cfg, "write")
+            write_started = time.time()
             append_event(
                 run_path,
                 phase="write",
@@ -856,6 +858,7 @@ def write(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 run_id=run_id,
                 artifact_paths=["IMPLEMENTATION.md", "FINAL.diff", "writer.log"],
                 next_action="test",
+                duration_ms=int((time.time() - write_started) * 1000),
             )
             return result
     except Exception as exc:
@@ -876,6 +879,7 @@ def test(cwd: Path, run_id: str) -> dict[str, Any]:
             cfg = load_config(root)
             plan_json = read_json(run_path / "plan.json")
             test_phase = resolve_phase(cfg, "test")
+            test_started = time.time()
             append_event(
                 run_path,
                 phase="test",
@@ -912,6 +916,7 @@ def test(cwd: Path, run_id: str) -> dict[str, Any]:
                     run_id=run_id,
                     artifact_paths=["TEST.log"],
                     next_action="review",
+                    duration_ms=int((time.time() - test_started) * 1000),
                 )
                 return result
             for command in commands:
@@ -940,6 +945,7 @@ def test(cwd: Path, run_id: str) -> dict[str, Any]:
                 run_id=run_id,
                 artifact_paths=["TEST.log"],
                 next_action="review",
+                duration_ms=int((time.time() - test_started) * 1000),
             )
             return result
     except Exception as exc:
@@ -1012,6 +1018,7 @@ def review(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
             require_status(status, allowed_statuses, "review")
             _begin_phase_lock(run_path, "review")
             worktree = Path(status["worktree_path"])
+            review_started = time.time()
             append_event(
                 run_path,
                 phase="review",
@@ -1073,6 +1080,7 @@ def review(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                     run_id=run_id,
                     artifact_paths=["REVIEW.md"],
                     next_action="apply",
+                    duration_ms=int((time.time() - review_started) * 1000),
                 )
                 return result
             result = set_status(
@@ -1090,6 +1098,7 @@ def review(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 run_id=run_id,
                 artifact_paths=["REVIEW.md"],
                 next_action="fix",
+                duration_ms=int((time.time() - review_started) * 1000),
             )
             return result
     except Exception as exc:
@@ -1135,6 +1144,7 @@ def fix(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 )
             worktree = Path(status["worktree_path"])
             fix_phase = resolve_phase(cfg, "fix")
+            fix_started = time.time()
             append_event(
                 run_path,
                 phase="fix",
@@ -1175,6 +1185,7 @@ def fix(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 run_id=run_id,
                 artifact_paths=["FIXES.md", "FINAL.diff"],
                 next_action="test",
+                duration_ms=int((time.time() - fix_started) * 1000),
             )
             return result
     except Exception as exc:
@@ -1232,6 +1243,7 @@ def status(cwd: Path, run_id: str) -> dict[str, Any]:
         data["latest_event"] = latest
     data["current_phase"] = data.get("stage") or (latest or {}).get("phase") or _current_phase_from_status(str(data.get("status", "")))
     data["event_count"] = event_count(run_path)
+    data["run_metrics"] = _run_metrics(run_path)
     data["next_commands"] = _next_commands(data)
     data["gate_state"] = _gate_state(data)
     cfg = load_config(root)
@@ -1248,6 +1260,99 @@ def status(cwd: Path, run_id: str) -> dict[str, Any]:
     if job_path.exists():
         data["job"] = read_json(job_path)
     return data
+
+
+def _run_metrics(run_path: Path) -> dict[str, Any]:
+    entries = list_events(run_path)
+    phase_durations: dict[str, int] = {}
+    phase_attempts: dict[str, int] = {}
+    open_phase_starts: dict[str, str] = {}
+    provider_usage: dict[tuple[str, str, str], dict[str, Any]] = {}
+    provider_order: list[tuple[str, str, str]] = []
+
+    for entry in entries:
+        phase = str(entry.get("phase") or "")
+        action = str(entry.get("action") or "")
+        timestamp = str(entry.get("timestamp") or "")
+        if phase and action == "start":
+            phase_attempts[phase] = phase_attempts.get(phase, 0) + 1
+            open_phase_starts[phase] = timestamp
+
+        duration_ms = _event_duration_ms(entry)
+        if phase and duration_ms is not None:
+            phase_durations[phase] = phase_durations.get(phase, 0) + duration_ms
+            open_phase_starts.pop(phase, None)
+        elif phase and action != "start":
+            estimated = _estimate_duration_ms(open_phase_starts.pop(phase, ""), timestamp)
+            if estimated is not None:
+                phase_durations[phase] = phase_durations.get(phase, 0) + estimated
+
+        provider = str(entry.get("provider") or "")
+        model = str(entry.get("model") or "")
+        if provider or model:
+            key = (phase, provider, model)
+            if key not in provider_usage:
+                provider_usage[key] = {
+                    "phase": phase,
+                    "provider": provider,
+                    "model": model,
+                    "events": 0,
+                    "duration_ms": 0,
+                }
+                provider_order.append(key)
+            provider_usage[key]["events"] += 1
+            if duration_ms is not None:
+                provider_usage[key]["duration_ms"] += duration_ms
+
+    total_duration_ms = sum(phase_durations.values()) if phase_durations else None
+    return {
+        "duration_known": bool(phase_durations),
+        "duration_source": "event_or_timestamp" if phase_durations else "unknown",
+        "total_duration_ms": total_duration_ms,
+        "phase_durations_ms": phase_durations,
+        "phase_attempts": phase_attempts,
+        "event_count": event_count(run_path),
+        "trace_count": trace_count(run_path),
+        "provider_usage": [provider_usage[key] for key in provider_order],
+        "cost": {
+            "known": False,
+            "currency": "USD",
+            "estimated_total": None,
+            "by_phase": {},
+        },
+        "token_usage": {
+            "known": False,
+            "input_tokens": None,
+            "output_tokens": None,
+            "total_tokens": None,
+            "by_phase": {},
+        },
+    }
+
+
+def _event_duration_ms(entry: dict[str, Any]) -> int | None:
+    value = entry.get("duration_ms")
+    if value is None:
+        return None
+    try:
+        duration = int(value)
+    except (TypeError, ValueError):
+        return None
+    if duration < 0:
+        return None
+    return duration
+
+
+def _estimate_duration_ms(start: str, end: str) -> int | None:
+    if not start or not end:
+        return None
+    try:
+        start_time = datetime.fromisoformat(start)
+        end_time = datetime.fromisoformat(end)
+    except ValueError:
+        return None
+    duration = int((end_time - start_time).total_seconds() * 1000)
+    return duration if duration >= 0 else None
 
 
 def _current_phase_from_status(status_value: str) -> str:

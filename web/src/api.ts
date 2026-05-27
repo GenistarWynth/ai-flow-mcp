@@ -19,6 +19,38 @@ export type PhaseProvider = {
   command_key?: string;
 };
 
+export type ProviderUsage = {
+  phase?: string;
+  provider?: string;
+  model?: string;
+  events?: number;
+  duration_ms?: number;
+};
+
+export type RunMetrics = {
+  duration_known?: boolean;
+  duration_source?: string;
+  total_duration_ms?: number | null;
+  phase_durations_ms?: Record<string, number>;
+  phase_attempts?: Record<string, number>;
+  event_count?: number;
+  trace_count?: number;
+  provider_usage?: ProviderUsage[];
+  cost?: {
+    known?: boolean;
+    currency?: string;
+    estimated_total?: number | null;
+    by_phase?: Record<string, number>;
+  };
+  token_usage?: {
+    known?: boolean;
+    input_tokens?: number | null;
+    output_tokens?: number | null;
+    total_tokens?: number | null;
+    by_phase?: Record<string, unknown>;
+  };
+};
+
 export type RunStatus = {
   run_id: string;
   task?: string;
@@ -30,6 +62,7 @@ export type RunStatus = {
   next_commands?: string[];
   artifacts?: string[];
   effective_phase_providers?: Record<string, PhaseProvider>;
+  run_metrics?: RunMetrics;
 };
 
 export type TraceEntry = {
@@ -176,6 +209,7 @@ export type HandoffContext = {
   status?: string;
   current_phase?: string;
   gate_state?: GateState;
+  run_metrics?: RunMetrics;
   next_actions?: NextAction[];
   provider_trail?: ProviderTrailEntry[];
   artifacts?: HandoffArtifact[];

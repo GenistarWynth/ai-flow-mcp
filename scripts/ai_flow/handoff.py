@@ -120,6 +120,7 @@ def build_handoff_context(
         "status": status_data.get("status"),
         "current_phase": status_data.get("current_phase"),
         "gate_state": status_data.get("gate_state", {}),
+        "run_metrics": status_data.get("run_metrics", {}),
         "next_actions": next_actions,
         "provider_trail": provider_trail,
         "artifacts": artifacts,

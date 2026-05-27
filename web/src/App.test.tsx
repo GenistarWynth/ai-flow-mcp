@@ -10,6 +10,22 @@ const readyContext: HandoffContext = {
   status: "REVIEWED_PASS",
   current_phase: "apply",
   gate_state: { approved: true, tests_passed: true, review_result: "PASS", ready_to_apply: true },
+  run_metrics: {
+    duration_known: true,
+    duration_source: "event_or_timestamp",
+    total_duration_ms: 12340,
+    phase_durations_ms: { plan: 1200, write: 8000, test: 940, review: 2200 },
+    phase_attempts: { plan: 1, write: 1, test: 1, review: 1 },
+    event_count: 8,
+    trace_count: 5,
+    provider_usage: [
+      { phase: "plan", provider: "claude_cli", model: "opus", events: 2, duration_ms: 1200 },
+      { phase: "write", provider: "reasonix_cli", model: "", events: 2, duration_ms: 8000 },
+      { phase: "review", provider: "codex_cli", model: "gpt-5", events: 2, duration_ms: 2200 }
+    ],
+    cost: { known: false, currency: "USD", estimated_total: null, by_phase: {} },
+    token_usage: { known: false, input_tokens: null, output_tokens: null, total_tokens: null, by_phase: {} }
+  },
   next_actions: [
     {
       name: "apply",
@@ -183,6 +199,7 @@ function createClient(overrides: Partial<PatchbayClient> = {}): PatchbayClient {
       tests_passed: true,
       review_result: "PASS",
       gate_state: { approved: true, tests_passed: true, review_result: "PASS", ready_to_apply: true },
+      run_metrics: readyContext.run_metrics,
       next_commands: ["apply"],
       artifacts: ["PLAN.md", "writer.log", "FINAL.diff"],
       effective_phase_providers: {
@@ -235,6 +252,11 @@ describe("Workbench", () => {
     expect(screen.queryByText("reasonix_cli")).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    expect(screen.getByText("12s")).toBeVisible();
+    expect(screen.getByText("8 / 5")).toBeVisible();
+    expect(screen.getByText("未上报")).toBeVisible();
+    expect(screen.getByText("实现 8.0s")).toBeVisible();
+
     await userEvent.click(screen.getByRole("tab", { name: "提供方" }));
 
     expect(screen.getAllByText("reasonix_cli")[0]).toBeVisible();

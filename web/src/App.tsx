@@ -25,6 +25,7 @@ import {
   createPatchbayClient,
   HandoffContext,
   PatchbayClient,
+  RunMetrics,
   RunStatus,
   RunSummary,
   SuggestedAction,
@@ -125,6 +126,20 @@ function commandReason(command: string, safe: boolean) {
   if (command === "write") return "Plan was approved; writer may work inside the isolated worktree.";
   if (command === "cleanup") return "Run is applied; cleanup can remove the isolated worktree.";
   return `Run the ${command} phase next.`;
+}
+
+function compactDuration(ms?: number | null) {
+  if (ms === undefined || ms === null) return "未知";
+  if (ms < 1000) return `${ms}ms`;
+  const seconds = ms / 1000;
+  if (seconds < 60) return `${seconds.toFixed(seconds >= 10 ? 0 : 1)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = Math.round(seconds % 60);
+  return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
+}
+
+function metricEntries(metrics?: RunMetrics | null) {
+  return Object.entries(metrics?.phase_durations_ms ?? {}).filter(([, duration]) => duration > 0);
 }
 
 function timeLabel(timestamp?: string) {
@@ -938,6 +953,42 @@ function NextActionCard({
   );
 }
 
+function MetricsGrid({ metrics }: { metrics?: RunMetrics | null }) {
+  const phaseDurations = metricEntries(metrics);
+  const providerCount = metrics?.provider_usage?.filter((item) => item.provider || item.model).length ?? 0;
+  return (
+    <div className="metrics-panel">
+      <div className="metric-row">
+        <span>总耗时</span>
+        <strong>{metrics?.duration_known ? compactDuration(metrics.total_duration_ms) : "待采集"}</strong>
+      </div>
+      <div className="metric-row">
+        <span>事件 / Trace</span>
+        <strong>
+          {metrics?.event_count ?? 0} / {metrics?.trace_count ?? 0}
+        </strong>
+      </div>
+      <div className="metric-row">
+        <span>提供方轨迹</span>
+        <strong>{providerCount || "待记录"}</strong>
+      </div>
+      <div className="metric-row">
+        <span>成本</span>
+        <strong>{metrics?.cost?.known ? `${metrics.cost.currency ?? "USD"} ${metrics.cost.estimated_total ?? 0}` : "未上报"}</strong>
+      </div>
+      {phaseDurations.length ? (
+        <div className="phase-metrics" aria-label="阶段耗时">
+          {phaseDurations.map(([phase, duration]) => (
+            <span key={phase}>
+              {phaseLabel(phase)} {compactDuration(duration)}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function DetailPanel({
   tab,
   message,
@@ -964,8 +1015,13 @@ function DetailPanel({
   if (tab === "Overview") {
     const currentPhase = context?.current_phase ?? status?.current_phase ?? "";
     const currentStatus = context?.status ?? status?.status ?? "";
+    const metrics = context?.run_metrics ?? status?.run_metrics;
     return (
       <div className="overview-panel">
+        <section>
+          <h2>效率</h2>
+          <MetricsGrid metrics={metrics} />
+        </section>
         <section>
           <h2>阶段</h2>
           <div className="phase-list">

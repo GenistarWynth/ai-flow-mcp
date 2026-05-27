@@ -70,6 +70,14 @@ class HandoffContextTest(unittest.TestCase):
         self.assertEqual(context["next_actions"][0]["tool"], "patchbay_approve")
         self.assertTrue(context["next_actions"][0]["safe"])
         self.assertTrue(context["next_actions"][0]["requires_human_confirmation"])
+        metrics = context["run_metrics"]
+        self.assertTrue(metrics["duration_known"])
+        self.assertEqual(metrics["duration_source"], "event_or_timestamp")
+        self.assertIn("plan", metrics["phase_durations_ms"])
+        self.assertEqual(metrics["phase_attempts"]["plan"], 1)
+        self.assertEqual(metrics["event_count"], 2)
+        self.assertEqual(metrics["trace_count"], 0)
+        self.assertFalse(metrics["cost"]["known"])
         activity = context["agent_activity"]
         self.assertIn("Patchbay Agent", activity["headline"])
         self.assertEqual(activity["tone"], "ready")
@@ -204,6 +212,11 @@ class HandoffContextTest(unittest.TestCase):
         phases = [item["phase"] for item in context["provider_trail"]]
         self.assertGreaterEqual(phases.count("review"), 2)
         self.assertIn("fix", phases)
+        metrics = context["run_metrics"]
+        self.assertGreaterEqual(metrics["phase_attempts"]["review"], 2)
+        self.assertEqual(metrics["phase_attempts"]["fix"], 1)
+        self.assertIn("fix", metrics["phase_durations_ms"])
+        self.assertTrue(any(item["phase"] == "review" for item in metrics["provider_usage"]))
         self.assertEqual(context["status"], "REVIEWED_PASS")
         self.assertEqual(context["next_actions"][0]["name"], "apply")
 
