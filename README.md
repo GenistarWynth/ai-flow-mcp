@@ -88,6 +88,16 @@ python scripts/patchbay context <run_id>
 python scripts/patchbay apply <run_id>
 ```
 
+Use `--background` for long conversational turns so the caller can return immediately and poll status/events:
+
+```bash
+python scripts/patchbay agent message "..." --background --json
+python scripts/patchbay agent message approve --run-id <run_id> --confirmation plan_approved --background --json
+python scripts/patchbay agent message continue --run-id <run_id> --background --json
+```
+
+Background agent turns write `JOB.json`, append `agent` events, and preserve the plan/apply confirmation gates. `apply` remains foreground-only and requires explicit confirmation after tests and review pass.
+
 Mock mode can validate the workflow without model credentials:
 
 ```bash

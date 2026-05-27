@@ -72,6 +72,7 @@ ACTION_LABELS: dict[str, str] = {
     "approve_granted": "批准已记录",
     "apply_granted": "应用已确认",
     "apply_denied": "应用被阻止",
+    "queued": "已排队",
 }
 
 STATUS_LABELS: dict[str, str] = {
@@ -89,6 +90,7 @@ STATUS_LABELS: dict[str, str] = {
     "APPLIED": "已应用",
     "FAILED": "失败",
     "RUNNING": "运行中",
+    "QUEUED": "已排队",
     "READY": "就绪",
     "PASS": "通过",
     "CHANGES_REQUESTED": "需要修改",
@@ -469,7 +471,7 @@ def _run_tone(status_data: dict[str, Any], next_action: dict[str, Any] | None) -
         return "success"
     if status == "REVIEWED_CHANGES_REQUESTED":
         return "blocked"
-    if status in {"IMPLEMENTING", "TESTING", "REVIEWING", "FIXING"}:
+    if status in {"IMPLEMENTING", "TESTING", "REVIEWING", "FIXING", "RUNNING"}:
         return "running"
     if next_action:
         return "ready" if next_action.get("safe") else "blocked"
@@ -485,7 +487,7 @@ def _event_tone(item: dict[str, Any]) -> str:
         return "blocked"
     if status in {"PASS", "SUCCESS"} or action in {"success", "approve_granted", "apply_granted"}:
         return "success"
-    if status in {"RUNNING"} or action in {"start", "retry"}:
+    if status in {"RUNNING", "QUEUED"} or action in {"start", "retry", "queued"}:
         return "running"
     if status in {"READY"} or action == "gate":
         return "ready"

@@ -59,6 +59,7 @@ const actionLabels: Record<string, string> = {
   start: "开始",
   success: "完成",
   gate: "门禁",
+  queued: "已排队",
   error: "错误",
   failed: "失败"
 };
@@ -77,6 +78,7 @@ const statusLabels: Record<string, string> = {
   APPLIED: "已应用",
   FAILED: "失败",
   RUNNING: "运行中",
+  QUEUED: "已排队",
   READY: "就绪",
   PASS: "通过",
   SUCCESS: "成功",
@@ -190,7 +192,14 @@ function fallbackActivity(context: HandoffContext | null, status: RunStatus | nu
       body: entry.detail,
       status: entry.status,
       status_label: statusLabel(entry.status),
-      tone: entry.status === "PASS" || entry.status === "SUCCESS" ? "success" : entry.status === "ERROR" ? "failed" : "idle",
+      tone:
+        entry.status === "PASS" || entry.status === "SUCCESS"
+          ? "success"
+          : entry.status === "ERROR"
+            ? "failed"
+            : entry.status === "RUNNING" || entry.status === "QUEUED"
+              ? "running"
+              : "idle",
       artifacts: entry.artifact_paths,
       provider: entry.provider ?? entry.agent,
       model: entry.model,
@@ -476,7 +485,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     if (shouldAutopilot(action)) {
       const response = await client.agentMessage("continue", {
         runId: selectedRun,
-        include: { diff: true, review: true }
+        include: { diff: true, review: true },
+        background: true
       });
       await refreshRun(selectedRun, response);
       return;
@@ -519,7 +529,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       const response = await client.agentMessage(action, {
         runId: selectedRun,
         confirmation,
-        include: { diff: action === "apply", review: action === "apply" }
+        include: { diff: action === "apply", review: action === "apply" },
+        background: action !== "apply"
       });
       await refreshRun(selectedRun, response);
     } else if (action === "cleanup") {
@@ -528,7 +539,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     } else if (shouldAutopilot(action)) {
       const response = await client.agentMessage("continue", {
         runId: selectedRun,
-        include: { diff: true, review: true }
+        include: { diff: true, review: true },
+        background: true
       });
       await refreshRun(selectedRun, response);
     } else {
@@ -553,7 +565,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     setSubmitting(true);
     try {
       if (!selectedRun) {
-        const created = await client.agentMessage(text, { include: { plan: true } });
+        const created = await client.agentMessage(text, { include: { plan: true }, background: true });
         setComposer("");
         setNewTaskMode(false);
         await loadRuns(created.run_id);
@@ -565,7 +577,11 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         handleAction(intent);
       } else {
         appendLocalMessage(text);
-        const response = await client.agentMessage(text, { runId: selectedRun, include: { diff: true, review: true } });
+        const response = await client.agentMessage(text, {
+          runId: selectedRun,
+          include: { diff: true, review: true },
+          background: true
+        });
         await refreshRun(selectedRun, response);
       }
     } catch (err) {

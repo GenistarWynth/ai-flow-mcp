@@ -94,6 +94,14 @@ def _load_run(root: Path, run_id: str) -> tuple[Path, dict[str, Any]]:
     return path, load_status(path)
 
 
+def _run_path_for_read(root: Path, run_id: str) -> Path:
+    run_path = _run_dir(root, run_id)
+    if (run_path / "STATUS.json").exists() or _job_path(run_path).exists():
+        return run_path
+    load_status(run_path)
+    return run_path
+
+
 def _lock_path(run_path: Path) -> Path:
     return run_path / RUN_LOCK_FILE
 
@@ -240,6 +248,7 @@ def start_background_phase(
         "phase": phase,
         "pid": None,
         "run_id": run_id or "pending",
+        "task": task or "",
         "command": command,
         "started_at": now_iso(),
         "started_at_epoch": job_started,
@@ -1190,7 +1199,31 @@ def _writer_edits_worktree(cfg: dict[str, Any], mock: bool, *, repair: bool = Fa
 
 def status(cwd: Path, run_id: str) -> dict[str, Any]:
     root = resolve_root(cwd)
-    run_path, data = _load_run(root, run_id)
+    run_path = _run_dir(root, run_id)
+    try:
+        _, data = _load_run(root, run_id)
+    except StateError:
+        job_path = _job_path(run_path)
+        if not job_path.exists():
+            raise
+        job = read_json(job_path)
+        data = {
+            "run_id": run_id,
+            "status": "RUNNING",
+            "task": "",
+            "repo_root": str(root),
+            "config_path": str(config_path(root)),
+            "worktree_path": None,
+            "tests_passed": False,
+            "tests_status": "NOT_RUN",
+            "review_result": None,
+            "fix_iterations": 0,
+            "created_at": job.get("started_at"),
+            "updated_at": job.get("started_at"),
+            "error": None,
+            "stage": job.get("phase", "background"),
+            "suggested_next_action": "Poll events/status until the background job writes STATUS.json.",
+        }
     data = dict(data)
     data["run_dir"] = str(run_path)
     data["artifacts"] = list_run_artifacts(run_path)
@@ -1256,8 +1289,10 @@ def _next_commands(data: dict[str, Any]) -> list[str]:
 
 
 def _gate_state(data: dict[str, Any]) -> dict[str, Any]:
+    status_value = str(data.get("status"))
+    stage_value = str(data.get("stage") or data.get("current_phase") or "")
     return {
-        "approved": str(data.get("status")) not in {"NEW", PLANNED},
+        "approved": status_value not in {"NEW", PLANNED} and not (status_value == "RUNNING" and stage_value == "plan"),
         "tests_passed": bool(data.get("tests_passed")),
         "tests_status": data.get("tests_status", "NOT_RUN"),
         "review_result": data.get("review_result"),
@@ -1275,7 +1310,7 @@ def context(
 ) -> dict[str, Any]:
     """Return a unified run handoff digest for CLI, MCP, and web clients."""
     root = resolve_root(cwd)
-    run_path, _ = _load_run(root, run_id)
+    run_path = _run_path_for_read(root, run_id)
     status_data = status(root, run_id)
     return build_handoff_context(
         run_path=run_path,
@@ -1289,7 +1324,7 @@ def context(
 def events(cwd: Path, run_id: str, *, since: int = 0, phase: str | None = None) -> dict[str, Any]:
     """Return event log entries for a run (used by CLI ``events`` and MCP ``patchbay_events``)."""
     root = resolve_root(cwd)
-    run_path, data = _load_run(root, run_id)
+    run_path = _run_path_for_read(root, run_id)
     entries = list_events(run_path, since=since, phase=phase)
     return {
         "run_id": run_id,
@@ -1303,7 +1338,7 @@ def events(cwd: Path, run_id: str, *, since: int = 0, phase: str | None = None) 
 def trace(cwd: Path, run_id: str, *, since: int = 0, phase: str | None = None) -> dict[str, Any]:
     """Return structured trace entries for a run (used by CLI ``trace`` and MCP ``patchbay_trace``)."""
     root = resolve_root(cwd)
-    run_path, _ = _load_run(root, run_id)
+    run_path = _run_path_for_read(root, run_id)
     entries = list_trace(run_path, since=since, phase=phase)
     return {
         "run_id": run_id,
@@ -1319,10 +1354,21 @@ def runs(cwd: Path, *, limit: int = 20) -> dict[str, Any]:
     ensure_layout(root)
     items: list[dict[str, Any]] = []
     for candidate in sorted(runs_dir(root).iterdir(), key=lambda item: item.stat().st_mtime, reverse=True):
-        if not candidate.is_dir() or not (candidate / "STATUS.json").exists():
+        if not candidate.is_dir():
             continue
         try:
-            data = load_status(candidate)
+            if (candidate / "STATUS.json").exists():
+                data = load_status(candidate)
+            elif (candidate / "JOB.json").exists():
+                job = read_json(candidate / "JOB.json")
+                data = {
+                    "run_id": job.get("run_id", candidate.name),
+                    "status": "RUNNING",
+                    "task": job.get("task", ""),
+                    "updated_at": job.get("started_at"),
+                }
+            else:
+                continue
         except Exception:
             continue
         items.append(
@@ -1341,7 +1387,7 @@ def runs(cwd: Path, *, limit: int = 20) -> dict[str, Any]:
 
 def artifact(cwd: Path, run_id: str, artifact_name: str, *, tail: int | None = None) -> dict[str, Any]:
     root = resolve_root(cwd)
-    run_path, _ = _load_run(root, run_id)
+    run_path = _run_path_for_read(root, run_id)
     normalized = artifact_name.replace("\\", "/")
     if not normalized or normalized.startswith("/") or ".." in Path(normalized).parts:
         raise SafetyError("Invalid artifact name; use a file name inside the run directory.", stage="artifact")
@@ -1373,7 +1419,8 @@ def artifact(cwd: Path, run_id: str, artifact_name: str, *, tail: int | None = N
 
 def diff(cwd: Path, run_id: str) -> str:
     root = resolve_root(cwd)
-    run_path, data = _load_run(root, run_id)
+    run_path = _run_path_for_read(root, run_id)
+    data = load_status(run_path) if (run_path / "STATUS.json").exists() else {}
     final = run_path / "FINAL.diff"
     if final.exists():
         return read_text(final)

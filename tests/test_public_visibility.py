@@ -106,6 +106,7 @@ class PublicVisibilityTest(unittest.TestCase):
         self.assertIn("patchbay_config_provider_add_cli", tools)
         self.assertIn("background", tools["patchbay_plan"]["inputSchema"]["properties"])
         self.assertIn("background", tools["patchbay_write"]["inputSchema"]["properties"])
+        self.assertIn("background", tools["patchbay_agent"]["inputSchema"]["properties"])
 
     def test_background_plan_returns_job_metadata(self) -> None:
         from scripts.ai_flow import service
@@ -142,6 +143,42 @@ class PublicVisibilityTest(unittest.TestCase):
         self.assertNotEqual(result["run_id"], "pending")
         self.assertTrue(Path(result["run_dir"]).exists())
         self.assertTrue(Path(result["events_path"]).exists())
+
+    def test_pending_background_plan_is_readable_before_status_exists(self) -> None:
+        from scripts.ai_flow import service
+
+        run_id = "20260524-pending-background"
+        run_path = self.repo / ".ai" / "runs" / run_id
+        run_path.mkdir(parents=True)
+        (run_path / "JOB.json").write_text(
+            json.dumps(
+                {
+                    "background": True,
+                    "phase": "plan",
+                    "pid": 123,
+                    "run_id": run_id,
+                    "task": "pending background task",
+                    "started_at": "2026-05-24T00:00:00+00:00",
+                    "started_at_epoch": 0,
+                    "root": str(self.repo),
+                    "run_dir": str(run_path),
+                    "events_path": str(run_path / "events.jsonl"),
+                    "trace_path": str(run_path / "trace.jsonl"),
+                }
+            ),
+            encoding="utf-8",
+        )
+        (run_path / "events.jsonl").write_text("", encoding="utf-8")
+
+        status = service.status(self.repo, run_id)
+        context = service.context(self.repo, run_id)
+        runs = service.runs(self.repo)
+
+        self.assertEqual(status["status"], "RUNNING")
+        self.assertEqual(status["job"]["pid"], 123)
+        self.assertFalse(status["gate_state"]["approved"])
+        self.assertEqual(context["status"], "RUNNING")
+        self.assertTrue(any(item["run_id"] == run_id and item["task"] == "pending background task" for item in runs["runs"]))
 
     def test_background_plan_cli_respects_explicit_run_id_collision(self) -> None:
         run_id = "20260524-background-explicit"

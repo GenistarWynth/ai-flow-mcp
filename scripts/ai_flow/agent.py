@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
 from . import service
-from .artifacts import read_text
+from .artifacts import now_iso, read_text
 from .config import load_config
 from .errors import StateError
 from .events import append_event
@@ -28,6 +31,8 @@ from .state import (
 
 SCHEMA_VERSION = 1
 AGENT_LOCK_FILE = "AGENT.lock"
+INHERITED_AGENT_LOCK_ENV = "PATCHBAY_INHERITED_AGENT_LOCK"
+AGENT_LOCK_TOKEN_ENV = "PATCHBAY_AGENT_LOCK_TOKEN"
 PLAN_CONFIRMATION = "plan_approved"
 APPLY_CONFIRMATION = "apply_approved"
 
@@ -40,6 +45,7 @@ def agent_message(
     confirmation: str = "none",
     include: dict[str, Any] | None = None,
     max_fix_rounds: int | None = None,
+    background: bool = False,
 ) -> dict[str, Any]:
     """Conversational entry point for MCP, CLI, and web clients.
 
@@ -49,6 +55,16 @@ def agent_message(
     root = service.resolve_root(cwd)
     text = (message or "").strip()
     intent = _classify_intent(text, has_run=bool(run_id), confirmation=confirmation)
+    if background:
+        return _start_background_agent(
+            root,
+            text,
+            run_id=run_id,
+            confirmation=confirmation,
+            include=include,
+            max_fix_rounds=max_fix_rounds,
+            intent=intent,
+        )
     if not run_id and intent == "start":
         if not text:
             return _error_response("Tell Patchbay what task to plan.", action="start")
@@ -154,6 +170,224 @@ def agent_message(
         )
 
     return agent_status(root, run_id, since=int((include or {}).get("events_since", 0) or 0), include=include)
+
+
+def _start_background_agent(
+    root: Path,
+    message: str,
+    *,
+    run_id: str | None,
+    confirmation: str,
+    include: dict[str, Any] | None,
+    max_fix_rounds: int | None,
+    intent: str,
+) -> dict[str, Any]:
+    if not run_id and intent == "start":
+        if not message:
+            return _error_response("Tell Patchbay what task to plan.", action="start")
+        job = service.start_background_phase(root, "plan", task=message)
+        _append_agent_event_by_path(
+            Path(str(job["run_dir"])),
+            run_id=str(job["run_id"]),
+            action="queued",
+            status="QUEUED",
+            detail="Background planning job started.",
+            next_action="poll_status",
+        )
+        return _background_pending_response(
+            action="start",
+            run_id=str(job["run_id"]),
+            reply="Planning started in the background. Poll status, context, or events for progress.",
+            job=job,
+        )
+
+    if not run_id:
+        return _error_response("Continuing a Patchbay run requires run_id.", action=intent)
+
+    if intent in {"diff", "artifact", "status"}:
+        return agent_message(
+            root,
+            message,
+            run_id=run_id,
+            confirmation=confirmation,
+            include=include,
+            max_fix_rounds=max_fix_rounds,
+        )
+
+    if intent == "apply":
+        return _agent_response(
+            root,
+            run_id,
+            action="apply",
+            reply="Background apply is not supported. Review the final diff and confirm apply in the foreground.",
+            include=include,
+            extra={"ok": False, "error": "background apply is not supported"},
+        )
+
+    if intent == "approve_and_run" and confirmation != PLAN_CONFIRMATION:
+        return _agent_response(
+            root,
+            run_id,
+            action="approve_and_run",
+            reply="Implementation requires explicit plan approval.",
+            requires_confirmation=_confirmation("plan_approval", "approve_and_run", PLAN_CONFIRMATION),
+            include=_merge_include(include, {"plan": True}),
+        )
+
+    current = service.status(root, run_id)
+    if intent == "continue" and (current.get("status") == PLANNED or _apply_ready(current)):
+        return agent_message(
+            root,
+            message,
+            run_id=run_id,
+            confirmation=confirmation,
+            include=include,
+            max_fix_rounds=max_fix_rounds,
+        )
+
+    if intent not in {"approve_and_run", "continue"}:
+        return agent_message(
+            root,
+            message,
+            run_id=run_id,
+            confirmation=confirmation,
+            include=include,
+            max_fix_rounds=max_fix_rounds,
+        )
+
+    run_path, _ = service._load_run(root, run_id)
+    lock_token = uuid.uuid4().hex
+    _acquire_agent_lock(run_path, token=lock_token)
+    command = _background_agent_command(
+        root=root,
+        message=message or "continue",
+        run_id=run_id,
+        confirmation=confirmation,
+        include=include or {},
+        max_fix_rounds=max_fix_rounds,
+    )
+    job_started = time.time()
+    pending_job = {
+        "background": True,
+        "kind": "agent",
+        "phase": "agent",
+        "action": intent,
+        "pid": None,
+        "run_id": run_id,
+        "command": command,
+        "started_at": now_iso(),
+        "started_at_epoch": job_started,
+        "root": str(root),
+        "run_dir": str(run_path),
+        "events_path": str(run_path / "events.jsonl"),
+        "trace_path": str(run_path / "trace.jsonl"),
+    }
+    service._record_job(run_path, pending_job)
+    _append_agent_event(
+        root,
+        run_id,
+        action="queued",
+        status="QUEUED",
+        detail="Background agent turn queued.",
+        next_action="poll_status",
+    )
+    env = dict(os.environ)
+    env[INHERITED_AGENT_LOCK_ENV] = "agent"
+    env[AGENT_LOCK_TOKEN_ENV] = lock_token
+    env["PATCHBAY_BACKGROUND_ROOT"] = str(root)
+    env["PATCHBAY_BACKGROUND_RUN_DIR"] = str(run_path)
+    env["PATCHBAY_BACKGROUND_SOURCE_SCRIPTS"] = str(Path(__file__).resolve().parents[1])
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=str(root),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            env=env,
+        )
+    except Exception:
+        _release_agent_lock(run_path, token=lock_token)
+        raise
+
+    job = {**pending_job, "pid": process.pid}
+    early_exit = process.poll()
+    if early_exit is not None:
+        _release_agent_lock(run_path, token=lock_token)
+        job["exit_code"] = early_exit
+    service._record_job(run_path, job)
+    response = _agent_response(
+        root,
+        run_id,
+        action=intent,
+        reply="Background agent turn started. Poll status, context, or events for progress.",
+        include=include,
+        extra={"background": True, "job": job},
+    )
+    response["requires_confirmation"] = None
+    response["next_actions"] = ["status", "events"]
+    return response
+
+
+def _background_agent_command(
+    *,
+    root: Path,
+    message: str,
+    run_id: str,
+    confirmation: str,
+    include: dict[str, Any],
+    max_fix_rounds: int | None,
+) -> list[str]:
+    runner = """
+import os
+import sys
+from pathlib import Path
+
+root = Path(os.environ["PATCHBAY_BACKGROUND_ROOT"])
+source_scripts = Path(os.environ.get("PATCHBAY_BACKGROUND_SOURCE_SCRIPTS", ""))
+for candidate in (root / "scripts", source_scripts):
+    if candidate.exists() and str(candidate) not in sys.path:
+        sys.path.insert(0, str(candidate))
+
+try:
+    from ai_flow.cli import main
+    raise SystemExit(main(sys.argv[1:]))
+finally:
+    run_dir = os.environ.get("PATCHBAY_BACKGROUND_RUN_DIR")
+    token = os.environ.get("PATCHBAY_AGENT_LOCK_TOKEN")
+    if run_dir and token:
+        lock_path = Path(run_dir) / "AGENT.lock"
+        try:
+            lines = lock_path.read_text(encoding="utf-8").splitlines()
+            if token in lines:
+                lock_path.unlink()
+        except FileNotFoundError:
+            pass
+        except Exception:
+            pass
+""".strip()
+    command = [
+        sys.executable,
+        "-c",
+        runner,
+        "agent",
+        "message",
+        message,
+        "--run-id",
+        run_id,
+        "--confirmation",
+        confirmation or "none",
+        "--json",
+    ]
+    if max_fix_rounds is not None:
+        command.extend(["--max-fix-rounds", str(max_fix_rounds)])
+    if include.get("plan"):
+        command.append("--include-plan")
+    if include.get("review"):
+        command.append("--include-review")
+    if include.get("diff"):
+        command.append("--include-diff")
+    return command
 
 
 def agent_status(cwd: Path, run_id: str, *, since: int = 0, include: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -390,6 +624,26 @@ def _error_response(message: str, *, action: str) -> dict[str, Any]:
     }
 
 
+def _background_pending_response(*, action: str, run_id: str, reply: str, job: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "ok": True,
+        "action": action,
+        "reply": reply,
+        "run_id": run_id,
+        "status": None,
+        "context": None,
+        "events": None,
+        "artifacts": {},
+        "diff": None,
+        "requires_confirmation": None,
+        "next_actions": ["status", "events"],
+        "error": None,
+        "background": True,
+        "job": job,
+    }
+
+
 def _included_artifacts(root: Path, run_id: str, include: dict[str, Any]) -> dict[str, Any]:
     artifacts: dict[str, Any] = {}
     names: list[tuple[str, int | None]] = []
@@ -490,13 +744,19 @@ def _append_agent_event(root: Path, run_id: str, **kwargs: Any) -> None:
     append_event(run_path, phase="agent", run_id=run_id, **kwargs)
 
 
+def _append_agent_event_by_path(run_path: Path, *, run_id: str, **kwargs: Any) -> None:
+    append_event(run_path, phase="agent", run_id=run_id, **kwargs)
+
+
 def _agent_lock_path(run_path: Path) -> Path:
     return run_path / AGENT_LOCK_FILE
 
 
-def _acquire_agent_lock(run_path: Path) -> None:
+def _acquire_agent_lock(run_path: Path, *, token: str | None = None) -> None:
     path = _agent_lock_path(run_path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    if os.environ.get(INHERITED_AGENT_LOCK_ENV) == "agent" and path.exists():
+        return
     try:
         fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL)
     except FileExistsError:
@@ -506,10 +766,19 @@ def _acquire_agent_lock(run_path: Path) -> None:
             suggested_next_action="Poll agent status and events until the active run finishes.",
         )
     with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
-        handle.write(f"pid={os.getpid()}\nstarted_at={time.time()}\n")
+        handle.write(f"pid={os.getpid()}\n")
+        if token:
+            handle.write(f"{token}\n")
+        handle.write(f"started_at={time.time()}\n")
 
 
-def _release_agent_lock(run_path: Path) -> None:
+def _release_agent_lock(run_path: Path, *, token: str | None = None) -> None:
     path = _agent_lock_path(run_path)
+    if not path.exists():
+        return
+    if token:
+        lines = read_text(path, default="").splitlines()
+        if token not in lines:
+            return
     if path.exists():
         path.unlink()

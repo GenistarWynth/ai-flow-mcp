@@ -145,6 +145,7 @@ def patchbay_agent(
     confirmation: str = "none",
     include: dict[str, Any] | None = None,
     max_fix_rounds: int | None = None,
+    background: bool = False,
 ) -> dict[str, Any]:
     return agent_message(
         ROOT,
@@ -153,6 +154,7 @@ def patchbay_agent(
         confirmation=confirmation or "none",
         include=include or {},
         max_fix_rounds=max_fix_rounds,
+        background=background,
     )
 
 
@@ -220,6 +222,10 @@ def _tool_schema(name: str) -> dict[str, Any]:
             },
             "include": {"type": "object", "description": "Optional artifact/diff include flags."},
             "max_fix_rounds": {"type": "integer", "description": "Optional fix-loop cap for this agent turn."},
+            "background": {
+                "type": "boolean",
+                "description": "Run long planning or implementation turns in the background and poll status/events.",
+            },
         }
         required = ["message"]
     elif name.endswith("_plan"):

@@ -88,7 +88,7 @@ describe("Patchbay API client", () => {
     const fetchMock = vi.fn(() => jsonResponse({ run_id: "run-1", ok: true }));
     const client = { fetch: fetchMock };
 
-    await postAgentMessage("approve", { runId: "run-1", confirmation: "plan_approved", include: { plan: true } }, client);
+    await postAgentMessage("approve", { runId: "run-1", confirmation: "plan_approved", include: { plan: true }, background: true }, client);
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/agent/message",
@@ -99,7 +99,8 @@ describe("Patchbay API client", () => {
           message: "approve",
           run_id: "run-1",
           confirmation: "plan_approved",
-          include: { plan: true }
+          include: { plan: true },
+          background: true
         })
       })
     );

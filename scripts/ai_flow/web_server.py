@@ -162,6 +162,7 @@ class _Handler(SimpleHTTPRequestHandler):
                         confirmation=str(payload.get("confirmation", "none") or "none"),
                         include=payload.get("include") if isinstance(payload.get("include"), dict) else {},
                         max_fix_rounds=_optional_payload_int(payload.get("max_fix_rounds")),
+                        background=bool(payload.get("background", False)),
                     )
                 )
                 return

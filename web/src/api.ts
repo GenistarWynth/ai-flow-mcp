@@ -152,6 +152,8 @@ export type AgentResponse = {
   status?: RunStatus;
   context?: HandoffContext;
   diff?: string | null;
+  background?: boolean;
+  job?: Record<string, unknown>;
   requires_confirmation?: {
     type?: string;
     required_action?: string;
@@ -165,6 +167,7 @@ export type AgentMessageOptions = {
   confirmation?: "none" | "plan_approved" | "apply_approved";
   include?: Record<string, unknown>;
   maxFixRounds?: number;
+  background?: boolean;
 };
 
 export type HandoffContext = {
@@ -244,7 +247,8 @@ export function postAgentMessage(message: string, options: AgentMessageOptions =
       run_id: options.runId ?? "",
       confirmation: options.confirmation ?? "none",
       include: options.include ?? {},
-      max_fix_rounds: options.maxFixRounds
+      max_fix_rounds: options.maxFixRounds,
+      background: Boolean(options.background)
     })
   });
 }

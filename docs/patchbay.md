@@ -97,6 +97,8 @@ MCP 工具 `patchbay_agent` 是对话式入口，能启动、恢复和推进运�
 ```bash
 scripts/patchbay plan --task "..."
 scripts/patchbay agent message "..."
+scripts/patchbay agent message "..." --background --json
+scripts/patchbay agent message continue --run-id <run_id> --background --json
 scripts/patchbay web --port 8765
 scripts/patchbay approve <run_id>
 scripts/patchbay write <run_id>
@@ -109,6 +111,8 @@ scripts/patchbay diff <run_id>
 scripts/patchbay apply <run_id>
 scripts/patchbay cleanup <run_id>
 ```
+
+`--background` is intended for the conversational agent path: planning and approve/continue turns return a pollable `run_id`, write `JOB.json`, and surface progress through `patchbay_status`, `patchbay_context`, and `patchbay_events`. Destructive apply remains foreground-only and still requires explicit confirmation.
 
 mock 模式：
 

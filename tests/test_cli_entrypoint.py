@@ -117,11 +117,12 @@ class CliEntrypointTest(unittest.TestCase):
         from scripts.ai_flow.cli import build_parser
 
         parser = build_parser()
-        agent = parser.parse_args(["agent", "message", "continue", "--run-id", "run-1", "--confirmation", "plan_approved", "--json"])
+        agent = parser.parse_args(["agent", "message", "continue", "--run-id", "run-1", "--confirmation", "plan_approved", "--background", "--json"])
         self.assertEqual(agent.command, "agent")
         self.assertEqual(agent.agent_command, "message")
         self.assertEqual(agent.run_id, "run-1")
         self.assertEqual(agent.confirmation, "plan_approved")
+        self.assertTrue(agent.background)
 
         skill = parser.parse_args(["skill", "install", "codex", "--dry-run", "--json"])
         self.assertEqual(skill.command, "skill")

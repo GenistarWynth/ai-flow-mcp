@@ -127,6 +127,7 @@ def build_parser() -> argparse.ArgumentParser:
     agent_message_parser.add_argument("--include-plan", action="store_true", help="Include PLAN.md in the response.")
     agent_message_parser.add_argument("--include-review", action="store_true", help="Include REVIEW.md in the response.")
     agent_message_parser.add_argument("--include-diff", action="store_true", help="Include FINAL.diff in the response.")
+    agent_message_parser.add_argument("--background", action="store_true", help="Run this agent turn in the background when it can safely advance phases.")
     _add_json(agent_message_parser)
 
     plan = sub.add_parser("plan", help="Run read-only Claude planner.")
@@ -360,6 +361,7 @@ def dispatch(args: argparse.Namespace, cwd: Path) -> Any:
                 "review": bool(getattr(a, "include_review", False)),
                 "diff": bool(getattr(a, "include_diff", False)),
             },
+            background=bool(getattr(a, "background", False)),
         ),
         "plan": lambda a, c: service.start_background_phase(c, "plan", task=a.task, mock=a.mock, run_id=a.run_id or None) if a.background else service.plan(c, task=a.task, mock=a.mock, run_id=a.run_id or None),
         "approve": lambda a, c: service.approve(c, a.run_id),

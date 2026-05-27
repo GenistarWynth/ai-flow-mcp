@@ -4,9 +4,11 @@ import json
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 import urllib.request
 from pathlib import Path
+from unittest import mock
 
 from scripts.ai_flow.agent import APPLY_CONFIRMATION, PLAN_CONFIRMATION, agent_message
 
@@ -76,6 +78,16 @@ test = []
         completed = run(["python", str(self.script), *args, "--json"], self.repo)
         self.assertEqual(completed.returncode, 0, completed.stderr)
         return json.loads(completed.stdout)
+
+    def wait_for(self, predicate, *, timeout: float = 8.0):
+        deadline = time.time() + timeout
+        last = None
+        while time.time() < deadline:
+            last = predicate()
+            if last:
+                return last
+            time.sleep(0.1)
+        self.fail(f"Timed out waiting for condition; last value: {last!r}")
 
 
 class AgentWorkflowTests(AgentTestCase):
@@ -175,6 +187,82 @@ class AgentWorkflowTests(AgentTestCase):
 
         self.assertEqual(response["status"]["status"], "PLANNED")
         self.assertIn("PLAN.md", response["artifacts"])
+
+    def test_agent_background_start_returns_pollable_job(self) -> None:
+        response = agent_message(self.repo, "background agent plan", background=True)
+        run_id = response["run_id"]
+        run_path = self.repo / ".ai" / "runs" / run_id
+
+        self.assertTrue(response["ok"])
+        self.assertTrue(response["background"])
+        self.assertEqual(response["job"]["phase"], "plan")
+        self.assertEqual(response["next_actions"], ["status", "events"])
+        self.assertTrue((run_path / "JOB.json").exists())
+        self.assertTrue((run_path / "events.jsonl").exists())
+
+    def test_agent_background_approval_requires_confirmation(self) -> None:
+        planned = agent_message(self.repo, "background approval still gated")
+
+        response = agent_message(self.repo, "approve", run_id=planned["run_id"], background=True)
+
+        self.assertEqual(response["status"]["status"], "PLANNED")
+        self.assertEqual(response["requires_confirmation"]["confirmation"], PLAN_CONFIRMATION)
+        self.assertFalse((self.repo / ".ai" / "runs" / planned["run_id"] / "AGENT.lock").exists())
+
+    def test_agent_background_continue_starts_agent_job(self) -> None:
+        from scripts.ai_flow import agent as agent_module
+
+        planned = agent_message(self.repo, "background autopilot")
+        run_id = planned["run_id"]
+        run_path = self.repo / ".ai" / "runs" / run_id
+
+        class FakeProcess:
+            pid = 9876
+
+            def poll(self):
+                return None
+
+        with (
+            mock.patch.object(agent_module.service, "resolve_root", return_value=self.repo),
+            mock.patch.object(agent_module.subprocess, "Popen", return_value=FakeProcess()) as popen,
+        ):
+            response = agent_message(
+                self.repo,
+                "approve",
+                run_id=run_id,
+                confirmation=PLAN_CONFIRMATION,
+                background=True,
+            )
+
+        self.assertTrue(response["background"])
+        self.assertEqual(response["job"]["kind"], "agent")
+        self.assertEqual(response["job"]["pid"], 9876)
+        self.assertTrue((run_path / "AGENT.lock").exists())
+        self.assertTrue((run_path / "JOB.json").exists())
+        self.assertTrue(popen.call_args.kwargs["env"]["PATCHBAY_INHERITED_AGENT_LOCK"])
+
+    def test_cli_background_agent_approval_completes_in_child_process(self) -> None:
+        planned = agent_message(self.repo, "background child process")
+        run_id = planned["run_id"]
+        run_path = self.repo / ".ai" / "runs" / run_id
+
+        response = self.cli_json(
+            "agent",
+            "message",
+            "approve",
+            "--run-id",
+            run_id,
+            "--confirmation",
+            PLAN_CONFIRMATION,
+            "--background",
+        )
+
+        self.assertTrue(response["background"])
+        self.wait_for(lambda: not (run_path / "AGENT.lock").exists() and json.loads((run_path / "STATUS.json").read_text(encoding="utf-8"))["status"] == "REVIEWED_PASS")
+
+        status = json.loads((run_path / "STATUS.json").read_text(encoding="utf-8"))
+        self.assertEqual(status["status"], "REVIEWED_PASS")
+        self.assertTrue(status["gate_state"]["ready_to_apply"] if "gate_state" in status else status["tests_passed"])
 
     def test_web_agent_message_endpoint(self) -> None:
         from scripts.ai_flow.web_server import create_server

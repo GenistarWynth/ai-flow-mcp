@@ -96,6 +96,16 @@ python scripts/patchbay review <run_id>
 python scripts/patchbay apply <run_id>
 ```
 
+耗时较长的对话式推进可以加 `--background`，调用方立即返回，然后轮询 status/context/events：
+
+```bash
+python scripts/patchbay agent message "为 xxx 增加 yyy，并补测试" --background --json
+python scripts/patchbay agent message approve --run-id <run_id> --confirmation plan_approved --background --json
+python scripts/patchbay agent message continue --run-id <run_id> --background --json
+```
+
+后台 Agent 会写入 `JOB.json` 并追加 `agent` 事件，同时保留计划批准和 apply 确认门禁。`apply` 仍然只支持前台确认，必须在测试和审查通过后显式执行。
+
 查看状态和 diff：
 
 ```bash

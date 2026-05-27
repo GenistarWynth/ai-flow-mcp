@@ -290,7 +290,7 @@ describe("Workbench", () => {
     await userEvent.type(screen.getByLabelText("给 Patchbay Agent 输入消息"), "Build a chat thread");
     await userEvent.click(screen.getByRole("button", { name: "创建任务" }));
 
-    await waitFor(() => expect(client.agentMessage).toHaveBeenCalledWith("Build a chat thread", { include: { plan: true } }));
+    await waitFor(() => expect(client.agentMessage).toHaveBeenCalledWith("Build a chat thread", { include: { plan: true }, background: true }));
     expect(await screen.findByRole("heading", { name: "Build a chat thread" })).toBeInTheDocument();
   });
 
@@ -322,7 +322,8 @@ describe("Workbench", () => {
     expect(client.agentMessage).toHaveBeenCalledWith("approve", {
       runId: "run-ready",
       confirmation: "plan_approved",
-      include: { diff: false, review: false }
+      include: { diff: false, review: false },
+      background: true
     });
   });
 
@@ -392,7 +393,8 @@ describe("Workbench", () => {
     await waitFor(() =>
       expect(client.agentMessage).toHaveBeenCalledWith("continue", {
         runId: "run-ready",
-        include: { diff: true, review: true }
+        include: { diff: true, review: true },
+        background: true
       })
     );
     expect(client.runAction).not.toHaveBeenCalled();
@@ -412,7 +414,8 @@ describe("Workbench", () => {
     expect(client.agentMessage).toHaveBeenCalledWith("apply", {
       runId: "run-ready",
       confirmation: "apply_approved",
-      include: { diff: true, review: true }
+      include: { diff: true, review: true },
+      background: false
     });
 
     const blockedContext = {
@@ -513,7 +516,8 @@ describe("Workbench", () => {
     expect(client.apply).not.toHaveBeenCalled();
     expect(client.agentMessage).toHaveBeenCalledWith("这个 UI 应该更像一个对话线程", {
       runId: "run-ready",
-      include: { diff: true, review: true }
+      include: { diff: true, review: true },
+      background: true
     });
   });
 });

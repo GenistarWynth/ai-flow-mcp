@@ -131,6 +131,35 @@ class WebServerTest(unittest.TestCase):
         self.assertEqual(result["run_id"], "run-bg")
         start.assert_called_once_with(self.tmp, "plan", task="background task")
 
+    def test_agent_message_endpoint_forwards_background(self) -> None:
+        from scripts.ai_flow import web_server
+
+        with patch.object(web_server, "agent_message", return_value={"run_id": "run-bg", "background": True}) as agent:
+            status, result = self._request(
+                "POST",
+                "/api/agent/message",
+                {
+                    "message": "continue",
+                    "run_id": self.run_id,
+                    "confirmation": "none",
+                    "include": {"diff": True},
+                    "max_fix_rounds": 1,
+                    "background": True,
+                },
+            )
+
+        self.assertEqual(status, 200)
+        self.assertTrue(result["background"])
+        agent.assert_called_once_with(
+            self.tmp,
+            "continue",
+            run_id=self.run_id,
+            confirmation="none",
+            include={"diff": True},
+            max_fix_rounds=1,
+            background=True,
+        )
+
     def test_apply_action_is_rejected_until_gate_ready(self) -> None:
         from scripts.ai_flow import web_server
 
