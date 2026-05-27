@@ -5,16 +5,18 @@
 From GitHub:
 
 ```bash
-uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay init
+uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay setup --host codex
 ```
 
 From a local checkout:
 
 ```bash
-python scripts/patchbay init
+python scripts/patchbay setup --host codex
 ```
 
 On Windows, `scripts/patchbay.cmd` avoids PowerShell execution-policy issues.
+
+`patchbay setup` initializes project files, creates `.ai/patchbay.toml` from the ignored example when missing, installs the bundled Codex Skill, returns MCP registration guidance for the selected host, and includes a doctor summary.
 
 ## MCP
 

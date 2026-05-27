@@ -37,8 +37,8 @@ Legacy `[models]`, `[commands]`, and `[writer].provider` keys remain supported a
 
 ## What It Provides
 
-- CLI workflow: `doctor`, `agent message`, `web`, `plan`, `approve`, `write`, `test`, `review`, `fix`, `status`, `context`, `metrics`, `trace`, `diff`, `apply`, `cleanup`.
-- MCP tools: `patchbay_agent`, `patchbay_plan`, `patchbay_approve`, `patchbay_write`, `patchbay_test`, `patchbay_review`, `patchbay_fix`, `patchbay_status`, `patchbay_context`, `patchbay_metrics`, `patchbay_doctor`, `patchbay_events`, `patchbay_trace`, `patchbay_runs`, `patchbay_artifact`, `patchbay_config_show`, `patchbay_config_phase_set`, `patchbay_config_command_set`, `patchbay_config_test_add`, `patchbay_config_provider_add_cli`, `patchbay_diff`, `patchbay_apply`.
+- CLI workflow: `setup`, `doctor`, `agent message`, `web`, `plan`, `approve`, `write`, `test`, `review`, `fix`, `status`, `context`, `metrics`, `trace`, `diff`, `apply`, `cleanup`.
+- MCP tools: `patchbay_agent`, `patchbay_setup`, `patchbay_plan`, `patchbay_approve`, `patchbay_write`, `patchbay_test`, `patchbay_review`, `patchbay_fix`, `patchbay_status`, `patchbay_context`, `patchbay_metrics`, `patchbay_doctor`, `patchbay_events`, `patchbay_trace`, `patchbay_runs`, `patchbay_artifact`, `patchbay_config_show`, `patchbay_config_phase_set`, `patchbay_config_command_set`, `patchbay_config_test_add`, `patchbay_config_provider_add_cli`, `patchbay_diff`, `patchbay_apply`.
 - Legacy MCP aliases: `ai_flow_*`.
 - Isolated git worktrees by default.
 - File-backed run artifacts under `.ai/runs/<run_id>/`.
@@ -51,20 +51,20 @@ Legacy `[models]`, `[commands]`, and `[writer].provider` keys remain supported a
 ### npx-style (recommended)
 
 ```bash
-uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay init
+uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay setup --host codex
 uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay-mcp --root /path/to/repo
 ```
 
 ### From a local checkout
 
 ```bash
-python scripts/patchbay init
-cp .ai/patchbay.example.toml .ai/patchbay.toml
+python scripts/patchbay setup --host codex
 ```
 
 ### Interactive configuration
 
 ```bash
+patchbay setup --host codex     # init + local config + Codex Skill + MCP registration guidance + doctor summary
 patchbay config     # Interactive wizard — no hand-editing required
 patchbay doctor     # Unified config/MCP/Skill readiness checks
 patchbay config --doctor     # Validate your resolved phase configuration
@@ -78,6 +78,7 @@ The old `scripts/ai-flow` command and `.ai/ai-flow.toml` config still work as co
 ## CLI Usage
 
 ```bash
+python scripts/patchbay setup --host codex --json
 python scripts/patchbay plan --task "..."
 python scripts/patchbay agent message "..." --json
 python scripts/patchbay agent message status --json

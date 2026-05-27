@@ -97,6 +97,7 @@ class PublicVisibilityTest(unittest.TestCase):
         response = handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
         assert response is not None
         tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+        self.assertIn("patchbay_setup", tools)
         self.assertIn("patchbay_runs", tools)
         self.assertIn("patchbay_artifact", tools)
         self.assertIn("patchbay_config_show", tools)
@@ -107,6 +108,7 @@ class PublicVisibilityTest(unittest.TestCase):
         self.assertIn("background", tools["patchbay_plan"]["inputSchema"]["properties"])
         self.assertIn("background", tools["patchbay_write"]["inputSchema"]["properties"])
         self.assertIn("background", tools["patchbay_agent"]["inputSchema"]["properties"])
+        self.assertIn("skill_path", tools["patchbay_setup"]["inputSchema"]["properties"])
 
     def test_background_plan_returns_job_metadata(self) -> None:
         from scripts.ai_flow import service

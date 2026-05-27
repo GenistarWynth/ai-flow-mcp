@@ -25,6 +25,7 @@ class McpInstallTest(unittest.TestCase):
                     {"name": "patchbay_plan"},
                     {"name": "patchbay_context"},
                     {"name": "patchbay_metrics"},
+                    {"name": "patchbay_setup"},
                     {"name": "patchbay_doctor"},
                     {"name": "patchbay_events"},
                     {"name": "patchbay_apply"},

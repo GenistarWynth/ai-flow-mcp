@@ -48,6 +48,7 @@ Never apply without explicit user confirmation.
 
 If `patchbay_*` MCP tools are available, prefer them over shell commands:
 
+- `patchbay_setup` for one-call local setup: project files, local config, Codex Skill installation, MCP registration guidance, and a doctor summary.
 - `patchbay_agent` for conversational start/resume/advance while preserving gates. It also answers explicit local prompts such as `help`, `status`, `runs`, `readiness`, `diagnose`, or `patchbay doctor` with guidance, recent runs, or the unified doctor report without creating a model run. Run-bound prompts like `continue`, `approve`, `apply`, `diff`, or `artifact` without a `run_id` should stay local and point back to an existing run. Use `background: true` for long planning or implementation turns, then poll `patchbay_context` or `patchbay_events`.
 - `patchbay_plan`, `patchbay_approve`, `patchbay_write`, `patchbay_test`, `patchbay_review`, `patchbay_fix`, `patchbay_apply` for explicit phase control.
 - `patchbay_context` for cross-host handoff status, next safe action, timeline, gate state, artifacts, provider trail, and `run_metrics` efficiency evidence.

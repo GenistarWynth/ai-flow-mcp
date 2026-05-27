@@ -13,6 +13,7 @@ from .config_wizard import run_config_wizard
 from .doctor import run_doctor
 from .errors import AiFlowError
 from .mcp_install import run_mcp_install, run_mcp_doctor
+from .setup_flow import run_setup
 from .skill_install import run_skill_install, run_skill_print
 from .web_server import serve as serve_web
 
@@ -118,6 +119,18 @@ def build_parser() -> argparse.ArgumentParser:
     doctor.add_argument("--skip-mcp", action="store_true", help="Skip stdio MCP server probing.")
     doctor.add_argument("--skill-path", default="", help="Codex skills root to inspect.")
     _add_json(doctor)
+
+    setup = sub.add_parser("setup", help="Initialize Patchbay, install the Skill, and print/register MCP host setup.")
+    setup.add_argument("--root", default="", help="Repository root to set up.")
+    setup.add_argument("--host", default="codex", help="MCP host: codex, claude, claude-code, claude-desktop, gemini.")
+    setup.add_argument("--skill-path", default="", help="Destination skills root; defaults to $CODEX_HOME/skills or ~/.codex/skills.")
+    setup.add_argument("--dry-run", action="store_true", help="Preview setup without writing files.")
+    setup.add_argument("--skip-skill", action="store_true", help="Skip Codex Skill installation.")
+    setup.add_argument("--skip-mcp", action="store_true", help="Skip MCP host registration helper.")
+    setup.add_argument("--mcp-dry-run", action="store_true", help="Preview MCP registration without writing host config.")
+    setup.add_argument("--probe-mcp", action="store_true", help="Run stdio MCP doctor after setup.")
+    setup.add_argument("--no-config", action="store_true", help="Do not create .ai/patchbay.toml from the example.")
+    _add_json(setup)
 
     agent = sub.add_parser("agent", help="Conversational Patchbay Agent entry point.")
     agent_sub = agent.add_subparsers(dest="agent_command", required=True)
@@ -366,6 +379,18 @@ def dispatch(args: argparse.Namespace, cwd: Path) -> Any:
             root=getattr(a, "root", "") or None,
             include_mcp=not bool(getattr(a, "skip_mcp", False)),
             skill_path=getattr(a, "skill_path", "") or None,
+        ),
+        "setup": lambda a, c: run_setup(
+            c,
+            root=getattr(a, "root", "") or None,
+            host=getattr(a, "host", "codex"),
+            skill_path=getattr(a, "skill_path", "") or None,
+            dry_run=bool(getattr(a, "dry_run", False)),
+            skip_skill=bool(getattr(a, "skip_skill", False)),
+            skip_mcp=bool(getattr(a, "skip_mcp", False)),
+            mcp_dry_run=bool(getattr(a, "mcp_dry_run", False)),
+            probe_mcp=bool(getattr(a, "probe_mcp", False)),
+            create_config=not bool(getattr(a, "no_config", False)),
         ),
         "agent": lambda a, c: agent_message(
             c,

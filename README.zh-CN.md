@@ -35,8 +35,8 @@ timeout = 900
 
 ## 功能概览
 
-- CLI 流程：`doctor`、`agent message`、`web`、`plan`、`approve`、`write`、`test`、`review`、`fix`、`status`、`context`、`metrics`、`trace`、`diff`、`apply`、`cleanup`。
-- MCP 工具：`patchbay_agent`、`patchbay_plan`、`patchbay_approve`、`patchbay_write`、`patchbay_test`、`patchbay_review`、`patchbay_fix`、`patchbay_status`、`patchbay_context`、`patchbay_metrics`、`patchbay_doctor`、`patchbay_events`、`patchbay_trace`、`patchbay_runs`、`patchbay_artifact`、`patchbay_config_show`、`patchbay_config_phase_set`、`patchbay_config_command_set`、`patchbay_config_test_add`、`patchbay_config_provider_add_cli`、`patchbay_diff`、`patchbay_apply`。
+- CLI 流程：`setup`、`doctor`、`agent message`、`web`、`plan`、`approve`、`write`、`test`、`review`、`fix`、`status`、`context`、`metrics`、`trace`、`diff`、`apply`、`cleanup`。
+- MCP 工具：`patchbay_agent`、`patchbay_setup`、`patchbay_plan`、`patchbay_approve`、`patchbay_write`、`patchbay_test`、`patchbay_review`、`patchbay_fix`、`patchbay_status`、`patchbay_context`、`patchbay_metrics`、`patchbay_doctor`、`patchbay_events`、`patchbay_trace`、`patchbay_runs`、`patchbay_artifact`、`patchbay_config_show`、`patchbay_config_phase_set`、`patchbay_config_command_set`、`patchbay_config_test_add`、`patchbay_config_provider_add_cli`、`patchbay_diff`、`patchbay_apply`。
 - 兼容旧 MCP 工具名：`ai_flow_*`。
 - 默认使用隔离 git worktree，避免直接污染当前工作区。
 - 每次运行都会在 `.ai/runs/<run_id>/` 下落盘计划、diff、日志和状态。
@@ -49,27 +49,26 @@ timeout = 900
 ### npx 风格（推荐）
 
 ```bash
-uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay init
+uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay setup --host codex
 uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay-mcp --root /path/to/repo
 ```
 
 ### 本地检出
 
 ```bash
-python scripts/patchbay init
-cp .ai/patchbay.example.toml .ai/patchbay.toml
+python scripts/patchbay setup --host codex
 ```
 
 Windows 也可以使用：
 
 ```bat
-scripts\patchbay.cmd init
-copy .ai\patchbay.example.toml .ai\patchbay.toml
+scripts\patchbay.cmd setup --host codex
 ```
 
 ### 交互式配置
 
 ```bash
+patchbay setup --host codex     # 初始化项目、本地配置、Codex Skill、MCP 注册提示和 doctor 摘要
 patchbay config     # 交互式向导，无需手动编辑
 patchbay doctor     # 统一检查 config/MCP/Skill 是否就绪
 patchbay config --doctor     # 验证解析后的阶段配置
@@ -87,6 +86,7 @@ patchbay config --set-key models.planner --set-value claude-opus-4-7
 典型流程：
 
 ```bash
+python scripts/patchbay setup --host codex --json
 python scripts/patchbay plan --task "为 xxx 增加 yyy，并补测试"
 python scripts/patchbay agent message "为 xxx 增加 yyy，并补测试" --json
 python scripts/patchbay agent message status --json

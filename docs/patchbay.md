@@ -6,8 +6,11 @@ Patchbay 是一个本地补丁编排器：任意支持 MCP 的客户端都可以
 
 ```bash
 # npx 风格（推荐）
-uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay init
+uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay setup --host codex
 uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay-mcp --root /path/to/repo
+
+# 一条命令初始化本地项目、配置、Skill 和 MCP 注册提示
+patchbay setup --host codex --json
 
 # 交互式配置（无需手动编辑 TOML）
 patchbay config                      # 交互式向导
