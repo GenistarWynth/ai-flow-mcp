@@ -89,6 +89,7 @@ patchbay config --set-key models.planner --set-value claude-opus-4-7
 ```bash
 python scripts/patchbay plan --task "为 xxx 增加 yyy，并补测试"
 python scripts/patchbay agent message "为 xxx 增加 yyy，并补测试" --json
+python scripts/patchbay agent message readiness --json
 python scripts/patchbay web --port 8765
 python scripts/patchbay approve <run_id>
 python scripts/patchbay write <run_id>
@@ -105,7 +106,7 @@ python scripts/patchbay agent message approve --run-id <run_id> --confirmation p
 python scripts/patchbay agent message continue --run-id <run_id> --background --json
 ```
 
-后台 Agent 会写入 `JOB.json` 并追加 `agent` 事件，同时保留计划批准和 apply 确认门禁。`apply` 仍然只支持前台确认，必须在测试和审查通过后显式执行。
+后台 Agent 会写入 `JOB.json` 并追加 `agent` 事件，同时保留计划批准和 apply 确认门禁。`apply` 仍然只支持前台确认，必须在测试和审查通过后显式执行。`readiness`、`diagnose` 或 `patchbay doctor` 这类就绪检查请求会直接返回统一 doctor 报告，不会创建 run。
 
 Web workbench 使用同一套对话式流程，并在诊断抽屉里提供“就绪”页。该页面调用统一 doctor 检查但默认不做 MCP stdio 探测，因此可以在桌面 UI 中看到安装与配置缺口，同时避免打开页面时额外启动子进程。
 

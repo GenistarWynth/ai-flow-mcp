@@ -48,7 +48,7 @@ Never apply without explicit user confirmation.
 
 If `patchbay_*` MCP tools are available, prefer them over shell commands:
 
-- `patchbay_agent` for conversational start/resume/advance while preserving gates. Use `background: true` for long planning or implementation turns, then poll `patchbay_context` or `patchbay_events`.
+- `patchbay_agent` for conversational start/resume/advance while preserving gates. It also answers explicit readiness prompts such as `readiness`, `diagnose`, or `patchbay doctor` with the unified doctor report without creating a run. Use `background: true` for long planning or implementation turns, then poll `patchbay_context` or `patchbay_events`.
 - `patchbay_plan`, `patchbay_approve`, `patchbay_write`, `patchbay_test`, `patchbay_review`, `patchbay_fix`, `patchbay_apply` for explicit phase control.
 - `patchbay_context` for cross-host handoff status, next safe action, timeline, gate state, artifacts, provider trail, and `run_metrics` efficiency evidence.
 - `patchbay_metrics` when only phase durations, attempts, event/trace counts, provider usage, and cost/token availability are needed.

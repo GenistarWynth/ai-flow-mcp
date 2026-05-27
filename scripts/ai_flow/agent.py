@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import time
@@ -11,6 +12,7 @@ from typing import Any
 from . import service
 from .artifacts import now_iso, read_text
 from .config import load_config
+from .doctor import run_doctor
 from .errors import StateError
 from .events import append_event
 from .state import (
@@ -55,6 +57,8 @@ def agent_message(
     root = service.resolve_root(cwd)
     text = (message or "").strip()
     intent = _classify_intent(text, has_run=bool(run_id), confirmation=confirmation)
+    if intent == "doctor":
+        return _doctor_response(root)
     if background:
         return _start_background_agent(
             root,
@@ -519,6 +523,8 @@ def _classify_intent(message: str, *, has_run: bool, confirmation: str) -> str:
         return "approve_and_run"
     if confirmation == APPLY_CONFIRMATION:
         return "apply"
+    if _is_doctor_intent(text):
+        return "doctor"
     if not has_run:
         return "start"
     if _has_any(text, ("apply", "应用", "套用")):
@@ -532,6 +538,77 @@ def _classify_intent(message: str, *, has_run: bool, confirmation: str) -> str:
     if _has_any(text, ("artifact", "plan", "review", "log", "产物", "计划", "日志")):
         return "artifact"
     return "status"
+
+
+def _is_doctor_intent(text: str) -> bool:
+    if text in {"doctor", "readiness", "diagnose", "diagnostic", "diagnostics", "诊断"}:
+        return True
+    if _has_any(text, ("就绪", "安装检查", "配置检查")):
+        return True
+    words = set(re.findall(r"[a-z0-9_]+", text))
+    task_words = {
+        "add",
+        "build",
+        "change",
+        "create",
+        "fix",
+        "implement",
+        "improve",
+        "modify",
+        "optimize",
+        "refactor",
+        "repair",
+        "test",
+        "update",
+        "write",
+    }
+    if words & task_words:
+        return False
+    setup_words = {
+        "check",
+        "checks",
+        "config",
+        "configuration",
+        "install",
+        "installation",
+        "mcp",
+        "patchbay",
+        "readiness",
+        "setup",
+        "skill",
+    }
+    if "readiness" in words:
+        return True
+    if words & {"diagnose", "diagnostic", "diagnostics"}:
+        return bool(words & setup_words)
+    return "doctor" in words and bool(words & (setup_words | {"run", "show"}))
+
+
+def _doctor_response(root: Path) -> dict[str, Any]:
+    report = run_doctor(root, include_mcp=False)
+    next_actions = list(report.get("next_actions") or [])
+    if report.get("ok"):
+        reply = "Patchbay readiness checks passed."
+    elif next_actions:
+        reply = "Patchbay readiness checks found setup work: " + " ".join(next_actions)
+    else:
+        reply = "Patchbay readiness checks need attention."
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "ok": bool(report.get("ok")),
+        "action": "doctor",
+        "reply": reply,
+        "run_id": None,
+        "status": None,
+        "context": None,
+        "events": None,
+        "artifacts": {},
+        "diff": None,
+        "requires_confirmation": None,
+        "next_actions": next_actions,
+        "error": None if report.get("ok") else reply,
+        "doctor": report,
+    }
 
 
 def _has_any(text: str, needles: tuple[str, ...]) -> bool:

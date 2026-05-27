@@ -320,7 +320,7 @@ def _tool_schema(name: str) -> dict[str, Any]:
         required = ["run_id"]
 
     descriptions: dict[str, str] = {
-        "patchbay_agent": "Primary conversational Patchbay Agent tool. Starts, resumes, advances, and applies runs while preserving plan/apply approval gates.",
+        "patchbay_agent": "Primary conversational Patchbay Agent tool. Starts, resumes, advances, and applies runs while preserving plan/apply approval gates; explicit readiness prompts return the unified doctor report without creating a run.",
         "patchbay_plan": "Run the planning phase (host-agnostic — provider configurable via [phases.plan] in .ai/patchbay.toml).",
         "patchbay_approve": "Approve the plan so the writer phase can proceed.",
         "patchbay_write": "Run the implementation phase (provider configurable via [phases.write] / [writer].provider).",

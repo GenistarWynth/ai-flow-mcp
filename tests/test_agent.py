@@ -101,6 +101,26 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertIn("Mock Implementation Plan", response["artifacts"]["PLAN.md"]["text"])
         self.assertEqual(response["context"]["next_actions"][0]["name"], "approve")
 
+    def test_agent_doctor_message_returns_readiness_without_starting_run(self) -> None:
+        response = agent_message(self.repo, "doctor")
+
+        self.assertEqual(response["action"], "doctor")
+        self.assertIn("doctor", response)
+        self.assertIn("checks", response["doctor"])
+        self.assertIsNone(response["run_id"])
+        self.assertFalse((self.repo / ".ai" / "runs").exists())
+
+    def test_agent_doctor_word_in_task_still_starts_plan(self) -> None:
+        response = agent_message(self.repo, "build doctor profile workflow")
+
+        self.assertEqual(response["action"], "start")
+        self.assertEqual(response["status"]["status"], "PLANNED")
+        self.assertIsNotNone(response["run_id"])
+
+        patchbay_task = agent_message(self.repo, "fix patchbay doctor bug")
+        self.assertEqual(patchbay_task["action"], "start")
+        self.assertEqual(patchbay_task["status"]["status"], "PLANNED")
+
     def test_agent_refuses_approval_without_confirmation(self) -> None:
         planned = agent_message(self.repo, "needs approval")
         run_id = planned["run_id"]
@@ -182,11 +202,39 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertEqual(payload["status"]["status"], "PLANNED")
         self.assertEqual(payload["requires_confirmation"]["confirmation"], PLAN_CONFIRMATION)
 
+    def test_mcp_patchbay_agent_can_run_doctor(self) -> None:
+        from scripts.ai_flow import mcp_server
+
+        original_root = mcp_server.ROOT
+        try:
+            mcp_server.ROOT = self.repo
+            response = mcp_server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {"name": "patchbay_agent", "arguments": {"message": "readiness"}},
+                }
+            )
+        finally:
+            mcp_server.ROOT = original_root
+
+        payload = json.loads(response["result"]["content"][0]["text"])
+        self.assertEqual(payload["action"], "doctor")
+        self.assertIn("checks", payload["doctor"])
+
     def test_cli_agent_message(self) -> None:
         response = self.cli_json("agent", "message", "cli agent task", "--include-plan")
 
         self.assertEqual(response["status"]["status"], "PLANNED")
         self.assertIn("PLAN.md", response["artifacts"])
+
+    def test_cli_agent_doctor_message(self) -> None:
+        response = self.cli_json("agent", "message", "readiness")
+
+        self.assertEqual(response["action"], "doctor")
+        self.assertIn("checks", response["doctor"])
+        self.assertIsNone(response["run_id"])
 
     def test_agent_background_start_returns_pollable_job(self) -> None:
         response = agent_message(self.repo, "background agent plan", background=True)
