@@ -81,6 +81,7 @@ The old `scripts/ai-flow` command and `.ai/ai-flow.toml` config still work as co
 python scripts/patchbay setup --host codex --json
 python scripts/patchbay plan --task "..."
 python scripts/patchbay agent message "..." --json
+python scripts/patchbay agent message "patchbay setup" --json
 python scripts/patchbay agent message status --json
 python scripts/patchbay agent message readiness --json
 python scripts/patchbay web --port 8765
@@ -101,7 +102,7 @@ python scripts/patchbay agent message approve --run-id <run_id> --confirmation p
 python scripts/patchbay agent message continue --run-id <run_id> --background --json
 ```
 
-Background agent turns write `JOB.json`, append `agent` events, and preserve the plan/apply confirmation gates. `apply` remains foreground-only and requires explicit confirmation after tests and review pass. Local prompts such as `help`, `status`, `runs`, `readiness`, `diagnose`, or `patchbay doctor` return guidance, recent runs, or the unified doctor report directly without creating a model run. Run-bound prompts such as `continue`, `approve`, `apply`, `diff`, or `artifact` without a `run_id` also stay local and tell you to pass an existing run instead of creating one.
+Background agent turns write `JOB.json`, append `agent` events, and preserve the plan/apply confirmation gates. `apply` remains foreground-only and requires explicit confirmation after tests and review pass. Local prompts such as `patchbay setup`, `install patchbay`, `help`, `status`, `runs`, `readiness`, `diagnose`, or `patchbay doctor` return setup results, guidance, recent runs, or the unified doctor report directly without creating a model run. Run-bound prompts such as `continue`, `approve`, `apply`, `diff`, or `artifact` without a `run_id` also stay local and tell you to pass an existing run instead of creating one.
 
 The web workbench exposes the same conversational flow and has a diagnostics drawer. Its Readiness tab calls the unified doctor checks without MCP stdio probing, so setup gaps are visible from the desktop UI without starting extra child processes.
 

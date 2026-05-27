@@ -253,7 +253,7 @@ def _tool_schema(name: str) -> dict[str, Any]:
         properties: dict[str, Any] = {
             "message": {
                 "type": "string",
-                "description": "Natural-language task or instruction for the conversational Patchbay Agent. Explicit help/status/readiness prompts are handled without starting a model run; run-bound prompts without run_id return local guidance instead.",
+                "description": "Natural-language task or instruction for the conversational Patchbay Agent. Explicit setup/help/status/readiness prompts are handled locally without starting a model run; run-bound prompts without run_id return local guidance instead.",
             },
             "run_id": {"type": "string", "description": "Existing run id to continue or inspect."},
             "confirmation": {
@@ -359,7 +359,7 @@ def _tool_schema(name: str) -> dict[str, Any]:
         required = ["run_id"]
 
     descriptions: dict[str, str] = {
-        "patchbay_agent": "Primary conversational Patchbay Agent tool. Starts, resumes, advances, and applies runs while preserving plan/apply approval gates; explicit help, status, and readiness prompts return local answers, and run-bound prompts without run_id return local guidance instead of creating a run.",
+        "patchbay_agent": "Primary conversational Patchbay Agent tool. Starts, resumes, advances, and applies runs while preserving plan/apply approval gates; explicit setup, help, status, and readiness prompts return local answers, and run-bound prompts without run_id return local guidance instead of creating a run.",
         "patchbay_plan": "Run the planning phase (host-agnostic — provider configurable via [phases.plan] in .ai/patchbay.toml).",
         "patchbay_approve": "Approve the plan so the writer phase can proceed.",
         "patchbay_write": "Run the implementation phase (provider configurable via [phases.write] / [writer].provider).",

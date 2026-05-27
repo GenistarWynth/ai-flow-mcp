@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -16,10 +17,11 @@ from scripts.ai_flow.agent import APPLY_CONFIRMATION, PLAN_CONFIRMATION, agent_m
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def run(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+def run(command: list[str], cwd: Path, *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         command,
         cwd=str(cwd),
+        env=env,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -74,8 +76,12 @@ test = []
             encoding="utf-8",
         )
 
-    def cli_json(self, *args: str) -> dict:
-        completed = run(["python", str(self.script), *args, "--json"], self.repo)
+    def cli_json(self, *args: str, env: dict[str, str] | None = None) -> dict:
+        full_env = None
+        if env is not None:
+            full_env = os.environ.copy()
+            full_env.update(env)
+        completed = run(["python", str(self.script), *args, "--json"], self.repo, env=full_env)
         self.assertEqual(completed.returncode, 0, completed.stderr)
         return json.loads(completed.stdout)
 
@@ -127,8 +133,29 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertEqual(response["action"], "help")
         self.assertIsNone(response["run_id"])
         self.assertIn("capabilities", response)
+        self.assertIn("setup", response["next_actions"])
         self.assertIn("readiness", response["next_actions"])
         self.assertFalse((self.repo / ".ai" / "runs").exists())
+
+    def test_agent_patchbay_setup_runs_local_setup_without_starting_run(self) -> None:
+        codex_home = self.tempdir / "codex-home"
+
+        with mock.patch.dict(os.environ, {"CODEX_HOME": str(codex_home)}):
+            response = agent_message(self.repo, "patchbay setup")
+
+        self.assertEqual(response["action"], "setup")
+        self.assertTrue(response["ok"])
+        self.assertIsNone(response["run_id"])
+        self.assertIn("setup", response)
+        self.assertTrue((codex_home / "skills" / "patchbay" / "SKILL.md").exists())
+        runs_path = self.repo / ".ai" / "runs"
+        self.assertFalse(runs_path.exists() and any(runs_path.iterdir()))
+
+    def test_agent_setup_word_in_task_still_starts_plan(self) -> None:
+        response = agent_message(self.repo, "setup auth flow")
+
+        self.assertEqual(response["action"], "start")
+        self.assertEqual(response["status"]["status"], "PLANNED")
 
     def test_agent_status_without_run_lists_recent_runs_without_planning(self) -> None:
         planned = agent_message(self.repo, "status summary target")
@@ -276,6 +303,33 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertEqual(payload["action"], "doctor")
         self.assertIn("checks", payload["doctor"])
 
+    def test_mcp_patchbay_agent_can_run_setup_without_starting_run(self) -> None:
+        from scripts.ai_flow import mcp_server
+
+        codex_home = self.tempdir / "mcp-codex-home"
+        original_root = mcp_server.ROOT
+        try:
+            mcp_server.ROOT = self.repo
+            with mock.patch.dict(os.environ, {"CODEX_HOME": str(codex_home)}):
+                response = mcp_server.handle(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "tools/call",
+                        "params": {"name": "patchbay_agent", "arguments": {"message": "install patchbay"}},
+                    }
+                )
+        finally:
+            mcp_server.ROOT = original_root
+
+        payload = json.loads(response["result"]["content"][0]["text"])
+        self.assertEqual(payload["action"], "setup")
+        self.assertTrue(payload["ok"])
+        self.assertIsNone(payload["run_id"])
+        self.assertTrue((codex_home / "skills" / "patchbay" / "SKILL.md").exists())
+        runs_path = self.repo / ".ai" / "runs"
+        self.assertFalse(runs_path.exists() and any(runs_path.iterdir()))
+
     def test_mcp_patchbay_agent_can_list_runs_without_run_id(self) -> None:
         from scripts.ai_flow import mcp_server
 
@@ -331,6 +385,19 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertEqual(response["action"], "doctor")
         self.assertIn("checks", response["doctor"])
         self.assertIsNone(response["run_id"])
+
+    def test_cli_agent_patchbay_setup_runs_setup_without_starting_run(self) -> None:
+        codex_home = self.tempdir / "cli-codex-home"
+
+        response = self.cli_json("agent", "message", "patchbay setup", env={"CODEX_HOME": str(codex_home)})
+
+        self.assertEqual(response["action"], "setup")
+        self.assertTrue(response["ok"])
+        self.assertIsNone(response["run_id"])
+        self.assertIn("setup", response)
+        self.assertTrue((codex_home / "skills" / "patchbay" / "SKILL.md").exists())
+        runs_path = self.repo / ".ai" / "runs"
+        self.assertFalse(runs_path.exists() and any(runs_path.iterdir()))
 
     def test_cli_agent_status_without_run_lists_runs(self) -> None:
         planned = agent_message(self.repo, "cli status target")

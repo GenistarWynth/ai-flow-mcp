@@ -15,6 +15,7 @@ from .config import load_config
 from .doctor import run_doctor
 from .errors import StateError
 from .events import append_event
+from .setup_flow import run_setup
 from .state import (
     APPLIED,
     APPROVED,
@@ -81,6 +82,8 @@ def agent_message(
         return _runs_response(root)
     if intent == "missing_run":
         return _missing_run_response(root, text)
+    if intent == "setup":
+        return _setup_response(root)
     if background:
         return _start_background_agent(
             root,
@@ -549,6 +552,8 @@ def _classify_intent(message: str, *, has_run: bool, confirmation: str) -> str:
         return "doctor"
     if _is_help_intent(text):
         return "help"
+    if _is_setup_intent(text):
+        return "setup"
     if not has_run:
         if _is_runs_intent(text):
             return "runs"
@@ -592,6 +597,17 @@ def _is_runs_intent(text: str) -> bool:
     if "status" in words:
         return bool(words & {"agent", "latest", "list", "patchbay", "recent", "run", "runs", "show", "current"})
     return "recent" in words and bool(words & {"run", "runs"})
+
+
+def _is_setup_intent(text: str) -> bool:
+    if text in {"setup", "patchbay setup", "setup patchbay", "install patchbay", "patchbay install"}:
+        return True
+    if _has_any(text, ("初始化 patchbay", "安装 patchbay")):
+        return True
+    words = _words(text)
+    if "patchbay" not in words:
+        return False
+    return bool(words & {"install", "installation", "setup"}) and not bool(words & TASK_INTENT_WORDS)
 
 
 def _is_run_bound_intent(text: str) -> bool:
@@ -670,6 +686,10 @@ def _is_doctor_intent(text: str) -> bool:
 def _help_response() -> dict[str, Any]:
     capabilities = [
         {
+            "name": "setup",
+            "summary": "Send `patchbay setup` to initialize project files, local config, Skill installation, MCP guidance, and a doctor summary.",
+        },
+        {
             "name": "start",
             "summary": "Send a task to create a plan; implementation still waits for explicit plan approval.",
         },
@@ -692,9 +712,25 @@ def _help_response() -> dict[str, Any]:
     ]
     return _stateless_response(
         action="help",
-        reply="Patchbay Agent can start a gated run, report readiness, list recent runs, continue a run, show artifacts/diff, and apply only after explicit approval.",
-        next_actions=["start", "readiness", "runs"],
+        reply="Patchbay Agent can run setup, start a gated run, report readiness, list recent runs, continue a run, show artifacts/diff, and apply only after explicit approval.",
+        next_actions=["setup", "start", "readiness", "runs"],
         extra={"capabilities": capabilities},
+    )
+
+
+def _setup_response(root: Path) -> dict[str, Any]:
+    result = run_setup(root)
+    next_actions = list(result.get("next_actions") or [])
+    reply = "Patchbay setup completed."
+    if next_actions:
+        reply = "Patchbay setup completed with follow-up steps: " + " ".join(next_actions)
+    return _stateless_response(
+        action="setup",
+        reply=reply,
+        ok=bool(result.get("ok")),
+        error=None if result.get("ok") else reply,
+        next_actions=next_actions or ["readiness", "start"],
+        extra={"setup": result},
     )
 
 

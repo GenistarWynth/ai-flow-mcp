@@ -18,6 +18,12 @@ On Windows, `scripts/patchbay.cmd` avoids PowerShell execution-policy issues.
 
 `patchbay setup` initializes project files, creates `.ai/patchbay.toml` from the ignored example when missing, installs the bundled Codex Skill, returns MCP registration guidance for the selected host, and includes a doctor summary.
 
+The conversational agent entry point accepts the same explicit local setup intent without creating a model run:
+
+```bash
+python scripts/patchbay agent message "patchbay setup" --json
+```
+
 ## MCP
 
 Print or write host registration:
