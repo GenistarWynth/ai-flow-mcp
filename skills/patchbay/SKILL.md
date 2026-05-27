@@ -48,12 +48,26 @@ Never apply without explicit user confirmation.
 
 If `patchbay_*` MCP tools are available, prefer them over shell commands:
 
-- `patchbay_agent` for conversational start/resume/advance while preserving gates.
+- `patchbay_agent` for conversational start/resume/advance while preserving gates. Use `background: true` for long planning or implementation turns, then poll `patchbay_context` or `patchbay_events`.
 - `patchbay_plan`, `patchbay_approve`, `patchbay_write`, `patchbay_test`, `patchbay_review`, `patchbay_fix`, `patchbay_apply` for explicit phase control.
 - `patchbay_context` for cross-host handoff status, next safe action, timeline, gate state, artifacts, and provider trail.
 - `patchbay_events` and `patchbay_trace` for focused diagnostics.
 
 Legacy `ai_flow_*` aliases are compatible, but use `patchbay_*` names for new work.
+
+## Conversational Background Mode
+
+For MCP hosts or desktop UIs that should not block while models write, prefer the conversational background path after the plan gate is satisfied:
+
+```bash
+scripts/patchbay agent message "<user task>" --background --json
+scripts/patchbay agent message approve --run-id <run_id> --confirmation plan_approved --background --json
+scripts/patchbay agent message continue --run-id <run_id> --background --json
+scripts/patchbay context <run_id>
+scripts/patchbay events <run_id>
+```
+
+Background turns write `JOB.json` and append `agent` events. They do not change the safety model: implementation still requires explicit plan approval, and apply remains foreground-only after tests and review pass.
 
 ## Installation Reference
 

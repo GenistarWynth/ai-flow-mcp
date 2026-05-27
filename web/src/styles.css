@@ -175,6 +175,7 @@ textarea { resize: none; }
   background: #ffffff;
 }
 .next-card.ready { border-left-color: #2f6fed; }
+.next-card.running { border-left-color: #7c3aed; }
 .next-card.blocked { border-left-color: #d97706; }
 .next-card strong, .next-card span { display: block; overflow-wrap: anywhere; }
 .next-card span { margin-top: 3px; color: #647083; font-size: 12px; }

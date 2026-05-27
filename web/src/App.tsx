@@ -95,6 +95,7 @@ const tabLabels: Record<TabName, string> = {
   Providers: "提供方"
 };
 const defaultClient = createPatchbayClient();
+const busyStatuses = new Set(["IMPLEMENTING", "TESTING", "REVIEWING", "FIXING", "RUNNING"]);
 
 function phaseLabel(phase?: string) {
   if (!phase) return "空闲";
@@ -106,9 +107,24 @@ function statusLabel(status?: string | null) {
   return statusLabels[status] ?? status;
 }
 
+function isBusyStatus(status?: string | null) {
+  return busyStatuses.has(status ?? "");
+}
+
 function commandLabel(command?: string) {
   if (!command) return "无";
   return actionLabels[command] ?? phaseLabel(command);
+}
+
+function commandReason(command: string, safe: boolean) {
+  if (command === "approve") return "Plan is ready for human approval before implementation.";
+  if (command === "apply") return safe ? "Tests passed and review returned PASS; human confirmation is still required." : "Apply is blocked until tests pass and review returns PASS.";
+  if (command === "fix") return "Review requested changes; run the configured fixer before retesting.";
+  if (command === "review") return "Tests completed; run read-only review next.";
+  if (command === "test") return "Implementation diff is ready; run configured test evidence next.";
+  if (command === "write") return "Plan was approved; writer may work inside the isolated worktree.";
+  if (command === "cleanup") return "Run is applied; cleanup can remove the isolated worktree.";
+  return `Run the ${command} phase next.`;
 }
 
 function timeLabel(timestamp?: string) {
@@ -140,11 +156,23 @@ function mergeContext(current: HandoffContext | null, next: HandoffContext): Han
 }
 
 function fallbackActivity(context: HandoffContext | null, status: RunStatus | null): AgentActivity {
-  const nextAction = context?.next_actions?.find((action) => action.safe) ?? context?.next_actions?.[0] ?? null;
+  const fallbackActions = (status?.next_commands ?? []).map((name) => {
+    const safe = name === "apply" ? Boolean(status?.gate_state?.ready_to_apply && status?.review_result === "PASS" && status?.tests_passed) : true;
+    return {
+      name,
+      safe,
+      tool: `patchbay_${name}`,
+      requires_human_confirmation: name === "approve" || name === "apply",
+      reason: commandReason(name, safe)
+    };
+  });
+  const nextActions = context?.next_actions ?? fallbackActions;
+  const nextAction = nextActions.find((action) => action.safe) ?? nextActions[0] ?? null;
   const currentPhase = context?.current_phase ?? status?.current_phase ?? "";
   const currentStatus = context?.status ?? status?.status ?? "";
   const gateState = context?.gate_state ?? status?.gate_state ?? {};
-  const suggestions = (context?.next_actions ?? []).map((action) => ({
+  const busy = isBusyStatus(currentStatus);
+  const suggestions = nextActions.map((action) => ({
     id: action.name,
     label: commandLabel(action.name),
     action: action.name,
@@ -156,14 +184,16 @@ function fallbackActivity(context: HandoffContext | null, status: RunStatus | nu
   return {
     headline: nextAction
       ? `Patchbay Agent 已准备好执行：${commandLabel(nextAction.name)}。`
-      : `Patchbay Agent 当前处于${phaseLabel(currentPhase)}阶段。`,
-    tone: nextAction ? "ready" : "idle",
+      : busy
+        ? `Patchbay Agent 正在执行${phaseLabel(currentPhase)}阶段。`
+        : `Patchbay Agent 当前处于${phaseLabel(currentPhase)}阶段。`,
+    tone: busy ? "running" : nextAction ? "ready" : "idle",
     current_step: {
       phase: currentPhase,
       label: phaseLabel(currentPhase),
       status: currentStatus,
       status_label: statusLabel(currentStatus),
-      summary: nextAction?.reason ?? "暂无可执行动作。"
+      summary: nextAction?.reason ?? (busy ? "后台任务正在运行，状态会自动刷新。" : "暂无可执行动作。")
     },
     next_action: nextAction ? { ...nextAction, label: commandLabel(nextAction.name) } : null,
     conversation_state: {
@@ -172,9 +202,9 @@ function fallbackActivity(context: HandoffContext | null, status: RunStatus | nu
       status_label: statusLabel(currentStatus),
       phase: currentPhase,
       phase_label: phaseLabel(currentPhase),
-      tone: nextAction ? "ready" : "idle",
-      next_step: nextAction?.reason ?? "当前没有可执行动作。",
-      composer_placeholder: nextAction ? `输入“继续”或点击“${commandLabel(nextAction.name)}”` : "输入新任务，或写下本地备注",
+      tone: busy ? "running" : nextAction ? "ready" : "idle",
+      next_step: nextAction?.reason ?? (busy ? "后台任务正在运行，完成后会出现下一步。" : "当前没有可执行动作。"),
+      composer_placeholder: busy ? "后台任务运行中，完成后可继续" : nextAction ? `输入“继续”或点击“${commandLabel(nextAction.name)}”` : "输入新任务，或写下本地备注",
       suggestions
     },
     gate_cards: [
@@ -332,7 +362,12 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const [error, setError] = useState("");
   const [composer, setComposer] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [actionInFlight, setActionInFlight] = useState(false);
   const [localMessages, setLocalMessages] = useState<Record<string, LocalMessage[]>>({});
+
+  const patchRunSummary = (runId: string, patch: Partial<RunSummary>) => {
+    setRuns((current) => current.map((run) => (run.run_id === runId ? { ...run, ...patch } : run)));
+  };
 
   const loadRuns = async (preferredRunId?: string) => {
     const result = await client.listRuns();
@@ -401,6 +436,20 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       const nextContext = await client.getContext(selectedRun, { since_event: since });
       if (cancelled || !nextContext) return;
       setContext((current) => mergeContext(current, nextContext));
+      setStatus((current) =>
+        current
+          ? {
+              ...current,
+              status: nextContext.status ?? current.status,
+              current_phase: nextContext.current_phase ?? current.current_phase,
+              gate_state: nextContext.gate_state ?? current.gate_state
+            }
+          : current
+      );
+      patchRunSummary(selectedRun, {
+        status: nextContext.status,
+        task: nextContext.agent_activity?.conversation_state?.task
+      });
       appendTimelineEntries(nextContext.timeline ?? [], nextContext.cursors?.event, since);
     }
 
@@ -438,16 +487,20 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   }, [visibleRuns, selectedRun, newTaskMode]);
 
   const selectedSummary = useMemo(() => runs.find((run) => run.run_id === selectedRun), [runs, selectedRun]);
-  const activity = context?.agent_activity ?? fallbackActivity(context, status);
+  const activeContext = context?.run_id === selectedRun ? context : null;
+  const activeStatus = status?.run_id === selectedRun ? status : null;
+  const activity = activeContext?.agent_activity ?? fallbackActivity(activeContext, activeStatus);
   const conversationState = activity.conversation_state;
-  const gateState = context?.gate_state ?? status?.gate_state ?? {};
-  const currentStatus = selectedSummary?.status ?? context?.status ?? status?.status;
-  const currentPhase = context?.current_phase ?? status?.current_phase ?? "";
-  const readyToApply = Boolean(gateState.ready_to_apply && (context?.status ?? status?.status) === "REVIEWED_PASS");
+  const gateState = activeContext?.gate_state ?? activeStatus?.gate_state ?? {};
+  const currentStatus = activeContext?.status ?? activeStatus?.status ?? selectedSummary?.status;
+  const currentPhase = activeContext?.current_phase ?? activeStatus?.current_phase ?? "";
+  const runBusy = isBusyStatus(currentStatus);
+  const interactionBusy = submitting || actionInFlight || runBusy;
+  const readyToApply = Boolean(gateState.ready_to_apply && (activeContext?.status ?? activeStatus?.status) === "REVIEWED_PASS");
   const messages = dedupeMessages(activity.messages ?? []);
   const primaryAction = activity.next_action;
-  const suggestions = suggestionsFor(activity, context);
-  const selectedTask = selectedSummary?.task ?? conversationState?.task ?? status?.task ?? "";
+  const suggestions = suggestionsFor(activity, activeContext);
+  const selectedTask = conversationState?.task ?? activeStatus?.task ?? selectedSummary?.task ?? "";
   const runKey = selectedRun || "__new__";
   const localRunMessages = localMessages[runKey] ?? [];
   const composerPlaceholder = selectedRun
@@ -477,22 +530,31 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }
     const nextDiff = await client.getDiff(runId);
     setDiff(nextDiff.text ?? nextDiff.diff ?? "");
+    patchRunSummary(runId, {
+      status: agentResponse?.context?.status ?? agentResponse?.status?.status,
+      task: agentResponse?.context?.agent_activity?.conversation_state?.task ?? agentResponse?.status?.task
+    });
   };
 
   const runAction = async (action: string) => {
-    if (!selectedRun) return;
+    if (!selectedRun || interactionBusy) return;
     setError("");
-    if (shouldAutopilot(action)) {
-      const response = await client.agentMessage("continue", {
-        runId: selectedRun,
-        include: { diff: true, review: true },
-        background: true
-      });
-      await refreshRun(selectedRun, response);
-      return;
+    setActionInFlight(true);
+    try {
+      if (shouldAutopilot(action)) {
+        const response = await client.agentMessage("continue", {
+          runId: selectedRun,
+          include: { diff: true, review: true },
+          background: true
+        });
+        await refreshRun(selectedRun, response);
+        return;
+      }
+      await client.runAction(selectedRun, action);
+      await refreshRun(selectedRun);
+    } finally {
+      setActionInFlight(false);
     }
-    await client.runAction(selectedRun, action);
-    await refreshRun(selectedRun);
   };
 
   const handleAction = (candidate?: SuggestedAction | AgentAction | string | null) => {
@@ -515,7 +577,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   };
 
   const confirmAction = async () => {
-    if (!confirm) return;
+    if (!confirm || actionInFlight) return;
     if (!confirm.safe) {
       setConfirm(null);
       return;
@@ -525,27 +587,32 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     const action = confirm.action;
     setConfirm(null);
     const confirmation = confirmationForAction(action);
-    if (confirmation) {
-      const response = await client.agentMessage(action, {
-        runId: selectedRun,
-        confirmation,
-        include: { diff: action === "apply", review: action === "apply" },
-        background: action !== "apply"
-      });
-      await refreshRun(selectedRun, response);
-    } else if (action === "cleanup") {
-      await client.cleanup(selectedRun);
-      await refreshRun(selectedRun);
-    } else if (shouldAutopilot(action)) {
-      const response = await client.agentMessage("continue", {
-        runId: selectedRun,
-        include: { diff: true, review: true },
-        background: true
-      });
-      await refreshRun(selectedRun, response);
-    } else {
-      await client.runAction(selectedRun, action);
-      await refreshRun(selectedRun);
+    setActionInFlight(true);
+    try {
+      if (confirmation) {
+        const response = await client.agentMessage(action, {
+          runId: selectedRun,
+          confirmation,
+          include: { diff: action === "apply", review: action === "apply" },
+          background: action !== "apply"
+        });
+        await refreshRun(selectedRun, response);
+      } else if (action === "cleanup") {
+        await client.cleanup(selectedRun);
+        await refreshRun(selectedRun);
+      } else if (shouldAutopilot(action)) {
+        const response = await client.agentMessage("continue", {
+          runId: selectedRun,
+          include: { diff: true, review: true },
+          background: true
+        });
+        await refreshRun(selectedRun, response);
+      } else {
+        await client.runAction(selectedRun, action);
+        await refreshRun(selectedRun);
+      }
+    } finally {
+      setActionInFlight(false);
     }
   };
 
@@ -560,7 +627,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const submitComposer = async (event?: FormEvent) => {
     event?.preventDefault();
     const text = composer.trim();
-    if (!text || submitting) return;
+    if (!text || interactionBusy) return;
     setError("");
     setSubmitting(true);
     try {
@@ -694,7 +761,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
               {localRunMessages.map((message) => (
                 <ChatBubble key={message.id} role="user" title="本地消息" body={message.body} timestamp={message.timestamp} />
               ))}
-              <NextActionCard action={primaryAction} suggestions={suggestions} onAction={handleAction} />
+              <NextActionCard action={primaryAction} suggestions={suggestions} busy={runBusy || actionInFlight} onAction={handleAction} />
             </>
           )}
         </section>
@@ -703,7 +770,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
           {selectedRun && suggestions.length ? (
             <div className="suggestions" aria-label="建议动作">
               {suggestions.map((suggestion) => (
-                <button className={`suggestion ${suggestion.safe ? "" : "blocked"}`} type="button" key={suggestion.id} onClick={() => handleAction(suggestion)}>
+                <button className={`suggestion ${suggestion.safe ? "" : "blocked"}`} type="button" key={suggestion.id} onClick={() => handleAction(suggestion)} disabled={interactionBusy}>
                   {suggestion.safe ? <Play size={13} /> : <AlertTriangle size={13} />}
                   {suggestion.label}
                 </button>
@@ -718,8 +785,9 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
               onChange={(event) => setComposer(event.target.value)}
               onKeyDown={handleComposerKeyDown}
               placeholder={composerPlaceholder}
+              disabled={interactionBusy}
             />
-            <button className="send-button" type="submit" disabled={submitting || !composer.trim()} aria-label={selectedRun ? "发送消息" : "创建任务"}>
+            <button className="send-button" type="submit" disabled={interactionBusy || !composer.trim()} aria-label={selectedRun ? "发送消息" : "创建任务"}>
               <Send size={17} />
             </button>
           </div>
@@ -750,8 +818,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
               diff={diff}
               artifactText={artifactText}
               config={config}
-              status={status}
-              context={context}
+              status={activeStatus}
+              context={activeContext}
               activity={activity}
             />
           </>
@@ -822,12 +890,25 @@ function AgentEventBubble({ message, selected, onSelect }: { message: AgentMessa
 function NextActionCard({
   action,
   suggestions,
+  busy,
   onAction
 }: {
   action: AgentAction | null | undefined;
   suggestions: SuggestedAction[];
+  busy?: boolean;
   onAction: (action: SuggestedAction | AgentAction | string) => void;
 }) {
+  if (busy) {
+    return (
+      <div className="next-card running" aria-label="后台任务运行中">
+        <CircleDot size={16} />
+        <div>
+          <strong>后台任务运行中</strong>
+          <span>Patchbay Agent 会自动刷新进度，完成后显示下一步。</span>
+        </div>
+      </div>
+    );
+  }
   if (!action && !suggestions.length) {
     return (
       <div className="next-card idle">

@@ -307,7 +307,7 @@ describe("Workbench", () => {
         artifacts: [],
         effective_phase_providers: {}
       }),
-      getContext: vi.fn().mockResolvedValue(plannedContext)
+      getContext: vi.fn().mockResolvedValue({ ...plannedContext, run_id: "run-ready" })
     });
 
     render(<Workbench client={client} />);
@@ -344,6 +344,7 @@ describe("Workbench", () => {
       }),
       getContext: vi.fn().mockResolvedValue({
         ...plannedContext,
+        run_id: "run-ready",
         status: "APPROVED",
         current_phase: "write",
         next_actions: [
@@ -499,7 +500,7 @@ describe("Workbench", () => {
     await waitFor(() => {
       expect(client.getContext).toHaveBeenLastCalledWith("run-ready", { since_event: 1 });
     });
-    expect(screen.getAllByText("等待批准")).toHaveLength(3);
+    expect(screen.getAllByText("等待批准")).toHaveLength(2);
   });
 
   it("sends free text through the conversational agent endpoint", async () => {
@@ -519,5 +520,82 @@ describe("Workbench", () => {
       include: { diff: true, review: true },
       background: true
     });
+  });
+
+  it("treats background jobs as first-class running state", async () => {
+    const runningContext: HandoffContext = {
+      ...plannedContext,
+      run_id: "run-ready",
+      status: "RUNNING",
+      current_phase: "write",
+      next_actions: [],
+      timeline: [
+        {
+          source: "event",
+          index: 0,
+          timestamp: "2026-05-24T10:03:00Z",
+          phase: "agent",
+          action: "queued",
+          status: "QUEUED",
+          detail: "Background agent turn queued."
+        }
+      ],
+      agent_activity: {
+        ...plannedContext.agent_activity!,
+        headline: "Patchbay Agent 正在执行实现阶段。",
+        tone: "running",
+        current_step: { phase: "write", label: "实现", status: "RUNNING", status_label: "运行中", summary: "后台任务正在运行，状态会自动刷新。" },
+        next_action: null,
+        conversation_state: {
+          task: "Background implementation",
+          status: "RUNNING",
+          status_label: "运行中",
+          phase: "write",
+          phase_label: "实现",
+          tone: "running",
+          next_step: "后台任务正在运行，完成后会出现下一步。",
+          composer_placeholder: "后台任务运行中，完成后可继续",
+          suggestions: [{ id: "write", label: "开始实现", action: "write", safe: true }]
+        },
+        messages: [
+          {
+            id: "event-0",
+            kind: "event",
+            timestamp: "2026-05-24T10:03:00Z",
+            phase: "agent",
+            title: "agent · 已排队 · 已排队",
+            body: "Background agent turn queued.",
+            status: "QUEUED",
+            status_label: "已排队",
+            tone: "running"
+          }
+        ]
+      }
+    };
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({
+        runs: [{ run_id: "run-ready", task: "Background implementation", status: "APPROVED" }]
+      }),
+      getStatus: vi.fn().mockResolvedValue({
+        run_id: "run-ready",
+        task: "Background implementation",
+        status: "RUNNING",
+        current_phase: "write",
+        gate_state: { approved: true, tests_passed: false, review_result: null, ready_to_apply: false },
+        next_commands: [],
+        artifacts: [],
+        effective_phase_providers: {}
+      }),
+      getContext: vi.fn().mockResolvedValue(runningContext)
+    });
+
+    render(<Workbench client={client} />);
+
+    expect(await screen.findByText("Patchbay Agent 正在执行实现阶段。")).toBeInTheDocument();
+    expect(screen.getByText("后台任务运行中")).toBeInTheDocument();
+    expect(screen.getByText("运行中 · 实现")).toBeInTheDocument();
+    expect(screen.getByLabelText("给 Patchbay Agent 输入消息")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /开始实现/ })).toBeDisabled();
   });
 });
