@@ -80,6 +80,13 @@ export type DoctorReport = {
   next_actions?: string[];
 };
 
+export type SetupResult = {
+  ok?: boolean;
+  doctor?: DoctorReport;
+  next_actions?: string[];
+  [key: string]: unknown;
+};
+
 export type TraceEntry = {
   index?: number;
   seq?: number;
@@ -203,6 +210,7 @@ export type AgentResponse = {
   runs?: { count?: number; runs?: RunSummary[] };
   recent_run?: RunSummary | null;
   doctor?: DoctorReport;
+  setup?: SetupResult;
   capabilities?: { name: string; summary: string }[];
   next_actions?: string[];
   diff?: string | null;

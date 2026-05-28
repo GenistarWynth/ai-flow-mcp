@@ -355,6 +355,39 @@ describe("Workbench", () => {
     expect(client.getStatus).not.toHaveBeenCalled();
   });
 
+  it("runs local setup from the readiness panel without creating a run", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "setup",
+      ok: true,
+      reply: "Patchbay setup completed.",
+      setup: {
+        doctor: {
+          ok: true,
+          root: "C:/repo",
+          checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true } },
+          next_actions: []
+        }
+      }
+    });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      agentMessage
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+    expect(await screen.findByText("需要处理")).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "运行 setup" }));
+
+    await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("patchbay setup"));
+    expect(await screen.findByText("环境就绪")).toBeVisible();
+    expect(client.getStatus).not.toHaveBeenCalled();
+  });
+
   it("maps approve intent through the confirmation gate", async () => {
     const client = createClient({
       listRuns: vi.fn().mockResolvedValue({ runs: [{ run_id: "run-ready", task: "Approve a plan", status: "PLANNED" }] }),

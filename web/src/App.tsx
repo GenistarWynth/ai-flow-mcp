@@ -381,6 +381,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const [composer, setComposer] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [actionInFlight, setActionInFlight] = useState(false);
+  const [setupInFlight, setSetupInFlight] = useState(false);
   const [localMessages, setLocalMessages] = useState<Record<string, LocalMessage[]>>({});
   const [newTaskReply, setNewTaskReply] = useState<AgentResponse | null>(null);
 
@@ -644,6 +645,26 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }));
   };
 
+  const runSetupFromDiagnostics = async () => {
+    if (setupInFlight) return;
+    setError("");
+    setSetupInFlight(true);
+    try {
+      const response = await client.agentMessage("patchbay setup");
+      const setupDoctor = response.setup?.doctor ?? response.doctor;
+      if (setupDoctor) {
+        setDoctor(setupDoctor);
+      } else {
+        setDoctor(await client.getDoctor({ include_mcp: false }));
+      }
+      await loadRuns(selectedRun || undefined);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setSetupInFlight(false);
+    }
+  };
+
   const submitComposer = async (event?: FormEvent) => {
     event?.preventDefault();
     const text = composer.trim();
@@ -854,6 +875,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
               artifactText={artifactText}
               config={config}
               doctor={doctor}
+              onRunSetup={runSetupFromDiagnostics}
+              setupBusy={setupInFlight}
               status={activeStatus}
               context={activeContext}
               activity={activity}
@@ -1010,10 +1033,26 @@ function MetricsGrid({ metrics }: { metrics?: RunMetrics | null }) {
   );
 }
 
-function DoctorPanel({ report }: { report?: DoctorReport | null }) {
+function DoctorPanel({
+  report,
+  onRunSetup,
+  setupBusy
+}: {
+  report?: DoctorReport | null;
+  onRunSetup?: () => void;
+  setupBusy?: boolean;
+}) {
   const checks = Object.entries(report?.checks ?? {});
   return (
     <div className="doctor-panel">
+      {onRunSetup ? (
+        <div className="doctor-toolbar">
+          <button className="doctor-setup-button" type="button" onClick={onRunSetup} disabled={setupBusy}>
+            {setupBusy ? <RefreshCw size={14} /> : <Settings size={14} />}
+            {setupBusy ? "运行中" : "运行 setup"}
+          </button>
+        </div>
+      ) : null}
       <div className={`doctor-summary ${report?.ok ? "ready" : "blocked"}`}>
         {report?.ok ? <Check size={16} /> : <AlertTriangle size={16} />}
         <div>
@@ -1063,6 +1102,8 @@ function DetailPanel({
   artifactText,
   config,
   doctor,
+  onRunSetup,
+  setupBusy,
   status,
   context,
   activity
@@ -1075,6 +1116,8 @@ function DetailPanel({
   artifactText: string;
   config: unknown;
   doctor: DoctorReport | null;
+  onRunSetup?: () => void;
+  setupBusy?: boolean;
   status: RunStatus | null;
   context: HandoffContext | null;
   activity: AgentActivity;
@@ -1118,7 +1161,7 @@ function DetailPanel({
       </div>
     );
   }
-  if (tab === "Readiness") return <DoctorPanel report={doctor} />;
+  if (tab === "Readiness") return <DoctorPanel report={doctor} onRunSetup={onRunSetup} setupBusy={setupBusy} />;
   if (tab === "Trace") {
     return (
       <div className="diagnostic-body">
