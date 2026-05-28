@@ -481,6 +481,30 @@ describe("Workbench", () => {
     expect(client.getStatus).not.toHaveBeenCalled();
   });
 
+  it("shows non-blocking doctor recommendations in readiness", async () => {
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      getDoctor: vi.fn().mockResolvedValue({
+        ok: true,
+        root: "C:/repo",
+        checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true } },
+        next_actions: [],
+        recommendations: [
+          "Run `patchbay config profile apply economy` to route write/fix implementation work to Reasonix/DeepSeek."
+        ]
+      })
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+
+    expect(await screen.findByText("建议")).toBeVisible();
+    expect(screen.getByText(/patchbay config profile apply economy/)).toBeVisible();
+  });
+
   it("maps approve intent through the confirmation gate", async () => {
     const client = createClient({
       listRuns: vi.fn().mockResolvedValue({ runs: [{ run_id: "run-ready", task: "Approve a plan", status: "PLANNED" }] }),

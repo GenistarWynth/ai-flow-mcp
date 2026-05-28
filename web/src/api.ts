@@ -105,6 +105,7 @@ export type DoctorReport = {
   root?: string;
   checks?: Record<string, DoctorCheck>;
   next_actions?: string[];
+  recommendations?: string[];
 };
 
 export type SetupResult = {
@@ -240,6 +241,7 @@ export type AgentResponse = {
   setup?: SetupResult;
   capabilities?: { name: string; summary: string }[];
   next_actions?: string[];
+  recommendations?: string[];
   diff?: string | null;
   background?: boolean;
   job?: Record<string, unknown>;

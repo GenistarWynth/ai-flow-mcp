@@ -1180,6 +1180,16 @@ function DoctorPanel({
           </div>
         </section>
       ) : null}
+      {report?.recommendations?.length ? (
+        <section>
+          <h2>建议</h2>
+          <div className="doctor-recommendations">
+            {report.recommendations.map((recommendation) => (
+              <span key={recommendation}>{recommendation}</span>
+            ))}
+          </div>
+        </section>
+      ) : null}
       <section>
         <h2>检查项</h2>
         <div className="doctor-checks">

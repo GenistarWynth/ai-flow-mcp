@@ -116,6 +116,13 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertIsNone(response["run_id"])
         self.assertFalse((self.repo / ".ai" / "runs").exists())
 
+    def test_agent_doctor_surfaces_non_blocking_recommendations(self) -> None:
+        response = agent_message(self.repo, "readiness")
+
+        self.assertEqual(response["action"], "doctor")
+        self.assertTrue(any("config profile apply economy" in item for item in response["recommendations"]))
+        self.assertIn("Recommendations:", response["reply"])
+
     def test_agent_doctor_word_in_task_still_starts_plan(self) -> None:
         response = agent_message(self.repo, "build doctor profile workflow")
 

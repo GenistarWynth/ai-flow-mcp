@@ -852,19 +852,22 @@ def _missing_run_response(root: Path, text: str) -> dict[str, Any]:
 def _doctor_response(root: Path) -> dict[str, Any]:
     report = run_doctor(root, include_mcp=False)
     next_actions = list(report.get("next_actions") or [])
+    recommendations = list(report.get("recommendations") or [])
     if report.get("ok"):
         reply = "Patchbay readiness checks passed."
     elif next_actions:
         reply = "Patchbay readiness checks found setup work: " + " ".join(next_actions)
     else:
         reply = "Patchbay readiness checks need attention."
+    if recommendations:
+        reply += " Recommendations: " + " ".join(recommendations)
     return _stateless_response(
         action="doctor",
         reply=reply,
         ok=bool(report.get("ok")),
         error=None if report.get("ok") else reply,
         next_actions=next_actions,
-        extra={"doctor": report},
+        extra={"doctor": report, "recommendations": recommendations},
     )
 
 
