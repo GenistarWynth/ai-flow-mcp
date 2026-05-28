@@ -72,6 +72,8 @@ class EventsTest(unittest.TestCase):
             artifact_paths=["FINAL.diff"],
             duration_ms=1234,
             next_action="cleanup",
+            token_usage={"input_tokens": 100, "output_tokens": 25, "total_tokens": 125},
+            cost={"currency": "USD", "estimated_total": 0.0125},
         )
         events = list_events(self.tmp)
         self.assertEqual(len(events), 1)
@@ -85,6 +87,8 @@ class EventsTest(unittest.TestCase):
         self.assertEqual(e["artifact_paths"], ["FINAL.diff"])
         self.assertEqual(e["duration_ms"], 1234)
         self.assertEqual(e["next_action"], "cleanup")
+        self.assertEqual(e["token_usage"]["total_tokens"], 125)
+        self.assertEqual(e["cost"]["estimated_total"], 0.0125)
         # provider and model omitted when empty
         self.assertNotIn("provider", e)
         self.assertNotIn("model", e)

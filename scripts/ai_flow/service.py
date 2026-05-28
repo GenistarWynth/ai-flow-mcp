@@ -73,6 +73,7 @@ from .state import (
     set_status,
 )
 from .trace import list_trace, trace_count
+from .usage import merge_usage_metrics, metrics_from_output
 
 
 TERMINAL_STATUSES = {APPLIED, FAILED, REVIEWED_PASS, REVIEWED_CHANGES_REQUESTED}
@@ -477,6 +478,25 @@ def _phase_config(cfg: dict[str, Any], *, role: str, model: str | None) -> dict[
     return phase_cfg
 
 
+def _usage_event_kwargs(output: Any) -> dict[str, Any]:
+    metrics = metrics_from_output(output)
+    result: dict[str, Any] = {}
+    token_usage = metrics.get("token_usage")
+    if isinstance(token_usage, dict) and token_usage.get("known"):
+        result["token_usage"] = {
+            key: value
+            for key, value in token_usage.items()
+            if key != "known" and value is not None
+        }
+    cost = metrics.get("cost")
+    if isinstance(cost, dict) and cost.get("known"):
+        result["cost"] = {
+            "currency": cost.get("currency") or "USD",
+            "estimated_total": cost.get("estimated_total"),
+        }
+    return result
+
+
 def _call_writer(
     *,
     root: Path,
@@ -484,7 +504,7 @@ def _call_writer(
     cfg: dict[str, Any],
     mock: bool,
     repair: bool = False,
-) -> tuple[str, str]:
+) -> tuple[str, str, dict[str, Any]]:
     status = load_status(run_path)
     task = str(status["task"])
     log_path = run_path / "writer.log"
@@ -492,6 +512,7 @@ def _call_writer(
     extra_files: list[str] = []
     raw = ""
     summary = ""
+    usage_parts: list[dict[str, Any]] = []
     for attempt in range(max_attempts):
         write_phase = resolve_phase(cfg, "write" if not repair else "fix")
         adapter_cfg = _phase_config(cfg, role="writer", model=write_phase.get("model"))
@@ -534,22 +555,24 @@ def _call_writer(
                     phase="fix" if repair else "write",
                 )
                 append_text(log_path, raw + "\n")
+                usage_parts.append(metrics_from_output(raw))
                 parsed = parse_writer_output(raw)
                 summary = parsed.summary
                 if parsed.diff:
-                    return parsed.diff, summary
+                    return parsed.diff, summary, merge_usage_metrics(*usage_parts)
                 git_utils.add_all(worktree)
                 final_diff = git_utils.diff(worktree)
                 if not final_diff.strip():
                     raise AiFlowError(f"{provider} did not produce a worktree diff.", stage="write")
                 validate_patch_safety(final_diff)
-                return final_diff, summary or f"{provider} edited the isolated worktree."
+                return final_diff, summary or f"{provider} edited the isolated worktree.", merge_usage_metrics(*usage_parts)
             except AiFlowError:
                 if attempt < max_attempts - 1:
                     append_text(log_path, "\nWriter attempt failed; retrying.\n")
                     continue
                 raise
         append_text(log_path, raw + "\n")
+        usage_parts.append(metrics_from_output(raw))
         parsed = parse_writer_output(raw)
         summary = parsed.summary
         if parsed.needed_files:
@@ -557,7 +580,7 @@ def _call_writer(
             continue
         if not parsed.diff:
             raise AiFlowError("Writer did not provide a diff.", stage="write")
-        return parsed.diff, summary
+        return parsed.diff, summary, merge_usage_metrics(*usage_parts)
     raise AiFlowError(
         "Writer requested more file context too many times.",
         stage="write",
@@ -741,6 +764,7 @@ def plan(cwd: Path, *, task: str, mock: bool = False, run_id: str | None = None)
                 timeout=plan_phase.get("timeout", 900),
                 env=plan_phase.get("env") or None,
             )
+        usage_kwargs = _usage_event_kwargs(raw)
         try:
             parsed = parse_planner_output(raw)
             validate_plan_json(parsed.plan_json)
@@ -763,6 +787,7 @@ def plan(cwd: Path, *, task: str, mock: bool = False, run_id: str | None = None)
             artifact_paths=["PLAN.md", "plan.json", "TASK.md", "BASE_COMMIT"],
             next_action="approve",
             duration_ms=int((time.time() - plan_started) * 1000),
+            **usage_kwargs,
         )
         return {
             "run_id": run_id,
@@ -839,7 +864,7 @@ def write(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
             git_utils.create_worktree(root, worktree_path, branch_name)
             write_text(run_path / "WORKTREE_PATH", str(worktree_path) + "\n")
             set_status(run_path, IMPLEMENTING, worktree_path=str(worktree_path))
-            patch, summary = _call_writer(root=root, run_path=run_path, cfg=cfg, mock=mock)
+            patch, summary, usage_metrics = _call_writer(root=root, run_path=run_path, cfg=cfg, mock=mock)
             if _writer_edits_worktree(cfg, mock, repair=False):
                 final_diff = patch
             else:
@@ -859,6 +884,7 @@ def write(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 artifact_paths=["IMPLEMENTATION.md", "FINAL.diff", "writer.log"],
                 next_action="test",
                 duration_ms=int((time.time() - write_started) * 1000),
+                **_usage_event_kwargs(usage_metrics),
             )
             return result
     except Exception as exc:
@@ -1067,6 +1093,7 @@ def review(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
             if after != before or after_status != before_status:
                 raise SafetyError("Reviewer modified files in the worktree.", stage="review")
             verdict = review_verdict(raw)
+            usage_kwargs = _usage_event_kwargs(raw)
             write_text(run_path / "REVIEW.md", raw)
             if verdict == "PASS":
                 result = set_status(run_path, REVIEWED_PASS, review_result="PASS")
@@ -1081,6 +1108,7 @@ def review(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                     artifact_paths=["REVIEW.md"],
                     next_action="apply",
                     duration_ms=int((time.time() - review_started) * 1000),
+                    **usage_kwargs,
                 )
                 return result
             result = set_status(
@@ -1099,6 +1127,7 @@ def review(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 artifact_paths=["REVIEW.md"],
                 next_action="fix",
                 duration_ms=int((time.time() - review_started) * 1000),
+                **usage_kwargs,
             )
             return result
     except Exception as exc:
@@ -1158,7 +1187,7 @@ def fix(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 next_action="await fix completion",
             )
             set_status(run_path, FIXING)
-            patch, summary = _call_writer(root=root, run_path=run_path, cfg=cfg, mock=mock, repair=True)
+            patch, summary, usage_metrics = _call_writer(root=root, run_path=run_path, cfg=cfg, mock=mock, repair=True)
             if _writer_edits_worktree(cfg, mock, repair=True):
                 final_diff = patch
             else:
@@ -1186,6 +1215,7 @@ def fix(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 artifact_paths=["FIXES.md", "FINAL.diff"],
                 next_action="test",
                 duration_ms=int((time.time() - fix_started) * 1000),
+                **_usage_event_kwargs(usage_metrics),
             )
             return result
     except Exception as exc:
@@ -1269,6 +1299,18 @@ def _run_metrics(run_path: Path) -> dict[str, Any]:
     open_phase_starts: dict[str, str] = {}
     provider_usage: dict[tuple[str, str, str], dict[str, Any]] = {}
     provider_order: list[tuple[str, str, str]] = []
+    token_totals = {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cached_tokens": 0,
+        "total_tokens": 0,
+    }
+    token_known = False
+    token_by_phase: dict[str, dict[str, Any]] = {}
+    cost_total = 0.0
+    cost_known = False
+    cost_currency = "USD"
+    cost_by_phase: dict[str, dict[str, Any]] = {}
 
     for entry in entries:
         phase = str(entry.get("phase") or "")
@@ -1304,6 +1346,27 @@ def _run_metrics(run_path: Path) -> dict[str, Any]:
             if duration_ms is not None:
                 provider_usage[key]["duration_ms"] += duration_ms
 
+        usage = metrics_from_output(entry)
+        token_usage = usage.get("token_usage")
+        if isinstance(token_usage, dict) and token_usage.get("known"):
+            token_known = True
+            _accumulate_phase_tokens(token_by_phase, phase, token_usage)
+            for field in ("input_tokens", "output_tokens", "cached_tokens", "total_tokens"):
+                value = token_usage.get(field)
+                if value is not None:
+                    token_totals[field] += int(value)
+
+        cost = usage.get("cost")
+        if isinstance(cost, dict) and cost.get("known"):
+            cost_known = True
+            estimated = cost.get("estimated_total")
+            if estimated is not None:
+                cost_total += float(estimated)
+            currency = str(cost.get("currency") or "USD")
+            if cost_currency == "USD" or cost_currency == currency:
+                cost_currency = currency
+            _accumulate_phase_cost(cost_by_phase, phase, cost)
+
     total_duration_ms = sum(phase_durations.values()) if phase_durations else None
     return {
         "duration_known": bool(phase_durations),
@@ -1315,19 +1378,59 @@ def _run_metrics(run_path: Path) -> dict[str, Any]:
         "trace_count": trace_count(run_path),
         "provider_usage": [provider_usage[key] for key in provider_order],
         "cost": {
-            "known": False,
-            "currency": "USD",
-            "estimated_total": None,
-            "by_phase": {},
+            "known": cost_known,
+            "currency": cost_currency,
+            "estimated_total": round(cost_total, 6) if cost_known else None,
+            "by_phase": cost_by_phase,
         },
         "token_usage": {
-            "known": False,
-            "input_tokens": None,
-            "output_tokens": None,
-            "total_tokens": None,
-            "by_phase": {},
+            "known": token_known,
+            "input_tokens": token_totals["input_tokens"] if token_known else None,
+            "output_tokens": token_totals["output_tokens"] if token_known else None,
+            "cached_tokens": token_totals["cached_tokens"] if token_known else None,
+            "total_tokens": token_totals["total_tokens"] if token_known else None,
+            "by_phase": token_by_phase,
         },
     }
+
+
+def _accumulate_phase_tokens(store: dict[str, dict[str, Any]], phase: str, token_usage: dict[str, Any]) -> None:
+    if not phase:
+        phase = "unknown"
+    bucket = store.setdefault(
+        phase,
+        {
+            "known": False,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cached_tokens": 0,
+            "total_tokens": 0,
+        },
+    )
+    bucket["known"] = True
+    for field in ("input_tokens", "output_tokens", "cached_tokens", "total_tokens"):
+        value = token_usage.get(field)
+        if value is not None:
+            bucket[field] += int(value)
+
+
+def _accumulate_phase_cost(store: dict[str, dict[str, Any]], phase: str, cost: dict[str, Any]) -> None:
+    if not phase:
+        phase = "unknown"
+    bucket = store.setdefault(
+        phase,
+        {
+            "known": False,
+            "currency": str(cost.get("currency") or "USD"),
+            "estimated_total": 0.0,
+        },
+    )
+    bucket["known"] = True
+    estimated = cost.get("estimated_total")
+    if estimated is not None:
+        bucket["estimated_total"] += float(estimated)
+    currency = str(cost.get("currency") or bucket.get("currency") or "USD")
+    bucket["currency"] = currency
 
 
 def _event_duration_ms(entry: dict[str, Any]) -> int | None:

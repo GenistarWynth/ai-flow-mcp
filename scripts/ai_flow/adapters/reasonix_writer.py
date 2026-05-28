@@ -13,6 +13,7 @@ from ..errors import AiFlowError
 from ..runner import merged_env, redact
 from ..safety import validate_repo_relative_path
 from ..trace import append_trace
+from ..usage import metrics_from_value, with_usage
 
 
 def run_reasonix_writer(
@@ -156,7 +157,7 @@ def _run_acp(*, command: list[str], prompt: str, cwd: Path, log_path: Path, time
             ]
         )
         append_text(log_path, transcript + "\n")
-        return transcript
+        return with_usage(transcript, metrics_from_value(result))
     except Exception:
         client.close()
         exit_code = _terminate_process(proc)

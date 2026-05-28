@@ -159,6 +159,14 @@ function retryEntries(metrics?: RunMetrics | null) {
   return Object.entries(metrics?.phase_attempts ?? {}).filter(([, attempts]) => attempts > 1);
 }
 
+function tokenEntries(metrics?: RunMetrics | null) {
+  return Object.entries(metrics?.token_usage?.by_phase ?? {}).filter(([, usage]) => Boolean(usage?.known));
+}
+
+function costEntries(metrics?: RunMetrics | null) {
+  return Object.entries(metrics?.cost?.by_phase ?? {}).filter(([, usage]) => Boolean(usage?.known));
+}
+
 function timeLabel(timestamp?: string) {
   return timestamp ? timestamp.slice(11, 19) : "--:--:--";
 }
@@ -1034,6 +1042,8 @@ function MetricsGrid({ metrics }: { metrics?: RunMetrics | null }) {
   const phaseDurations = metricEntries(metrics);
   const slowestPhase = phaseDurations.reduce<[string, number] | null>((slowest, entry) => (!slowest || entry[1] > slowest[1] ? entry : slowest), null);
   const retries = retryEntries(metrics);
+  const tokenByPhase = tokenEntries(metrics);
+  const costByPhase = costEntries(metrics);
   const providerCount = metrics?.provider_usage?.filter((item) => item.provider || item.model).length ?? 0;
   return (
     <div className="metrics-panel">
@@ -1063,10 +1073,28 @@ function MetricsGrid({ metrics }: { metrics?: RunMetrics | null }) {
         <span>Token</span>
         <strong>{metrics?.token_usage?.known ? compactNumber(metrics.token_usage.total_tokens) : "待上报"}</strong>
       </div>
+      {tokenByPhase.length ? (
+        <div className="phase-metrics" aria-label="Token 分布">
+          {tokenByPhase.map(([phase, usage]) => (
+            <span key={phase}>
+              {phaseLabel(phase)} {compactNumber(usage?.total_tokens ?? 0)}
+            </span>
+          ))}
+        </div>
+      ) : null}
       <div className="metric-row">
         <span>成本</span>
         <strong>{metrics?.cost?.known ? `${metrics.cost.currency ?? "USD"} ${metrics.cost.estimated_total ?? 0}` : "未上报"}</strong>
       </div>
+      {costByPhase.length ? (
+        <div className="phase-metrics" aria-label="成本分布">
+          {costByPhase.map(([phase, usage]) => (
+            <span key={phase}>
+              {phaseLabel(phase)} {(usage?.currency ?? metrics?.cost?.currency ?? "USD")} {compactNumber(usage?.estimated_total ?? 0)}
+            </span>
+          ))}
+        </div>
+      ) : null}
       {retries.length ? (
         <div className="metric-signals" aria-label="重试阶段">
           {retries.map(([phase, attempts]) => (

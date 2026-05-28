@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 from scripts.ai_flow import mcp_server, service
+from scripts.ai_flow.events import append_event
 from scripts.ai_flow.trace import append_trace
 
 
@@ -191,12 +192,28 @@ class HandoffContextTest(unittest.TestCase):
     def test_metrics_command_and_mcp_tool_expose_efficiency_digest(self) -> None:
         planned = self.cli_json("plan", "--task", "metrics digest", "--mock")
         run_id = planned["run_id"]
+        run_dir = self.repo / ".ai" / "runs" / run_id
+        append_event(
+            run_dir,
+            phase="plan",
+            provider="mock",
+            model="mock-model",
+            action="usage",
+            status="OK",
+            run_id=run_id,
+            token_usage={"input_tokens": 800, "output_tokens": 200, "cached_tokens": 100, "total_tokens": 1100},
+            cost={"currency": "USD", "estimated_total": 0.05},
+        )
 
         cli_metrics = self.cli_json("metrics", run_id)
 
         self.assertEqual(cli_metrics["run_id"], run_id)
         self.assertEqual(cli_metrics["status"], "PLANNED")
         self.assertIn("plan", cli_metrics["run_metrics"]["phase_durations_ms"])
+        self.assertEqual(cli_metrics["run_metrics"]["token_usage"]["total_tokens"], 1100)
+        self.assertEqual(cli_metrics["run_metrics"]["token_usage"]["by_phase"]["plan"]["cached_tokens"], 100)
+        self.assertEqual(cli_metrics["run_metrics"]["cost"]["estimated_total"], 0.05)
+        self.assertEqual(cli_metrics["run_metrics"]["cost"]["by_phase"]["plan"]["currency"], "USD")
         original_root = mcp_server.ROOT
         try:
             mcp_server.ROOT = self.repo

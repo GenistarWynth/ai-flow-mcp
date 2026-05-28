@@ -19,6 +19,7 @@ from ..artifacts import append_text, now_iso, read_text
 from ..config import split_command
 from ..errors import AiFlowError
 from ..runner import format_command, merged_env, redact
+from ..usage import metrics_from_text, with_usage
 
 
 # ---------------------------------------------------------------------------
@@ -293,6 +294,7 @@ def run_generic_cli_reviewer(
         send_stdin=send_stdin,
         trust_early_output_file=trust_early_output_file,
     )
+    usage_metrics = metrics_from_text(result.stdout)
     if result.returncode != 0:
         raise AiFlowError(
             f"Reviewer ({command_key}) failed with exit code {result.returncode}.",
@@ -302,10 +304,10 @@ def run_generic_cli_reviewer(
     if expect_output_file and output_file.exists():
         output = extract_reviewer_output(read_text(output_file))
         if output:
-            return output
+            return with_usage(output, usage_metrics)
     extracted = extract_reviewer_output(result.stdout)
     if extracted:
-        return extracted
+        return with_usage(extracted, usage_metrics)
     if not result.stdout.strip():
         raise AiFlowError(
             f"Reviewer ({command_key}) produced empty output.",

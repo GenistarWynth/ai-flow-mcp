@@ -25,6 +25,22 @@ export type ProviderUsage = {
   model?: string;
   events?: number;
   duration_ms?: number;
+  input_tokens?: number;
+  output_tokens?: number;
+  cached_tokens?: number;
+  total_tokens?: number;
+  cost?: {
+    known?: boolean;
+    currency?: string;
+    estimated_total?: number | null;
+  };
+  token_usage?: {
+    known?: boolean;
+    input_tokens?: number | null;
+    output_tokens?: number | null;
+    cached_tokens?: number | null;
+    total_tokens?: number | null;
+  };
 };
 
 export type RunMetrics = {
@@ -40,14 +56,25 @@ export type RunMetrics = {
     known?: boolean;
     currency?: string;
     estimated_total?: number | null;
-    by_phase?: Record<string, number>;
+    by_phase?: Record<string, {
+      known?: boolean;
+      currency?: string;
+      estimated_total?: number;
+    }>;
   };
   token_usage?: {
     known?: boolean;
     input_tokens?: number | null;
     output_tokens?: number | null;
+    cached_tokens?: number | null;
     total_tokens?: number | null;
-    by_phase?: Record<string, unknown>;
+    by_phase?: Record<string, {
+      known?: boolean;
+      input_tokens?: number;
+      output_tokens?: number;
+      cached_tokens?: number;
+      total_tokens?: number;
+    }>;
   };
 };
 

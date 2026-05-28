@@ -24,7 +24,7 @@ const readyContext: HandoffContext = {
       { phase: "review", provider: "codex_cli", model: "gpt-5", events: 2, duration_ms: 2200 }
     ],
     cost: { known: false, currency: "USD", estimated_total: null, by_phase: {} },
-    token_usage: { known: false, input_tokens: null, output_tokens: null, total_tokens: null, by_phase: {} }
+    token_usage: { known: false, input_tokens: null, output_tokens: null, cached_tokens: null, total_tokens: null, by_phase: {} }
   },
   next_actions: [
     {
@@ -287,8 +287,15 @@ describe("Workbench", () => {
       run_metrics: {
         ...readyContext.run_metrics!,
         phase_attempts: { plan: 1, write: 1, test: 1, review: 2, fix: 1 },
-        token_usage: { known: true, input_tokens: 8200, output_tokens: 4100, total_tokens: 12300, by_phase: {} },
-        cost: { known: true, currency: "USD", estimated_total: 0.42, by_phase: {} }
+        token_usage: {
+          known: true,
+          input_tokens: 8200,
+          output_tokens: 4100,
+          cached_tokens: 0,
+          total_tokens: 12300,
+          by_phase: { review: { known: true, input_tokens: 3000, output_tokens: 1000, cached_tokens: 0, total_tokens: 4000 } }
+        },
+        cost: { known: true, currency: "USD", estimated_total: 0.42, by_phase: { review: { known: true, currency: "USD", estimated_total: 0.12 } } }
       }
     };
     const client = createClient({
@@ -312,6 +319,8 @@ describe("Workbench", () => {
 
     expect(screen.getByText("12.3k")).toBeVisible();
     expect(screen.getByText("USD 0.42")).toBeVisible();
+    expect(screen.getByText("审查 4.0k")).toBeVisible();
+    expect(screen.getByText("审查 USD 0.12")).toBeVisible();
     expect(screen.getByText("6")).toBeVisible();
     expect(screen.getByText("审查 2x")).toBeVisible();
   });

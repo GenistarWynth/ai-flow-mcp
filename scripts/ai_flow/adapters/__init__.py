@@ -16,6 +16,7 @@ from ..artifacts import append_text
 from ..config import split_command
 from ..errors import AiFlowError
 from ..runner import merged_env, redact
+from ..usage import metrics_from_text, with_usage
 
 # ---------------------------------------------------------------------------
 # Role constants used as capability flags.
@@ -231,7 +232,7 @@ def _run_custom_cli(
             f"Custom provider {provider_id} failed with exit code {completed.returncode}.",
             stage="config",
         )
-    return completed.stdout or ""
+    return with_usage(completed.stdout or "", metrics_from_text(completed.stdout or ""))
 
 
 def _custom_plan_runner(provider_id: str, provider_cfg: dict[str, Any]) -> Callable[..., str]:
