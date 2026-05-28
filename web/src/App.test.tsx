@@ -527,6 +527,47 @@ describe("Workbench", () => {
     expect(client.getConfig).toHaveBeenCalled();
   });
 
+  it("shows active economy routing evidence in readiness", async () => {
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      getDoctor: vi.fn().mockResolvedValue({
+        ok: true,
+        root: "C:/repo",
+        checks: {
+          repo: { ok: true },
+          skill: { ok: true },
+          config: {
+            ok: true,
+            profile: {
+              profile: "economy",
+              economy: {
+                matches: true,
+                intent: "High-volume write/fix work runs on the low-cost Reasonix/DeepSeek route.",
+                write: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" },
+                fix: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" }
+              }
+            }
+          }
+        },
+        next_actions: [],
+        recommendations: []
+      })
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    expect(await within(details).findByText("路由")).toBeVisible();
+    expect(within(details).getByText("经济路由已启用")).toBeVisible();
+    expect(within(details).getByText("实现")).toBeVisible();
+    expect(within(details).getByText("修复")).toBeVisible();
+    expect(within(details).getAllByText("reasonix_cli / deepseek-v4-pro")).toHaveLength(2);
+  });
+
   it("maps approve intent through the confirmation gate", async () => {
     const client = createClient({
       listRuns: vi.fn().mockResolvedValue({ runs: [{ run_id: "run-ready", task: "Approve a plan", status: "PLANNED" }] }),

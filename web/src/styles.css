@@ -341,6 +341,16 @@ button.danger { color: #b42318; border-color: #f0b6b2; background: #fff8f7; }
 .doctor-recommendation { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; border: 1px solid #bfdbfe; border-radius: 8px; padding: 8px 10px; color: #174ea6; background: #eff6ff; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
 .doctor-recommendation button { border: 1px solid #2f6fed; border-radius: 8px; padding: 5px 8px; color: #174ea6; background: #ffffff; font-size: 12px; font-weight: 800; white-space: nowrap; }
 .doctor-recommendation button:disabled { cursor: default; opacity: 0.65; }
+.doctor-profile { display: grid; gap: 10px; border: 1px solid #d9dee6; border-radius: 8px; padding: 10px; background: #ffffff; }
+.doctor-profile.ready { border-color: #b7e4c7; background: #f1fbf6; }
+.doctor-profile.custom { border-color: #fed7aa; background: #fff7ed; }
+.doctor-profile-head { display: grid; gap: 3px; }
+.doctor-profile-head strong { color: #172033; }
+.doctor-profile-head span { color: #647083; font-size: 12px; overflow-wrap: anywhere; }
+.doctor-routes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.doctor-routes div { display: grid; gap: 3px; border: 1px solid #d9dee6; border-radius: 8px; padding: 7px 8px; background: #ffffff; }
+.doctor-routes span { color: #647083; font-size: 12px; font-weight: 700; }
+.doctor-routes strong { color: #344255; overflow-wrap: anywhere; }
 .doctor-check { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 8px; }
 .doctor-check span { color: #647083; font-size: 12px; font-weight: 700; }
 .doctor-check strong { font-size: 13px; }

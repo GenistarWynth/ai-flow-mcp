@@ -109,7 +109,7 @@ python scripts/patchbay agent message continue --run-id <run_id> --background --
 
 Background agent turns write `JOB.json`, append `agent` events, and preserve the plan/apply confirmation gates. `apply` remains foreground-only and requires explicit confirmation after tests and review pass. Local prompts such as `patchbay setup`, `install patchbay`, `help`, `status`, `runs`, `readiness`, `diagnose`, `patchbay doctor`, `show economy profile`, or `apply economy profile` return setup results, guidance, recent runs, readiness, or routing changes directly without creating a model run. Run-bound prompts such as `continue`, `approve`, `apply`, `diff`, or `artifact` without a `run_id` also stay local and tell you to pass an existing run instead of creating one.
 
-The web workbench exposes the same conversational flow and has a diagnostics drawer. Its Readiness tab calls the unified doctor checks without MCP stdio probing, so setup gaps are visible from the desktop UI without starting extra child processes. Non-blocking recommendations such as economy routing can be applied from the same panel through the local Agent path.
+The web workbench exposes the same conversational flow and has a diagnostics drawer. Its Readiness tab calls the unified doctor checks without MCP stdio probing, so setup gaps are visible from the desktop UI without starting extra child processes. It also shows the active write/fix routing profile and lets non-blocking recommendations such as economy routing be applied from the same panel through the local Agent path.
 
 Mock mode can validate the workflow without model credentials:
 

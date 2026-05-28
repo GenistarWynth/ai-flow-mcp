@@ -26,6 +26,7 @@ import {
   DoctorReport,
   HandoffContext,
   PatchbayClient,
+  PhaseProvider,
   ProviderUsage,
   RunMetrics,
   RunStatus,
@@ -38,6 +39,16 @@ import "./styles.css";
 type TabName = "Overview" | "Readiness" | "Trace" | "Log" | "Diff" | "Artifacts" | "Config" | "Providers";
 type ConfirmState = { action: string; title: string; body: string; safe: boolean; confirmLabel?: string } | null;
 type LocalMessage = { id: string; body: string; timestamp: string };
+type DoctorProfileStatus = {
+  profile?: string;
+  recommendation?: string;
+  economy?: {
+    matches?: boolean;
+    intent?: string;
+    write?: PhaseProvider;
+    fix?: PhaseProvider;
+  };
+};
 
 const phases = ["plan", "approve", "write", "test", "review", "fix", "apply", "cleanup"];
 const phaseLabels: Record<string, string> = {
@@ -321,6 +332,18 @@ function actionFromSuggestion(suggestion: SuggestedAction | AgentAction): Sugges
     requires_human_confirmation: suggestion.requires_human_confirmation,
     reason: suggestion.reason
   };
+}
+
+function doctorProfileStatus(report?: DoctorReport | null): DoctorProfileStatus | null {
+  const profile = report?.checks?.config?.profile;
+  return profile && typeof profile === "object" ? (profile as DoctorProfileStatus) : null;
+}
+
+function routeSummary(route?: PhaseProvider) {
+  if (!route) return "未配置";
+  const provider = route.provider || "-";
+  const model = route.model || route.command_key || "默认";
+  return `${provider} / ${model}`;
 }
 
 function confirmCopy(action: SuggestedAction, readyToApply: boolean): ConfirmState {
@@ -1178,6 +1201,8 @@ function DoctorPanel({
   profileBusy?: boolean;
 }) {
   const checks = Object.entries(report?.checks ?? {});
+  const profile = doctorProfileStatus(report);
+  const economy = profile?.economy;
   return (
     <div className="doctor-panel">
       {onRunSetup ? (
@@ -1222,6 +1247,27 @@ function DoctorPanel({
                 </div>
               );
             })}
+          </div>
+        </section>
+      ) : null}
+      {profile ? (
+        <section>
+          <h2>路由</h2>
+          <div className={`doctor-profile ${economy?.matches ? "ready" : "custom"}`}>
+            <div className="doctor-profile-head">
+              <strong>{economy?.matches ? "经济路由已启用" : "自定义路由"}</strong>
+              <span>{economy?.intent || profile.recommendation || "当前配置使用自定义阶段路由。"}</span>
+            </div>
+            <div className="doctor-routes">
+              <div>
+                <span>实现</span>
+                <strong>{routeSummary(economy?.write)}</strong>
+              </div>
+              <div>
+                <span>修复</span>
+                <strong>{routeSummary(economy?.fix)}</strong>
+              </div>
+            </div>
           </div>
         </section>
       ) : null}
