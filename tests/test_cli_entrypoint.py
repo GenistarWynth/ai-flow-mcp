@@ -97,6 +97,8 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertIn("patchbay_config_phase_set", TOOLS)
         self.assertIn("patchbay_config_command_set", TOOLS)
         self.assertIn("patchbay_config_test_add", TOOLS)
+        self.assertIn("patchbay_config_profile_apply", TOOLS)
+        self.assertIn("patchbay_config_profile_show", TOOLS)
         self.assertIn("patchbay_config_provider_add_cli", TOOLS)
         self.assertIn("ai_flow_plan", TOOLS)
         self.assertIn("ai_flow_agent", TOOLS)
@@ -105,6 +107,8 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertIn("ai_flow_events", TOOLS)
         self.assertIn("ai_flow_metrics", TOOLS)
         self.assertIn("ai_flow_doctor", TOOLS)
+        self.assertIn("ai_flow_config_profile_apply", TOOLS)
+        self.assertIn("ai_flow_config_profile_show", TOOLS)
 
     def test_mcp_initialize(self) -> None:
         from scripts.ai_flow.mcp_server import handle
@@ -126,12 +130,16 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertIn("patchbay_events", tool_names)
         self.assertIn("patchbay_metrics", tool_names)
         self.assertIn("patchbay_doctor", tool_names)
+        self.assertIn("patchbay_config_profile_apply", tool_names)
+        self.assertIn("patchbay_config_profile_show", tool_names)
         self.assertIn("ai_flow_agent", tool_names)
         self.assertIn("ai_flow_setup", tool_names)
         self.assertIn("ai_flow_install", tool_names)
         self.assertIn("ai_flow_events", tool_names)
         self.assertIn("ai_flow_metrics", tool_names)
         self.assertIn("ai_flow_doctor", tool_names)
+        self.assertIn("ai_flow_config_profile_apply", tool_names)
+        self.assertIn("ai_flow_config_profile_show", tool_names)
 
     def test_agent_and_skill_parsers(self) -> None:
         from scripts.ai_flow.cli import build_parser
@@ -166,6 +174,12 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertEqual(skill.skill_command, "install")
         self.assertEqual(skill.host, "codex")
         self.assertTrue(skill.dry_run)
+
+        profile = parser.parse_args(["config", "profile", "apply", "economy", "--json"])
+        self.assertEqual(profile.command, "config")
+        self.assertEqual(profile.config_command, "profile")
+        self.assertEqual(profile.profile_command, "apply")
+        self.assertEqual(profile.profile, "economy")
 
 
 if __name__ == "__main__":

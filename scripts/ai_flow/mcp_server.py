@@ -147,6 +147,14 @@ def patchbay_config_test_add(command: str) -> dict[str, Any]:
     return run_config_wizard(ROOT, test_command=command)
 
 
+def patchbay_config_profile_apply(profile: str = "economy") -> dict[str, Any]:
+    return run_config_wizard(ROOT, profile=profile or "economy")
+
+
+def patchbay_config_profile_show() -> dict[str, Any]:
+    return run_config_wizard(ROOT, show_profile=True)
+
+
 def patchbay_config_provider_add_cli(
     provider_id: str,
     roles: list[str],
@@ -215,6 +223,8 @@ CANONICAL_TOOLS: dict[str, Callable[..., Any]] = {
     "patchbay_config_phase_set": patchbay_config_phase_set,
     "patchbay_config_command_set": patchbay_config_command_set,
     "patchbay_config_test_add": patchbay_config_test_add,
+    "patchbay_config_profile_apply": patchbay_config_profile_apply,
+    "patchbay_config_profile_show": patchbay_config_profile_show,
     "patchbay_config_provider_add_cli": patchbay_config_provider_add_cli,
     "patchbay_diff": patchbay_diff,
     "patchbay_apply": patchbay_apply,
@@ -242,6 +252,8 @@ LEGACY_TOOLS: dict[str, Callable[..., Any]] = {
     "ai_flow_config_phase_set": patchbay_config_phase_set,
     "ai_flow_config_command_set": patchbay_config_command_set,
     "ai_flow_config_test_add": patchbay_config_test_add,
+    "ai_flow_config_profile_apply": patchbay_config_profile_apply,
+    "ai_flow_config_profile_show": patchbay_config_profile_show,
     "ai_flow_config_provider_add_cli": patchbay_config_provider_add_cli,
     "ai_flow_diff": patchbay_diff,
     "ai_flow_apply": patchbay_apply,
@@ -344,6 +356,18 @@ def _tool_schema(name: str) -> dict[str, Any]:
     elif name.endswith("_config_test_add"):
         properties = {"command": {"type": "string"}}
         required = ["command"]
+    elif name.endswith("_config_profile_apply"):
+        properties = {
+            "profile": {
+                "type": "string",
+                "enum": ["economy"],
+                "description": "Routing profile to apply. economy routes write/fix work to Reasonix/DeepSeek.",
+            }
+        }
+        required = []
+    elif name.endswith("_config_profile_show"):
+        properties = {}
+        required = []
     elif name.endswith("_config_provider_add_cli"):
         properties = {
             "provider_id": {"type": "string"},
@@ -382,6 +406,8 @@ def _tool_schema(name: str) -> dict[str, Any]:
         "patchbay_config_phase_set": "Set a phase provider/model/command key without hand-editing TOML.",
         "patchbay_config_command_set": "Set a command alias in .ai/patchbay.toml.",
         "patchbay_config_test_add": "Add a test command to both allowlist and phase config.",
+        "patchbay_config_profile_apply": "Apply a recommended routing profile; economy keeps expensive thinking in plan/review and routes write/fix work to Reasonix/DeepSeek.",
+        "patchbay_config_profile_show": "Show whether the current write/fix routing matches the economy profile.",
         "patchbay_config_provider_add_cli": "Add a custom CLI provider block under [providers.<id>].",
         "patchbay_diff": "Return the current FINAL.diff for the run.",
         "patchbay_apply": "Apply the reviewed patch to the original repository (no LLM executor).",

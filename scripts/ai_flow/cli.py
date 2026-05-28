@@ -44,6 +44,11 @@ def config_wizard_run(cwd: Path, args: argparse.Namespace) -> Any:
             prompt_mode=args.prompt_mode,
             output_contract=args.output_contract,
         )
+    if config_command == "profile":
+        if args.profile_command == "apply":
+            return run_config_wizard(cwd, profile=args.profile)
+        if args.profile_command == "show":
+            return run_config_wizard(cwd, show_profile=True)
     return run_config_wizard(
         cwd,
         set_key=args.set_key,
@@ -273,6 +278,14 @@ def build_parser() -> argparse.ArgumentParser:
     provider_add.add_argument("--prompt-mode", choices=["stdin", "arg", "file"], default="stdin")
     provider_add.add_argument("--output-contract", choices=["plan_json", "review_verdict", "worktree_diff", "writer_diff"], required=True)
     _add_json(provider_add)
+
+    config_profile = config_sub.add_parser("profile", help="Apply or inspect recommended phase routing profiles.")
+    profile_sub = config_profile.add_subparsers(dest="profile_command", required=True)
+    profile_apply = profile_sub.add_parser("apply", help="Apply a routing profile.")
+    profile_apply.add_argument("profile", choices=["economy"])
+    _add_json(profile_apply)
+    profile_show = profile_sub.add_parser("show", help="Show current routing profile status.")
+    _add_json(profile_show)
     _add_json(config)
 
     mcp = sub.add_parser("mcp", help="MCP host registration helpers.")

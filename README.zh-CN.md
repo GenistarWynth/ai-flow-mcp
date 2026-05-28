@@ -33,10 +33,12 @@ timeout = 900
 
 旧的 `[models]`、`[commands]` 和 `[writer].provider` 键仍然作为默认值保留。
 
+默认的经济型路由会把大量实现/修复工作交给更便宜的 Reasonix/DeepSeek writer，而把规划和审查留给更强的模型。需要恢复这套路由时，直接运行 `patchbay config profile apply economy`。
+
 ## 功能概览
 
 - CLI 流程：`setup`/`install`、`doctor`、`agent message`、`web`、`plan`、`approve`、`write`、`test`、`review`、`fix`、`status`、`context`、`metrics`、`trace`、`diff`、`apply`、`cleanup`。
-- MCP 工具：`patchbay_agent`、`patchbay_setup`、`patchbay_install`、`patchbay_plan`、`patchbay_approve`、`patchbay_write`、`patchbay_test`、`patchbay_review`、`patchbay_fix`、`patchbay_status`、`patchbay_context`、`patchbay_metrics`、`patchbay_doctor`、`patchbay_events`、`patchbay_trace`、`patchbay_runs`、`patchbay_artifact`、`patchbay_config_show`、`patchbay_config_phase_set`、`patchbay_config_command_set`、`patchbay_config_test_add`、`patchbay_config_provider_add_cli`、`patchbay_diff`、`patchbay_apply`。
+- MCP 工具：`patchbay_agent`、`patchbay_setup`、`patchbay_install`、`patchbay_plan`、`patchbay_approve`、`patchbay_write`、`patchbay_test`、`patchbay_review`、`patchbay_fix`、`patchbay_status`、`patchbay_context`、`patchbay_metrics`、`patchbay_doctor`、`patchbay_events`、`patchbay_trace`、`patchbay_runs`、`patchbay_artifact`、`patchbay_config_show`、`patchbay_config_phase_set`、`patchbay_config_command_set`、`patchbay_config_test_add`、`patchbay_config_profile_apply`、`patchbay_config_profile_show`、`patchbay_config_provider_add_cli`、`patchbay_diff`、`patchbay_apply`。
 - 兼容旧 MCP 工具名：`ai_flow_*`。
 - 默认使用隔离 git worktree，避免直接污染当前工作区。
 - 每次运行都会在 `.ai/runs/<run_id>/` 下落盘计划、diff、日志和状态。
@@ -71,6 +73,7 @@ scripts\patchbay.cmd setup --host codex
 patchbay setup --host codex     # 初始化项目、本地配置、Codex Skill、MCP 注册尝试和 doctor 摘要
 patchbay install --host codex   # setup 的别名
 patchbay config     # 交互式向导，无需手动编辑
+patchbay config profile apply economy   # 保持 write/fix 走 Reasonix + DeepSeek
 patchbay doctor     # 统一检查 config/MCP/Skill 是否就绪
 patchbay config --doctor     # 验证解析后的阶段配置
 patchbay config --set-key models.planner --set-value claude-opus-4-7
@@ -192,6 +195,8 @@ Claude Desktop、Claude Code、Gemini CLI 或其他 MCP host 使用各自等价�
 - `patchbay_config_phase_set`
 - `patchbay_config_command_set`
 - `patchbay_config_test_add`
+- `patchbay_config_profile_apply`
+- `patchbay_config_profile_show`
 - `patchbay_config_provider_add_cli`
 - `patchbay_diff`
 - `patchbay_apply`

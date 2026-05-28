@@ -15,6 +15,24 @@ from typing import Any
 import tomlkit
 
 
+ECONOMY_PROFILE = {
+    "profile": "economy",
+    "summary": "Route high-volume implementation and repair work to the low-cost Reasonix/DeepSeek writer while leaving plan/review choices unchanged.",
+    "updates": {
+        ("writer", "provider"): "reasonix_cli",
+        ("models", "writer"): "deepseek-v4-pro",
+        ("phases", "write", "provider"): "reasonix_cli",
+        ("phases", "write", "model"): "deepseek-v4-pro",
+        ("phases", "write", "command_key"): "reasonix",
+        ("phases", "fix", "provider"): "reasonix_cli",
+        ("phases", "fix", "model"): "deepseek-v4-pro",
+        ("phases", "fix", "command_key"): "reasonix",
+    },
+}
+
+CONFIG_PROFILES = {"economy": ECONOMY_PROFILE}
+
+
 def _prompt(prompt: str, default: str = "") -> str:
     suffix = f" [{default}]" if default else ""
     try:
@@ -116,6 +134,8 @@ def run_config_wizard(
     provider_args: list[str] | None = None,
     prompt_mode: str = "stdin",
     output_contract: str = "",
+    profile: str = "",
+    show_profile: bool = False,
 ) -> dict[str, Any]:
     """Entry point for ``patchbay config``.
 
@@ -131,6 +151,12 @@ def run_config_wizard(
 
     if show:
         return {"config": str(cfg_path), "resolved": _public_config(cfg)}
+
+    if show_profile:
+        return {"config": str(cfg_path), **_profile_status(cfg)}
+
+    if profile:
+        return _apply_profile(cfg_path, cfg, profile)
 
     if phase:
         return _set_phase(cfg_path, cfg, phase, provider=provider, model=model, command_key=command_key)
@@ -226,6 +252,84 @@ def _add_cli_provider(
     cfg.setdefault("providers", {})[provider_id] = provider_cfg
     _write_config_update(cfg_path, ("providers", provider_id), provider_cfg)
     return {"config": str(cfg_path), "provider": provider_id, "updated": provider_cfg}
+
+
+def _apply_profile(cfg_path: Path, cfg: dict[str, Any], profile: str) -> dict[str, Any]:
+    name = profile.strip().lower()
+    definition = CONFIG_PROFILES.get(name)
+    if definition is None:
+        from .errors import AiFlowError
+        raise AiFlowError(
+            f"Unknown config profile: {profile}. Supported profiles: {', '.join(sorted(CONFIG_PROFILES))}.",
+            stage="config",
+            suggested_next_action="Run `patchbay config profile apply economy`.",
+        )
+    updates = list(definition["updates"].items())
+    for parts, value in updates:
+        _set_nested(cfg, parts, value)
+    _write_config_updates(cfg_path, updates)
+    status = _profile_status(cfg)
+    return {
+        "config": str(cfg_path),
+        "profile": name,
+        "summary": definition["summary"],
+        "updated": {
+            ".".join(parts): value for parts, value in updates
+        },
+        "status": status,
+        "next_actions": [
+            "Set `commands.reasonix` if Reasonix is not on PATH.",
+            "Run `patchbay config --doctor --json` to validate the resolved routing.",
+        ],
+    }
+
+
+def _set_nested(cfg: dict[str, Any], parts: tuple[str, ...], value: Any) -> None:
+    current: Any = cfg
+    for part in parts[:-1]:
+        current = current.setdefault(part, {})
+    current[parts[-1]] = value
+
+
+def _profile_status(cfg: dict[str, Any]) -> dict[str, Any]:
+    from .config import resolve_phase
+
+    try:
+        write = _public_phase(resolve_phase(cfg, "write"))
+        fix = _public_phase(resolve_phase(cfg, "fix"))
+    except Exception as exc:
+        return {
+            "profile": "invalid",
+            "economy": {"matches": False, "error": str(exc)},
+            "recommendation": "Fix phase configuration errors before applying a routing profile.",
+        }
+    economy_matches = (
+        write.get("provider") == "reasonix_cli"
+        and write.get("model") == "deepseek-v4-pro"
+        and fix.get("provider") == "reasonix_cli"
+        and fix.get("model") == "deepseek-v4-pro"
+    )
+    return {
+        "profile": "economy" if economy_matches else "custom",
+        "economy": {
+            "matches": economy_matches,
+            "write": write,
+            "fix": fix,
+            "intent": "High-volume write/fix work runs on the low-cost Reasonix/DeepSeek route.",
+        },
+        "recommendation": ""
+        if economy_matches
+        else "Run `patchbay config profile apply economy` to route write/fix work to Reasonix/DeepSeek.",
+    }
+
+
+def _public_phase(phase: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "provider": phase.get("provider", ""),
+        "model": phase.get("model", ""),
+        "command_key": phase.get("command_key", ""),
+        "timeout": phase.get("timeout", 900),
+    }
 
 
 def _set_config_key(cfg_path: Path, cfg: dict[str, Any], key: str, value: str) -> dict[str, Any]:

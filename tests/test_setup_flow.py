@@ -107,6 +107,56 @@ class SetupFlowTest(unittest.TestCase):
         self.assertTrue((self.repo / ".ai" / "patchbay.toml").exists())
         self.assertTrue((self.skills / "patchbay" / "SKILL.md").exists())
 
+    def test_cli_config_profile_apply_economy_routes_write_and_fix(self) -> None:
+        from scripts.ai_flow.config import load_config, resolve_phase
+
+        completed = run(
+            [
+                "python",
+                str(self.script),
+                "config",
+                "profile",
+                "apply",
+                "economy",
+                "--json",
+            ],
+            self.repo,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        result = json.loads(completed.stdout)
+        self.assertEqual(result["profile"], "economy")
+        self.assertEqual(result["status"]["profile"], "economy")
+        cfg = load_config(self.repo)
+        write = resolve_phase(cfg, "write")
+        fix = resolve_phase(cfg, "fix")
+        self.assertEqual(write["provider"], "reasonix_cli")
+        self.assertEqual(write["model"], "deepseek-v4-pro")
+        self.assertEqual(fix["provider"], "reasonix_cli")
+        self.assertEqual(fix["model"], "deepseek-v4-pro")
+
+    def test_doctor_recommends_economy_profile_for_custom_writer_route(self) -> None:
+        from scripts.ai_flow.doctor import run_doctor
+
+        ai_dir = self.repo / ".ai"
+        ai_dir.mkdir()
+        (ai_dir / "patchbay.toml").write_text(
+            """
+[phases.write]
+provider = "mock"
+model = "mock"
+
+[phases.fix]
+provider = "mock"
+model = "mock"
+""".lstrip(),
+            encoding="utf-8",
+        )
+
+        result = run_doctor(self.repo, include_mcp=False, skill_path=self.skills)
+
+        self.assertTrue(any("config profile apply economy" in item for item in result["recommendations"]))
+
     def test_setup_omits_manual_mcp_step_after_successful_registration(self) -> None:
         from scripts.ai_flow import setup_flow
 
@@ -153,6 +203,33 @@ class SetupFlowTest(unittest.TestCase):
                 self.assertTrue((skill_path / "patchbay" / "SKILL.md").exists())
         finally:
             mcp_server.ROOT = original_root
+
+    def test_mcp_config_profile_apply_economy(self) -> None:
+        from scripts.ai_flow import mcp_server
+        from scripts.ai_flow.config import load_config, resolve_phase
+
+        original_root = mcp_server.ROOT
+        try:
+            mcp_server.ROOT = self.repo
+            response = mcp_server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "patchbay_config_profile_apply",
+                        "arguments": {"profile": "economy"},
+                    },
+                }
+            )
+        finally:
+            mcp_server.ROOT = original_root
+
+        payload = json.loads(response["result"]["content"][0]["text"])
+        self.assertEqual(payload["profile"], "economy")
+        cfg = load_config(self.repo)
+        self.assertEqual(resolve_phase(cfg, "write")["model"], "deepseek-v4-pro")
+        self.assertEqual(resolve_phase(cfg, "fix")["provider"], "reasonix_cli")
 
 
 if __name__ == "__main__":

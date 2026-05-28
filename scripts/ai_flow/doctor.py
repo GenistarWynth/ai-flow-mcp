@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import config_path, example_config_path, find_project_root, load_config
-from .config_wizard import _run_doctor as run_config_doctor
+from .config_wizard import _profile_status, _run_doctor as run_config_doctor
 from .mcp_install import run_mcp_doctor
 from .skill_install import run_skill_doctor
 
@@ -68,6 +68,7 @@ def _config_check(root: Path) -> dict[str, Any]:
         "example_config": str(example_config_path(root)),
         "example_config_exists": example_config_path(root).exists(),
         "phases": doctor.get("phases", {}),
+        "profile": _profile_status(cfg),
         "warnings": warnings,
     }
 
@@ -122,6 +123,7 @@ def _summarize(root: Path, checks: dict[str, Any]) -> dict[str, Any]:
         "root": str(root),
         "checks": checks,
         "next_actions": next_actions,
+        "recommendations": _recommendations(checks),
     }
 
 
@@ -152,6 +154,17 @@ def _next_actions(checks: dict[str, Any]) -> list[str]:
     elif not skill.get("installed"):
         actions.append("Run `patchbay skill install codex` so Codex can discover the Patchbay Skill.")
     return actions
+
+
+def _recommendations(checks: dict[str, Any]) -> list[str]:
+    recommendations: list[str] = []
+    config = checks.get("config", {})
+    profile = config.get("profile", {})
+    if config.get("ok") and profile.get("profile") == "custom":
+        recommendations.append(
+            "Run `patchbay config profile apply economy` to route write/fix implementation work to Reasonix/DeepSeek."
+        )
+    return recommendations
 
 
 def _git_root(root: Path) -> Path | None:

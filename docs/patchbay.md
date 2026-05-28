@@ -15,6 +15,7 @@ patchbay install --host codex --json   # setup 的别名
 
 # 交互式配置（无需手动编辑 TOML）
 patchbay config                      # 交互式向导
+patchbay config profile apply economy # write/fix 走 Reasonix + DeepSeek，适合大量简单实现/修复
 patchbay config --set-key models.planner --set-value claude-opus-4-7   # 单键设置
 patchbay doctor                      # 统一检查 config/MCP/Skill 就绪状态
 patchbay config --doctor             # 验证配置
@@ -77,6 +78,8 @@ timeout = 900
 ```
 
 旧配置节 `[models]`、`[commands]` 和 `[writer].provider` 继续有效，作为未设置 phase 时的默认值。
+
+默认经济型分工是：规划/审查使用更强模型，写代码和修复这类大量重复工作走 Reasonix/DeepSeek writer。若本地配置偏离了这套分工，可运行 `patchbay config profile apply economy` 一键恢复。
 
 Writer 实现入口：
 
