@@ -264,9 +264,10 @@ describe("Workbench", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "诊断" }));
     expect(screen.getByText("12s")).toBeVisible();
+    expect(screen.getAllByText("实现 8.0s")[0]).toBeVisible();
     expect(screen.getByText("8 / 5")).toBeVisible();
     expect(screen.getByText("未上报")).toBeVisible();
-    expect(screen.getByText("实现 8.0s")).toBeVisible();
+    expect(screen.getByText("待上报")).toBeVisible();
 
     await userEvent.click(screen.getByRole("tab", { name: "提供方" }));
 
@@ -278,6 +279,41 @@ describe("Workbench", () => {
     expect(await screen.findByText("需要处理")).toBeVisible();
     expect(screen.getByText(/patchbay skill install codex/)).toBeVisible();
     expect(client.getDoctor).toHaveBeenCalledWith({ include_mcp: false });
+  });
+
+  it("surfaces token totals and retry phases in efficiency metrics", async () => {
+    const metricsContext: HandoffContext = {
+      ...readyContext,
+      run_metrics: {
+        ...readyContext.run_metrics!,
+        phase_attempts: { plan: 1, write: 1, test: 1, review: 2, fix: 1 },
+        token_usage: { known: true, input_tokens: 8200, output_tokens: 4100, total_tokens: 12300, by_phase: {} },
+        cost: { known: true, currency: "USD", estimated_total: 0.42, by_phase: {} }
+      }
+    };
+    const client = createClient({
+      getContext: vi.fn().mockResolvedValue(metricsContext),
+      getStatus: vi.fn().mockResolvedValue({
+        run_id: "run-ready",
+        task: "Ship dashboard",
+        status: "REVIEWED_PASS",
+        current_phase: "apply",
+        gate_state: { approved: true, tests_passed: true, review_result: "PASS", ready_to_apply: true },
+        run_metrics: metricsContext.run_metrics,
+        artifacts: [],
+        effective_phase_providers: {}
+      })
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+
+    expect(screen.getByText("12.3k")).toBeVisible();
+    expect(screen.getByText("USD 0.42")).toBeVisible();
+    expect(screen.getByText("6")).toBeVisible();
+    expect(screen.getByText("审查 2x")).toBeVisible();
   });
 
   it("filters the run list by search and status", async () => {

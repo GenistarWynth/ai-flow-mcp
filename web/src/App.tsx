@@ -140,8 +140,23 @@ function compactDuration(ms?: number | null) {
   return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
 }
 
+function compactNumber(value?: number | null) {
+  if (value === undefined || value === null) return "待上报";
+  if (value < 1000) return String(value);
+  if (value < 1_000_000) return `${(value / 1000).toFixed(value >= 100_000 ? 0 : 1)}k`;
+  return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}m`;
+}
+
 function metricEntries(metrics?: RunMetrics | null) {
   return Object.entries(metrics?.phase_durations_ms ?? {}).filter(([, duration]) => duration > 0);
+}
+
+function totalAttempts(metrics?: RunMetrics | null) {
+  return Object.values(metrics?.phase_attempts ?? {}).reduce((total, value) => total + value, 0);
+}
+
+function retryEntries(metrics?: RunMetrics | null) {
+  return Object.entries(metrics?.phase_attempts ?? {}).filter(([, attempts]) => attempts > 1);
 }
 
 function timeLabel(timestamp?: string) {
@@ -1017,6 +1032,8 @@ function NextActionCard({
 
 function MetricsGrid({ metrics }: { metrics?: RunMetrics | null }) {
   const phaseDurations = metricEntries(metrics);
+  const slowestPhase = phaseDurations.reduce<[string, number] | null>((slowest, entry) => (!slowest || entry[1] > slowest[1] ? entry : slowest), null);
+  const retries = retryEntries(metrics);
   const providerCount = metrics?.provider_usage?.filter((item) => item.provider || item.model).length ?? 0;
   return (
     <div className="metrics-panel">
@@ -1025,19 +1042,40 @@ function MetricsGrid({ metrics }: { metrics?: RunMetrics | null }) {
         <strong>{metrics?.duration_known ? compactDuration(metrics.total_duration_ms) : "待采集"}</strong>
       </div>
       <div className="metric-row">
+        <span>最慢阶段</span>
+        <strong>{slowestPhase ? `${phaseLabel(slowestPhase[0])} ${compactDuration(slowestPhase[1])}` : "待采集"}</strong>
+      </div>
+      <div className="metric-row">
         <span>事件 / Trace</span>
         <strong>
           {metrics?.event_count ?? 0} / {metrics?.trace_count ?? 0}
         </strong>
       </div>
       <div className="metric-row">
+        <span>阶段尝试</span>
+        <strong>{totalAttempts(metrics) || "待记录"}</strong>
+      </div>
+      <div className="metric-row">
         <span>提供方轨迹</span>
         <strong>{providerCount || "待记录"}</strong>
+      </div>
+      <div className="metric-row">
+        <span>Token</span>
+        <strong>{metrics?.token_usage?.known ? compactNumber(metrics.token_usage.total_tokens) : "待上报"}</strong>
       </div>
       <div className="metric-row">
         <span>成本</span>
         <strong>{metrics?.cost?.known ? `${metrics.cost.currency ?? "USD"} ${metrics.cost.estimated_total ?? 0}` : "未上报"}</strong>
       </div>
+      {retries.length ? (
+        <div className="metric-signals" aria-label="重试阶段">
+          {retries.map(([phase, attempts]) => (
+            <span key={phase}>
+              {phaseLabel(phase)} {attempts}x
+            </span>
+          ))}
+        </div>
+      ) : null}
       {phaseDurations.length ? (
         <div className="phase-metrics" aria-label="阶段耗时">
           {phaseDurations.map(([phase, duration]) => (
