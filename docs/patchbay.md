@@ -9,7 +9,7 @@ Patchbay 是一个本地补丁编排器：任意支持 MCP 的客户端都可以
 uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay setup --host codex
 uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay-mcp --root /path/to/repo
 
-# 一条命令初始化本地项目、配置、Skill 和 MCP 注册提示
+# 一条命令初始化本地项目、配置、Skill，并尝试注册 MCP
 patchbay setup --host codex --json
 
 # 交互式配置（无需手动编辑 TOML）
@@ -18,7 +18,7 @@ patchbay config --set-key models.planner --set-value claude-opus-4-7   # 单键�
 patchbay doctor                      # 统一检查 config/MCP/Skill 就绪状态
 patchbay config --doctor             # 验证配置
 
-# MCP 注册（无需手动编辑 JSON）
+# MCP 注册（可自动执行；失败时返回可复制命令）
 patchbay mcp install codex           # Codex CLI / Codex Desktop
 patchbay mcp install claude          # Claude Code
 patchbay mcp install claude-desktop  # Claude Desktop
@@ -160,6 +160,9 @@ Codex、Claude Code、Gemini 当前会打印注册命令；Claude Desktop 会直
 手动注册：
 
 ```bash
+# `patchbay mcp install codex|claude|gemini` 会先尝试自动执行这些命令；
+# 如果 host CLI 不可用，会在结果里返回可复制的命令。
+
 # Codex CLI / Codex Desktop
 codex mcp add patchbay -- python scripts/patchbay_mcp_server.py
 

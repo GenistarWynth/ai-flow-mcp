@@ -64,7 +64,7 @@ python scripts/patchbay setup --host codex
 ### Interactive configuration
 
 ```bash
-patchbay setup --host codex     # init + local config + Codex Skill + MCP registration guidance + doctor summary
+patchbay setup --host codex     # init + local config + Codex Skill + MCP registration attempt + doctor summary
 patchbay config     # Interactive wizard — no hand-editing required
 patchbay doctor     # Unified config/MCP/Skill readiness checks
 patchbay config --doctor     # Validate your resolved phase configuration
@@ -131,7 +131,7 @@ codex mcp add patchbay -- python scripts/patchbay_mcp_server.py
 
 Use the equivalent MCP server registration command for other MCP hosts. Run `patchbay doctor` for full readiness checks or `patchbay mcp doctor` to focus only on server reachability.
 
-`patchbay doctor` is read-only and reports project initialization, phase config validity, CLI shim/installed command availability, MCP reachability/tools, bundled Skill source, and whether the Codex Skill is installed. `patchbay mcp doctor` starts the stdio MCP server, sends `initialize` and `tools/list`, and verifies required tools including `patchbay_agent`, `patchbay_plan`, `patchbay_context`, `patchbay_metrics`, and `patchbay_doctor`. For Codex, Claude Code, and Gemini, `mcp install` prints the registration command to run; Claude Desktop writes its JSON config in place.
+`patchbay doctor` is read-only and reports project initialization, phase config validity, CLI shim/installed command availability, MCP reachability/tools, bundled Skill source, and whether the Codex Skill is installed. `patchbay mcp doctor` starts the stdio MCP server, sends `initialize` and `tools/list`, and verifies required tools including `patchbay_agent`, `patchbay_plan`, `patchbay_context`, `patchbay_metrics`, and `patchbay_doctor`. For Codex, Claude Code, and Gemini, `mcp install` now tries to register automatically and falls back to the command text if the host CLI is unavailable; Claude Desktop writes its JSON config in place.
 
 ## Codex Skill Install
 

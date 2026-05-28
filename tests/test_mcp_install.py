@@ -69,6 +69,46 @@ class McpInstallTest(unittest.TestCase):
         self.assertIn("codex mcp add patchbay", result["command"])
         self.assertTrue(result["dry_run"])
 
+    def test_codex_install_executes_command_when_available(self) -> None:
+        from scripts.ai_flow import mcp_install
+        import subprocess
+
+        completed = subprocess.CompletedProcess(args=["codex"], returncode=0, stdout="ok\n", stderr="")
+        with unittest.mock.patch.object(mcp_install.subprocess, "run", return_value=completed) as run_mock:
+            result = mcp_install.install_codex(self.tmp, dry_run=False)
+
+        self.assertTrue(result["executed"])
+        self.assertEqual(result["exit_code"], 0)
+        self.assertEqual(result["stdout"], "ok\n")
+        self.assertEqual(result["stderr"], "")
+        self.assertIn("codex mcp add patchbay", result["command"])
+        self.assertTrue(run_mock.called)
+        argv = run_mock.call_args.args[0]
+        self.assertEqual(argv[:4], ["codex", "mcp", "add", "patchbay"])
+        self.assertIn("--", argv)
+
+    def test_codex_install_falls_back_when_cli_missing(self) -> None:
+        from scripts.ai_flow import mcp_install
+
+        with unittest.mock.patch.object(mcp_install.subprocess, "run", side_effect=FileNotFoundError("codex not found")):
+            result = mcp_install.install_codex(self.tmp, dry_run=False)
+
+        self.assertFalse(result["executed"])
+        self.assertIn("codex not found", result["error"])
+        self.assertIn("codex mcp add patchbay", result["command"])
+
+    def test_codex_install_treats_existing_registration_as_success(self) -> None:
+        from scripts.ai_flow import mcp_install
+        import subprocess
+
+        completed = subprocess.CompletedProcess(args=["codex"], returncode=1, stdout="", stderr="server patchbay already exists\n")
+        with unittest.mock.patch.object(mcp_install.subprocess, "run", return_value=completed):
+            result = mcp_install.install_codex(self.tmp, dry_run=False)
+
+        self.assertTrue(result["executed"])
+        self.assertTrue(result["already_registered"])
+        self.assertIsNone(result["error"])
+
     def test_claude_dry_run_returns_command(self) -> None:
         from scripts.ai_flow.mcp_install import install_claude
         result = install_claude(self.tmp, dry_run=True)

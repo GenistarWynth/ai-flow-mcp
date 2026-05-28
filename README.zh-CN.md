@@ -68,7 +68,7 @@ scripts\patchbay.cmd setup --host codex
 ### 交互式配置
 
 ```bash
-patchbay setup --host codex     # 初始化项目、本地配置、Codex Skill、MCP 注册提示和 doctor 摘要
+patchbay setup --host codex     # 初始化项目、本地配置、Codex Skill、MCP 注册尝试和 doctor 摘要
 patchbay config     # 交互式向导，无需手动编辑
 patchbay doctor     # 统一检查 config/MCP/Skill 是否就绪
 patchbay config --doctor     # 验证解析后的阶段配置
@@ -166,7 +166,7 @@ codex mcp add patchbay -- python scripts/patchbay_mcp_server.py
 
 Claude Desktop、Claude Code、Gemini CLI 或其他 MCP host 使用各自等价的 MCP server 注册方式即可。运行 `patchbay doctor` 做完整就绪检查，或运行 `patchbay mcp doctor` 只验证服务器是否可达。
 
-`patchbay doctor` 是只读检查，会汇总项目初始化、阶段配置、CLI shim/已安装命令、MCP 可达性和工具列表、内置 Skill 源、Codex Skill 安装状态。`patchbay mcp doctor` 会真正启动 stdio MCP server，发送 `initialize` 和 `tools/list`，并检查 `patchbay_agent`、`patchbay_plan`、`patchbay_context`、`patchbay_metrics`、`patchbay_doctor` 等核心工具是否存在。Codex、Claude Code、Gemini 的 install 命令当前会打印 host 注册命令；Claude Desktop 会直接写入 JSON 配置。
+`patchbay doctor` 是只读检查，会汇总项目初始化、阶段配置、CLI shim/已安装命令、MCP 可达性和工具列表、内置 Skill 源、Codex Skill 安装状态。`patchbay mcp doctor` 会真正启动 stdio MCP server，发送 `initialize` 和 `tools/list`，并检查 `patchbay_agent`、`patchbay_plan`、`patchbay_context`、`patchbay_metrics`、`patchbay_doctor` 等核心工具是否存在。Codex、Claude Code、Gemini 的 install 命令会先尝试自动注册，若 host CLI 不可用则回退为可复制的注册命令；Claude Desktop 会直接写入 JSON 配置。
 
 安装后可用的 MCP 工具包括：
 

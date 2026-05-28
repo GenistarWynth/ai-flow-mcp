@@ -1,7 +1,8 @@
 """MCP host registration helpers — no hand-editing JSON/TOML required.
 
-``patchbay mcp install <host>`` writes or prints the registration for the
-local Patchbay MCP server.  Supported hosts:
+``patchbay mcp install <host>`` writes or runs the registration for the local
+Patchbay MCP server, falling back to a copyable command when a host CLI is not
+available.  Supported hosts:
 
     codex       Codex CLI / Codex Desktop
     claude      Claude Code
@@ -44,22 +45,121 @@ def _server_argv(root: Path) -> list[str]:
     return ["patchbay-mcp", "--root", str(root)]
 
 
+def _host_install_argv(host: str, root: Path) -> list[str] | None:
+    server_argv = _server_argv(root)
+    host_lower = host.lower()
+    if host_lower in {"codex", "claude", "claude-code", "gemini"}:
+        cli = "claude" if host_lower.startswith("claude") and host_lower != "claude-desktop" else host_lower
+        return [cli, "mcp", "add", SERVER_NAME, "--", *server_argv]
+    return None
+
+
+def _execute_host_install(host: str, root: Path) -> dict[str, Any]:
+    argv = _host_install_argv(host, root)
+    if not argv:
+        return {"executed": False, "already_registered": False, "exit_code": None, "stdout": "", "stderr": "", "error": None}
+    try:
+        completed = subprocess.run(
+            argv,
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        return {
+            "executed": False,
+            "already_registered": False,
+            "exit_code": None,
+            "stdout": "",
+            "stderr": "",
+            "error": str(exc),
+        }
+    combined_output = "\n".join(part for part in (completed.stdout or "", completed.stderr or "") if part)
+    if completed.returncode != 0 and _already_registered(combined_output):
+        return {
+            "executed": True,
+            "already_registered": True,
+            "exit_code": completed.returncode,
+            "stdout": completed.stdout or "",
+            "stderr": completed.stderr or "",
+            "error": None,
+        }
+    if completed.returncode != 0:
+        return {
+            "executed": False,
+            "already_registered": False,
+            "exit_code": completed.returncode,
+            "stdout": completed.stdout or "",
+            "stderr": completed.stderr or "",
+            "error": (completed.stderr or completed.stdout or f"exit code {completed.returncode}").strip(),
+        }
+    return {
+        "executed": True,
+        "already_registered": False,
+        "exit_code": completed.returncode,
+        "stdout": completed.stdout or "",
+        "stderr": completed.stderr or "",
+        "error": None,
+    }
+
+
+def _already_registered(output: str) -> bool:
+    lowered = output.lower()
+    return SERVER_NAME in lowered and any(
+        phrase in lowered
+        for phrase in (
+            "already exists",
+            "already registered",
+            "exists already",
+        )
+    )
+
+
 def install_codex(root: Path, dry_run: bool = False, *, host_name: str = "codex") -> dict[str, Any]:
-    """Print the ``codex mcp add`` command for Codex CLI / Codex Desktop."""
+    """Register the server with Codex CLI / Codex Desktop."""
     cmd = _server_command(root)
     full = f"codex mcp add {SERVER_NAME} -- {cmd}"
     if dry_run:
         return {"host": host_name, "command": full, "dry_run": True}
-    return {"host": host_name, "command": full, "note": "Run the command above in your terminal to register the MCP server."}
+    result = _execute_host_install("codex", root)
+    if result["executed"]:
+        return {
+            "host": host_name,
+            "command": full,
+            **result,
+            "note": "MCP server registered successfully.",
+        }
+    return {
+        "host": host_name,
+        "command": full,
+        **result,
+        "note": "Run the command above in your terminal to register the MCP server.",
+    }
 
 
 def install_claude(root: Path, dry_run: bool = False, *, host_name: str = "claude") -> dict[str, Any]:
-    """Print the ``claude mcp add`` command for Claude Code."""
+    """Register the server with Claude Code."""
     cmd = _server_command(root)
     full = f"claude mcp add {SERVER_NAME} -- {cmd}"
     if dry_run:
         return {"host": host_name, "command": full, "dry_run": True}
-    return {"host": host_name, "command": full, "note": "Run the command above in your terminal to register the MCP server."}
+    result = _execute_host_install("claude", root)
+    if result["executed"]:
+        return {
+            "host": host_name,
+            "command": full,
+            **result,
+            "note": "MCP server registered successfully.",
+        }
+    return {
+        "host": host_name,
+        "command": full,
+        **result,
+        "note": "Run the command above in your terminal to register the MCP server.",
+    }
 
 
 def install_claude_desktop(root: Path, dry_run: bool = False, *, host_name: str = "claude-desktop") -> dict[str, Any]:
@@ -106,14 +206,23 @@ def install_claude_desktop(root: Path, dry_run: bool = False, *, host_name: str 
 
 
 def install_gemini(root: Path, dry_run: bool = False, *, host_name: str = "gemini") -> dict[str, Any]:
-    """Print instructions for Gemini CLI MCP registration."""
+    """Register the server with Gemini CLI."""
     cmd = _server_command(root)
     full = f"gemini mcp add {SERVER_NAME} -- {cmd}"
     if dry_run:
         return {"host": host_name, "command": full, "dry_run": True}
+    result = _execute_host_install("gemini", root)
+    if result["executed"]:
+        return {
+            "host": host_name,
+            "command": full,
+            **result,
+            "note": "MCP server registered successfully.",
+        }
     return {
         "host": host_name,
         "command": full,
+        **result,
         "note": "Run the command above in your terminal, or use the Gemini CLI MCP config UI.",
     }
 

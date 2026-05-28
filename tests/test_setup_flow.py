@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -85,6 +86,24 @@ class SetupFlowTest(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertTrue((self.repo / ".ai" / "patchbay.toml").exists())
         self.assertTrue((self.skills / "patchbay" / "SKILL.md").exists())
+
+    def test_setup_omits_manual_mcp_step_after_successful_registration(self) -> None:
+        from scripts.ai_flow import setup_flow
+
+        mcp_result = {
+            "host": "codex",
+            "command": "codex mcp add patchbay -- python scripts/patchbay_mcp_server.py",
+            "executed": True,
+            "exit_code": 0,
+            "stdout": "",
+            "stderr": "",
+            "note": "MCP server registered successfully.",
+        }
+        with mock.patch.object(setup_flow, "run_mcp_install", return_value=mcp_result):
+            result = setup_flow.run_setup(self.repo, skill_path=self.skills)
+
+        self.assertIn("MCP server registered successfully.", result["next_actions"])
+        self.assertFalse(any(str(item).startswith("Register the MCP server with:") for item in result["next_actions"]))
 
     def test_mcp_setup_tool_wraps_same_flow(self) -> None:
         from scripts.ai_flow import mcp_server
