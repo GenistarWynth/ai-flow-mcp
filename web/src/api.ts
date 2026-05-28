@@ -112,7 +112,18 @@ export type DoctorReport = {
 
 export type SetupResult = {
   ok?: boolean;
+  dry_run?: boolean;
+  root?: string;
   doctor?: DoctorReport;
+  mcp?: {
+    host?: string;
+    command?: string;
+    executed?: boolean;
+    dry_run?: boolean;
+    note?: string;
+    error?: string | null;
+    [key: string]: unknown;
+  };
   next_actions?: string[];
   [key: string]: unknown;
 };
@@ -241,6 +252,7 @@ export type AgentResponse = {
   recent_run?: RunSummary | null;
   doctor?: DoctorReport;
   setup?: SetupResult;
+  setup_host?: string;
   capabilities?: { name: string; summary: string }[];
   next_actions?: string[];
   recommendations?: string[];

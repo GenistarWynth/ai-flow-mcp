@@ -55,6 +55,11 @@ type LocalReplyAction = {
   message: string;
   icon: "play" | "settings" | "shield" | "search";
 };
+type SetupHostOption = {
+  id: string;
+  label: string;
+  message: string;
+};
 
 const phases = ["plan", "approve", "write", "test", "review", "fix", "apply", "cleanup"];
 const phaseLabels: Record<string, string> = {
@@ -117,10 +122,26 @@ const tabLabels: Record<TabName, string> = {
 };
 const defaultClient = createPatchbayClient();
 const busyStatuses = new Set(["IMPLEMENTING", "TESTING", "REVIEWING", "FIXING", "RUNNING"]);
+const setupHostOptions: SetupHostOption[] = [
+  { id: "codex", label: "Codex", message: "patchbay setup" },
+  { id: "claude-code", label: "Claude Code", message: "patchbay setup for claude-code" },
+  { id: "claude-desktop", label: "Claude Desktop", message: "patchbay setup for claude-desktop" },
+  { id: "gemini", label: "Gemini", message: "install patchbay for gemini" }
+];
+const setupHostLabels = new Map(setupHostOptions.map((host) => [host.id, host.label]));
 
 function phaseLabel(phase?: string) {
   if (!phase) return "空闲";
   return phaseLabels[phase] ?? phase;
+}
+
+function setupHostLabel(host?: string | null) {
+  if (!host) return "Codex";
+  return setupHostLabels.get(host) ?? host;
+}
+
+function setupMessageToHost(message: string) {
+  return setupHostOptions.find((host) => host.message === message) ?? setupHostOptions[0];
 }
 
 function statusLabel(status?: string | null) {
@@ -170,6 +191,10 @@ function mapLocalReplyAction(raw: string): LocalReplyAction | null {
     return { id: "readiness", label: "就绪", message: "readiness", icon: "shield" };
   }
   if (text.includes("setup") || text.includes("install")) {
+    const setupHost = setupHostOptions.find((host) => text.includes(host.id));
+    if (setupHost) {
+      return { id: `setup-${setupHost.id}`, label: setupHost.label, message: setupHost.message, icon: "settings" };
+    }
     return { id: "setup", label: "运行 setup", message: "patchbay setup", icon: "settings" };
   }
   if (text.includes("runs") || text.includes("status")) {
@@ -766,12 +791,12 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }));
   };
 
-  const runSetupAction = async () => {
+  const runSetupAction = async (host: SetupHostOption = setupHostOptions[0]) => {
     if (setupInFlight) return;
     setError("");
     setSetupInFlight(true);
     try {
-      const response = await client.agentMessage("patchbay setup");
+      const response = await client.agentMessage(host.message);
       const setupDoctor = response.setup?.doctor ?? response.doctor;
       if (!selectedRun) setNewTaskReply(response);
       if (setupDoctor) {
@@ -817,8 +842,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   };
 
   const runLocalReplyAction = async (action: LocalReplyAction) => {
-    if (action.id === "setup") {
-      await runSetupAction();
+    if (action.id.startsWith("setup")) {
+      await runSetupAction(setupMessageToHost(action.message));
       return;
     }
     if (action.id === "apply-economy") {
@@ -990,11 +1015,13 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                     就绪
                   </button>
                 </div>
+                <SetupHostButtons onRunSetup={runSetupAction} setupBusy={setupInFlight} />
               </div>
               {localRunMessages.map((message) => (
                 <ChatBubble key={message.id} role="user" title="本地消息" body={message.body} timestamp={message.timestamp} />
               ))}
               {newTaskReply ? <ChatBubble role="assistant" title="Patchbay Agent" body={newTaskReply.reply} tone={newTaskReply.ok === false ? "failed" : "ready"} /> : null}
+              {newTaskReply?.setup ? <SetupResultCard response={newTaskReply} /> : null}
               {localReplySuggestions.length ? (
                 <div className="empty-actions local-agent-actions" aria-label="Agent 建议动作">
                   {localReplySuggestions.map((action) => (
@@ -1329,6 +1356,73 @@ function MetricsGrid({ metrics }: { metrics?: RunMetrics | null }) {
   );
 }
 
+function SetupHostButtons({
+  onRunSetup,
+  setupBusy,
+  compact = false
+}: {
+  onRunSetup: (host?: SetupHostOption) => void;
+  setupBusy?: boolean;
+  compact?: boolean;
+}) {
+  return (
+    <div className={`setup-hosts ${compact ? "compact" : ""}`} aria-label="Setup host">
+      {setupHostOptions.map((host) => (
+        <button
+          className="setup-host"
+          type="button"
+          key={host.id}
+          aria-label={`Setup ${host.label}`}
+          onClick={() => onRunSetup(host)}
+          disabled={setupBusy}
+        >
+          {host.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function SetupResultCard({ response }: { response: AgentResponse }) {
+  const setup = response.setup;
+  if (!setup) return null;
+  const mcp = setup.mcp;
+  const host = String(response.setup_host ?? mcp?.host ?? "codex");
+  const command = typeof mcp?.command === "string" ? mcp.command : "";
+  const note = typeof mcp?.note === "string" ? mcp.note : "";
+  const root = typeof setup.root === "string" ? setup.root : "";
+  const nextActions = setup.next_actions ?? [];
+  return (
+    <div className="setup-result-card" aria-label="Setup result">
+      <div className="setup-result-head">
+        <Settings size={15} />
+        <strong>{setupHostLabel(host)}</strong>
+        <span>{setup.ok ? "ready" : setup.dry_run ? "dry run" : "needs follow-up"}</span>
+      </div>
+      {root ? (
+        <div className="setup-result-row">
+          <span>root</span>
+          <code>{root}</code>
+        </div>
+      ) : null}
+      {command ? (
+        <div className="setup-result-row">
+          <span>MCP</span>
+          <code>{command}</code>
+        </div>
+      ) : null}
+      {note ? <p>{note}</p> : null}
+      {nextActions.length ? (
+        <div className="setup-result-actions">
+          {nextActions.slice(0, 3).map((action) => (
+            <span key={action}>{action}</span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function DoctorPanel({
   report,
   onRunSetup,
@@ -1337,7 +1431,7 @@ function DoctorPanel({
   profileBusy
 }: {
   report?: DoctorReport | null;
-  onRunSetup?: () => void;
+  onRunSetup?: (host?: SetupHostOption) => void;
   onApplyEconomy?: () => void;
   setupBusy?: boolean;
   profileBusy?: boolean;
@@ -1349,10 +1443,11 @@ function DoctorPanel({
     <div className="doctor-panel">
       {onRunSetup ? (
         <div className="doctor-toolbar">
-          <button className="doctor-setup-button" type="button" onClick={onRunSetup} disabled={setupBusy}>
+          <button className="doctor-setup-button" type="button" onClick={() => onRunSetup()} disabled={setupBusy}>
             {setupBusy ? <RefreshCw size={14} /> : <Settings size={14} />}
             {setupBusy ? "运行中" : "运行 setup"}
           </button>
+          <SetupHostButtons onRunSetup={onRunSetup} setupBusy={setupBusy} compact />
         </div>
       ) : null}
       <div className={`doctor-summary ${report?.ok ? "ready" : "blocked"}`}>
@@ -1461,7 +1556,7 @@ function DetailPanel({
   artifactText: string;
   config: unknown;
   doctor: DoctorReport | null;
-  onRunSetup?: () => void;
+  onRunSetup?: (host?: SetupHostOption) => void;
   onApplyEconomy?: () => void;
   setupBusy?: boolean;
   profileBusy?: boolean;

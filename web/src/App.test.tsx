@@ -453,6 +453,47 @@ describe("Workbench", () => {
     expect(await screen.findByText("环境就绪")).toBeVisible();
   });
 
+  it("runs host-aware setup from the empty state and shows MCP guidance", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "setup",
+      ok: true,
+      reply: "Patchbay setup completed with follow-up steps.",
+      setup_host: "claude-desktop",
+      setup: {
+        ok: true,
+        root: "C:/repo",
+        mcp: {
+          host: "claude-desktop",
+          command: "claude mcp add patchbay -- python scripts/patchbay_mcp_server.py",
+          executed: false
+        },
+        doctor: {
+          ok: true,
+          root: "C:/repo",
+          checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true } },
+          next_actions: []
+        },
+        next_actions: ["Register the MCP server with: claude mcp add patchbay -- python scripts/patchbay_mcp_server.py"]
+      }
+    });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      agentMessage
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.click(screen.getByRole("button", { name: "Setup Claude Desktop" }));
+
+    await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("patchbay setup for claude-desktop"));
+    const setupResult = await screen.findByLabelText("Setup result");
+    expect(within(setupResult).getByText("Claude Desktop")).toBeVisible();
+    expect(within(setupResult).getByText("claude mcp add patchbay -- python scripts/patchbay_mcp_server.py")).toBeVisible();
+    expect(within(setupResult).getByText("Register the MCP server with: claude mcp add patchbay -- python scripts/patchbay_mcp_server.py")).toBeVisible();
+  });
+
   it("runs local setup from the readiness panel without creating a run", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: null,
@@ -483,6 +524,40 @@ describe("Workbench", () => {
     await userEvent.click(within(details).getByRole("button", { name: "运行 setup" }));
 
     await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("patchbay setup"));
+    expect(await screen.findByText("环境就绪")).toBeVisible();
+    expect(client.getStatus).not.toHaveBeenCalled();
+  });
+
+  it("runs host-aware setup from the readiness panel without creating a run", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "setup",
+      ok: true,
+      reply: "Patchbay setup completed.",
+      setup_host: "gemini",
+      setup: {
+        doctor: {
+          ok: true,
+          root: "C:/repo",
+          checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true } },
+          next_actions: []
+        }
+      }
+    });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      agentMessage
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    await userEvent.click(within(details).getByRole("button", { name: "Setup Gemini" }));
+
+    await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("install patchbay for gemini"));
     expect(await screen.findByText("环境就绪")).toBeVisible();
     expect(client.getStatus).not.toHaveBeenCalled();
   });

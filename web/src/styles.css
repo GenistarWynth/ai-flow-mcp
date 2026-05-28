@@ -137,6 +137,93 @@ textarea { resize: none; }
   border-color: #cfe0ff;
   background: #edf4ff;
 }
+.setup-hosts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  max-width: 420px;
+  margin-top: 2px;
+}
+.setup-hosts.compact {
+  justify-content: flex-end;
+  max-width: none;
+  margin-top: 0;
+}
+.setup-host {
+  min-height: 28px;
+  border: 1px solid #d9dee6;
+  border-radius: 8px;
+  padding: 0 9px;
+  color: #344255;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.setup-host:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+.setup-result-card {
+  justify-self: center;
+  display: grid;
+  gap: 8px;
+  width: min(820px, 100%);
+  border: 1px solid #d9dee6;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fbfcfe;
+  color: #344255;
+}
+.setup-result-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.setup-result-head strong { color: #172033; }
+.setup-result-head span {
+  margin-left: auto;
+  color: #168a54;
+  font-size: 12px;
+  font-weight: 800;
+}
+.setup-result-row {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+.setup-result-row span {
+  color: #647083;
+  font-size: 12px;
+  font-weight: 800;
+}
+.setup-result-row code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #172033;
+  font-size: 12px;
+}
+.setup-result-card p {
+  margin: 0;
+  color: #647083;
+  font-size: 12px;
+}
+.setup-result-actions {
+  display: grid;
+  gap: 5px;
+}
+.setup-result-actions span {
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 6px 8px;
+  color: #174ea6;
+  background: #eff6ff;
+  font-size: 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
 .chat-bubble {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr);
@@ -319,7 +406,7 @@ button.danger { color: #b42318; border-color: #f0b6b2; background: #fff8f7; }
 .phase-metrics span { border: 1px solid #d9dee6; border-radius: 8px; padding: 5px 7px; color: #344255; background: #fbfcfe; font-size: 12px; font-weight: 700; }
 .doctor-panel { display: grid; align-content: start; gap: 14px; padding: 14px; }
 .doctor-panel h2 { margin: 0 0 8px; font-size: 13px; color: #344255; }
-.doctor-toolbar { display: flex; justify-content: flex-end; }
+.doctor-toolbar { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .doctor-setup-button {
   display: inline-flex;
   align-items: center;
