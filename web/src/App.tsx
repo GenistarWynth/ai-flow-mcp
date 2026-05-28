@@ -186,6 +186,9 @@ function localReplyActions(response: AgentResponse | null): LocalReplyAction[] {
 
 function mapLocalReplyAction(raw: string): LocalReplyAction | null {
   const text = raw.toLowerCase();
+  if (text.includes("open latest") || text.includes("select latest")) {
+    return { id: "open-latest-run", label: "打开最近运行", message: "open latest run", icon: "search" };
+  }
   if (text.includes("economy") || text.includes("deepseek") || text.includes("reasonix")) {
     return { id: "apply-economy", label: "经济路由", message: "apply economy profile", icon: "play" };
   }
@@ -531,15 +534,15 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     setRuns((current) => current.map((run) => (run.run_id === runId ? { ...run, ...patch } : run)));
   };
 
-  const loadRuns = async (preferredRunId?: string) => {
+  const loadRuns = async (preferredRunId?: string, options: { autoSelect?: boolean } = {}) => {
     const result = await client.listRuns();
-    const nextRuns = result.runs ?? [];
+    const nextRuns = result?.runs ?? [];
     setRuns(nextRuns);
     if (preferredRunId) {
       setSelectedRun(preferredRunId);
       return nextRuns;
     }
-    if (!selectedRun && !newTaskMode && nextRuns[0]) setSelectedRun(nextRuns[0].run_id);
+    if (options.autoSelect !== false && !selectedRun && !newTaskMode && nextRuns[0]) setSelectedRun(nextRuns[0].run_id);
     return nextRuns;
   };
 
@@ -857,6 +860,18 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       await openReadinessAction();
       return;
     }
+    if (action.id === "open-latest-run") {
+      const runId = newTaskReply?.run_reference?.run_id ?? newTaskReply?.recent_run?.run_id;
+      if (!runId) {
+        setError("No recent run was returned by Patchbay Agent.");
+        return;
+      }
+      setError("");
+      setNewTaskMode(false);
+      setNewTaskReply(null);
+      await loadRuns(runId);
+      return;
+    }
     if (action.id === "start") {
       composerRef.current?.focus();
       return;
@@ -886,9 +901,10 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         setNewTaskReply(null);
         if (!created.run_id) {
           appendLocalMessage(text);
+          setNewTaskMode(true);
           setNewTaskReply(created);
           if (created.doctor) setDoctor(created.doctor);
-          await loadRuns();
+          await loadRuns(undefined, { autoSelect: false });
           return;
         }
         setNewTaskMode(false);

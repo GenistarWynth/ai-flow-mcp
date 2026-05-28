@@ -430,6 +430,64 @@ describe("Workbench", () => {
     expect(client.getStatus).not.toHaveBeenCalled();
   });
 
+  it("opens the latest run from a missing-run reply without advancing gates", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "missing_run",
+      ok: false,
+      reply: "`continue` needs an existing run_id. Latest run is run-ready (PLANNED). Open that run first.",
+      next_actions: ["open latest run", "runs", "readiness"],
+      recent_run: { run_id: "run-ready", task: "Approve a plan", status: "PLANNED" },
+      run_reference: {
+        run_id: "run-ready",
+        task: "Approve a plan",
+        status: "PLANNED",
+        suggested_message: "open latest run",
+        safe_actions: ["open_run", "status", "events"]
+      },
+      runs: { count: 1, runs: [{ run_id: "run-ready", task: "Approve a plan", status: "PLANNED" }] }
+    });
+    const client = createClient({
+      listRuns: vi
+        .fn()
+        .mockResolvedValueOnce({ runs: [] })
+        .mockResolvedValue({ runs: [{ run_id: "run-ready", task: "Approve a plan", status: "PLANNED" }] }),
+      agentMessage,
+      getStatus: vi.fn().mockResolvedValue({
+        run_id: "run-ready",
+        task: "Approve a plan",
+        status: "PLANNED",
+        current_phase: "plan",
+        gate_state: { approved: false, tests_passed: false, review_result: null, ready_to_apply: false },
+        next_commands: ["approve"],
+        artifacts: [],
+        effective_phase_providers: {}
+      }),
+      getContext: vi.fn().mockResolvedValue({ ...plannedContext, run_id: "run-ready" })
+    });
+
+    render(<Workbench client={client} />);
+
+    await waitFor(() => expect(client.listRuns).toHaveBeenCalled());
+    const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(composer, "continue{enter}");
+
+    const openLatest = await screen.findByRole("button", { name: /open latest run/ });
+    expect(openLatest).toBeVisible();
+    await userEvent.click(openLatest);
+
+    expect(await screen.findByRole("heading", { name: "Approve a plan" })).toBeInTheDocument();
+    await waitFor(() => expect(client.getContext).toHaveBeenCalledWith("run-ready"));
+    expect(agentMessage).toHaveBeenCalledTimes(1);
+    expect(agentMessage).toHaveBeenCalledWith("continue", { include: { plan: true }, background: true });
+    expect(agentMessage).not.toHaveBeenCalledWith("continue", expect.objectContaining({ runId: "run-ready" }));
+    expect(agentMessage).not.toHaveBeenCalledWith("approve", expect.anything());
+    expect(agentMessage).not.toHaveBeenCalledWith("apply", expect.anything());
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+    expect(client.cleanup).not.toHaveBeenCalled();
+  });
+
   it("runs local setup from the empty state and exposes readiness immediately", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: null,

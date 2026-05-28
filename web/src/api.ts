@@ -283,6 +283,7 @@ export type AgentResponse = {
   context?: HandoffContext | null;
   runs?: { count?: number; runs?: RunSummary[] };
   recent_run?: RunSummary | null;
+  run_reference?: (RunSummary & { suggested_message?: string; safe_actions?: string[] }) | null;
   doctor?: DoctorReport;
   setup?: SetupResult;
   setup_host?: string;

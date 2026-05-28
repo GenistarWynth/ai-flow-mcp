@@ -295,6 +295,9 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertFalse(response["ok"])
         self.assertIsNone(response["run_id"])
         self.assertIn("needs an existing run_id", response["reply"])
+        self.assertIsNone(response["recent_run"])
+        self.assertIsNone(response["run_reference"])
+        self.assertEqual(response["next_actions"], ["start", "readiness"])
         self.assertEqual(len(list((self.repo / ".ai" / "runs").iterdir())), 0)
 
     def test_agent_apply_without_run_returns_local_guidance(self) -> None:
@@ -304,6 +307,37 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertFalse(response["ok"])
         self.assertIsNone(response["run_id"])
         self.assertIn("needs an existing run_id", response["reply"])
+
+    def test_agent_continue_without_run_points_to_latest_run_without_advancing(self) -> None:
+        planned = agent_message(self.repo, "latest handoff target")
+        run_id = planned["run_id"]
+
+        response = agent_message(self.repo, "continue")
+
+        self.assertEqual(response["action"], "missing_run")
+        self.assertFalse(response["ok"])
+        self.assertIsNone(response["run_id"])
+        self.assertEqual(response["recent_run"]["run_id"], run_id)
+        self.assertEqual(response["run_reference"]["run_id"], run_id)
+        self.assertEqual(response["run_reference"]["status"], "PLANNED")
+        self.assertEqual(response["run_reference"]["safe_actions"], ["open_run", "status", "events"])
+        self.assertIn("open latest run", response["next_actions"])
+        self.assertNotIn("continue", response["next_actions"])
+        self.assertNotIn("approve", response["next_actions"])
+        self.assertNotIn("apply", response["next_actions"])
+        self.assertFalse((self.repo / ".ai" / "runs" / run_id / "APPROVAL.json").exists())
+
+    def test_agent_approve_without_run_points_to_latest_run_without_confirming(self) -> None:
+        planned = agent_message(self.repo, "latest approval handoff")
+        run_id = planned["run_id"]
+
+        response = agent_message(self.repo, "approve")
+
+        self.assertEqual(response["action"], "missing_run")
+        self.assertEqual(response["recent_run"]["run_id"], run_id)
+        self.assertEqual(response["run_reference"]["run_id"], run_id)
+        self.assertIn("open latest run", response["next_actions"])
+        self.assertFalse((self.repo / ".ai" / "runs" / run_id / "APPROVAL.json").exists())
 
     def test_agent_review_code_remains_a_new_task(self) -> None:
         response = agent_message(self.repo, "review code quality")
@@ -586,6 +620,7 @@ class AgentWorkflowTests(AgentTestCase):
         payload = json.loads(response["result"]["content"][0]["text"])
         self.assertEqual(payload["action"], "missing_run")
         self.assertFalse(payload["ok"])
+        self.assertIsNone(payload["run_reference"])
 
     def test_cli_agent_message(self) -> None:
         response = self.cli_json("agent", "message", "cli agent task", "--include-plan")
@@ -644,6 +679,7 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertEqual(response["action"], "missing_run")
         self.assertFalse(response["ok"])
         self.assertIsNone(response["run_id"])
+        self.assertIsNone(response["run_reference"])
 
     def test_agent_background_start_returns_pollable_job(self) -> None:
         response = agent_message(self.repo, "background agent plan", background=True)

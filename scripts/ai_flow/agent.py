@@ -916,13 +916,22 @@ def _metrics_response(root: Path, run_id: str) -> dict[str, Any]:
 def _missing_run_response(root: Path, text: str) -> dict[str, Any]:
     report = service.runs(root, limit=5)
     recent = list(report.get("runs") or [])
+    run_reference = None
     if recent:
         latest = recent[0]
+        run_reference = {
+            "run_id": latest.get("run_id"),
+            "status": latest.get("status"),
+            "task": latest.get("task"),
+            "updated_at": latest.get("updated_at"),
+            "suggested_message": "open latest run",
+            "safe_actions": ["open_run", "status", "events"],
+        }
         reply = (
             f"`{text}` needs an existing run_id. Latest run is {latest.get('run_id')} "
-            f"({latest.get('status') or 'unknown'}); pass that run_id to inspect or continue it."
+            f"({latest.get('status') or 'unknown'}). Open that run first, then choose the next gated action."
         )
-        next_actions = ["status", "runs", "readiness"]
+        next_actions = ["open latest run", "runs", "readiness"]
     else:
         reply = f"`{text}` needs an existing run_id, but no Patchbay runs were found. Send a task to start with a plan."
         next_actions = ["start", "readiness"]
@@ -932,7 +941,7 @@ def _missing_run_response(root: Path, text: str) -> dict[str, Any]:
         ok=False,
         error=reply,
         next_actions=next_actions,
-        extra={"runs": report, "recent_run": recent[0] if recent else None},
+        extra={"runs": report, "recent_run": recent[0] if recent else None, "run_reference": run_reference},
     )
 
 
