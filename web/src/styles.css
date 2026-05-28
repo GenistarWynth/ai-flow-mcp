@@ -116,6 +116,26 @@ textarea { resize: none; }
   text-align: center;
 }
 .empty-thread strong { font-size: 18px; }
+.empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 6px; }
+.empty-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  border: 1px solid #2457c5;
+  border-radius: 8px;
+  padding: 0 12px;
+  color: #ffffff;
+  background: #2457c5;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.empty-action.secondary {
+  color: #174ea6;
+  border-color: #cfe0ff;
+  background: #edf4ff;
+}
 .chat-bubble {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr);

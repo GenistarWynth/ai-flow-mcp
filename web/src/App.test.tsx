@@ -355,6 +355,40 @@ describe("Workbench", () => {
     expect(client.getStatus).not.toHaveBeenCalled();
   });
 
+  it("runs local setup from the empty state and exposes readiness immediately", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "setup",
+      ok: true,
+      reply: "Patchbay setup completed.",
+      setup: {
+        doctor: {
+          ok: true,
+          root: "C:/repo",
+          checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true } },
+          next_actions: []
+        }
+      }
+    });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      agentMessage
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    expect(screen.getByRole("button", { name: "运行 setup" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "就绪" })).toBeVisible();
+
+    await userEvent.click(screen.getByRole("button", { name: "运行 setup" }));
+    await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("patchbay setup"));
+    expect(await screen.findByText("Patchbay setup completed.")).toBeVisible();
+
+    await userEvent.click(screen.getByRole("button", { name: "就绪" }));
+    expect(await screen.findByText("环境就绪")).toBeVisible();
+  });
+
   it("runs local setup from the readiness panel without creating a run", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: null,
@@ -381,7 +415,8 @@ describe("Workbench", () => {
     await userEvent.click(screen.getByRole("button", { name: "诊断" }));
     await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
     expect(await screen.findByText("需要处理")).toBeVisible();
-    await userEvent.click(screen.getByRole("button", { name: "运行 setup" }));
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    await userEvent.click(within(details).getByRole("button", { name: "运行 setup" }));
 
     await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("patchbay setup"));
     expect(await screen.findByText("环境就绪")).toBeVisible();

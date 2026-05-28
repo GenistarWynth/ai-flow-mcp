@@ -645,13 +645,14 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }));
   };
 
-  const runSetupFromDiagnostics = async () => {
+  const runSetupAction = async () => {
     if (setupInFlight) return;
     setError("");
     setSetupInFlight(true);
     try {
       const response = await client.agentMessage("patchbay setup");
       const setupDoctor = response.setup?.doctor ?? response.doctor;
+      if (!selectedRun) setNewTaskReply(response);
       if (setupDoctor) {
         setDoctor(setupDoctor);
       } else {
@@ -796,6 +797,23 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                 <Bot size={28} />
                 <strong>告诉 Patchbay Agent 要做什么</strong>
                 <span>它会先生成计划，后续批准、实现、测试、审查和应用都从这个线程推进。</span>
+                <div className="empty-actions">
+                  <button className="empty-action" type="button" onClick={() => void runSetupAction()} disabled={setupInFlight}>
+                    {setupInFlight ? <RefreshCw size={14} /> : <Settings size={14} />}
+                    {setupInFlight ? "运行中" : "运行 setup"}
+                  </button>
+                  <button
+                    className="empty-action secondary"
+                    type="button"
+                    onClick={() => {
+                      setDiagnosticsOpen(true);
+                      setActiveTab("Readiness");
+                    }}
+                  >
+                    <ShieldCheck size={14} />
+                    就绪
+                  </button>
+                </div>
               </div>
               {localRunMessages.map((message) => (
                 <ChatBubble key={message.id} role="user" title="本地消息" body={message.body} timestamp={message.timestamp} />
@@ -875,7 +893,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
               artifactText={artifactText}
               config={config}
               doctor={doctor}
-              onRunSetup={runSetupFromDiagnostics}
+              onRunSetup={runSetupAction}
               setupBusy={setupInFlight}
               status={activeStatus}
               context={activeContext}
