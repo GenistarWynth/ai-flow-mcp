@@ -336,9 +336,11 @@ button.danger { color: #b42318; border-color: #f0b6b2; background: #fff8f7; }
 .doctor-summary strong, .doctor-summary span { display: block; min-width: 0; overflow-wrap: anywhere; }
 .doctor-summary span { margin-top: 3px; color: #647083; font-size: 12px; }
 .doctor-actions, .doctor-recommendations, .doctor-checks { display: grid; gap: 7px; }
-.doctor-actions span, .doctor-recommendations span, .doctor-check { border: 1px solid #d9dee6; border-radius: 8px; padding: 8px 10px; background: #ffffff; overflow-wrap: anywhere; }
+.doctor-actions span, .doctor-check { border: 1px solid #d9dee6; border-radius: 8px; padding: 8px 10px; background: #ffffff; overflow-wrap: anywhere; }
 .doctor-actions span { color: #344255; font-size: 12px; font-weight: 700; }
-.doctor-recommendations span { color: #174ea6; border-color: #bfdbfe; background: #eff6ff; font-size: 12px; font-weight: 700; }
+.doctor-recommendation { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; border: 1px solid #bfdbfe; border-radius: 8px; padding: 8px 10px; color: #174ea6; background: #eff6ff; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
+.doctor-recommendation button { border: 1px solid #2f6fed; border-radius: 8px; padding: 5px 8px; color: #174ea6; background: #ffffff; font-size: 12px; font-weight: 800; white-space: nowrap; }
+.doctor-recommendation button:disabled { cursor: default; opacity: 0.65; }
 .doctor-check { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 8px; }
 .doctor-check span { color: #647083; font-size: 12px; font-weight: 700; }
 .doctor-check strong { font-size: 13px; }

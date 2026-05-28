@@ -423,6 +423,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const [submitting, setSubmitting] = useState(false);
   const [actionInFlight, setActionInFlight] = useState(false);
   const [setupInFlight, setSetupInFlight] = useState(false);
+  const [profileInFlight, setProfileInFlight] = useState(false);
   const [localMessages, setLocalMessages] = useState<Record<string, LocalMessage[]>>({});
   const [newTaskReply, setNewTaskReply] = useState<AgentResponse | null>(null);
 
@@ -707,6 +708,24 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }
   };
 
+  const applyEconomyProfileAction = async () => {
+    if (profileInFlight) return;
+    setError("");
+    setProfileInFlight(true);
+    try {
+      const response = await client.agentMessage("apply economy profile");
+      if (!selectedRun) setNewTaskReply(response);
+      const [nextDoctor, nextConfig] = await Promise.all([client.getDoctor({ include_mcp: false }), client.getConfig()]);
+      setDoctor(nextDoctor);
+      setConfig(nextConfig);
+      await loadRuns(selectedRun || undefined);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setProfileInFlight(false);
+    }
+  };
+
   const submitComposer = async (event?: FormEvent) => {
     event?.preventDefault();
     const text = composer.trim();
@@ -935,7 +954,9 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
               config={config}
               doctor={doctor}
               onRunSetup={runSetupAction}
+              onApplyEconomy={applyEconomyProfileAction}
               setupBusy={setupInFlight}
+              profileBusy={profileInFlight}
               status={activeStatus}
               context={activeContext}
               activity={activity}
@@ -1146,11 +1167,15 @@ function MetricsGrid({ metrics }: { metrics?: RunMetrics | null }) {
 function DoctorPanel({
   report,
   onRunSetup,
-  setupBusy
+  onApplyEconomy,
+  setupBusy,
+  profileBusy
 }: {
   report?: DoctorReport | null;
   onRunSetup?: () => void;
+  onApplyEconomy?: () => void;
   setupBusy?: boolean;
+  profileBusy?: boolean;
 }) {
   const checks = Object.entries(report?.checks ?? {});
   return (
@@ -1184,9 +1209,19 @@ function DoctorPanel({
         <section>
           <h2>建议</h2>
           <div className="doctor-recommendations">
-            {report.recommendations.map((recommendation) => (
-              <span key={recommendation}>{recommendation}</span>
-            ))}
+            {report.recommendations.map((recommendation) => {
+              const canApplyEconomy = /config profile apply economy|economy/i.test(recommendation);
+              return (
+                <div className="doctor-recommendation" key={recommendation}>
+                  <span>{recommendation}</span>
+                  {canApplyEconomy && onApplyEconomy ? (
+                    <button type="button" onClick={onApplyEconomy} disabled={profileBusy}>
+                      {profileBusy ? "应用中" : "应用经济路由"}
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         </section>
       ) : null}
@@ -1223,7 +1258,9 @@ function DetailPanel({
   config,
   doctor,
   onRunSetup,
+  onApplyEconomy,
   setupBusy,
+  profileBusy,
   status,
   context,
   activity
@@ -1237,7 +1274,9 @@ function DetailPanel({
   config: unknown;
   doctor: DoctorReport | null;
   onRunSetup?: () => void;
+  onApplyEconomy?: () => void;
   setupBusy?: boolean;
+  profileBusy?: boolean;
   status: RunStatus | null;
   context: HandoffContext | null;
   activity: AgentActivity;
@@ -1281,7 +1320,17 @@ function DetailPanel({
       </div>
     );
   }
-  if (tab === "Readiness") return <DoctorPanel report={doctor} onRunSetup={onRunSetup} setupBusy={setupBusy} />;
+  if (tab === "Readiness") {
+    return (
+      <DoctorPanel
+        report={doctor}
+        onRunSetup={onRunSetup}
+        onApplyEconomy={onApplyEconomy}
+        setupBusy={setupBusy}
+        profileBusy={profileBusy}
+      />
+    );
+  }
   if (tab === "Trace") {
     return (
       <div className="diagnostic-body">

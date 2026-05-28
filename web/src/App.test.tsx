@@ -482,9 +482,15 @@ describe("Workbench", () => {
   });
 
   it("shows non-blocking doctor recommendations in readiness", async () => {
-    const client = createClient({
-      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
-      getDoctor: vi.fn().mockResolvedValue({
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "profile_apply",
+      ok: true,
+      reply: "Economy routing profile applied."
+    });
+    const getDoctor = vi
+      .fn()
+      .mockResolvedValueOnce({
         ok: true,
         root: "C:/repo",
         checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true } },
@@ -493,6 +499,17 @@ describe("Workbench", () => {
           "Run `patchbay config profile apply economy` to route write/fix implementation work to Reasonix/DeepSeek."
         ]
       })
+      .mockResolvedValue({
+        ok: true,
+        root: "C:/repo",
+        checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true } },
+        next_actions: [],
+        recommendations: []
+      });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      getDoctor,
+      agentMessage
     });
 
     render(<Workbench client={client} />);
@@ -503,6 +520,11 @@ describe("Workbench", () => {
 
     expect(await screen.findByText("建议")).toBeVisible();
     expect(screen.getByText(/patchbay config profile apply economy/)).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "应用经济路由" }));
+
+    await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("apply economy profile"));
+    expect(await screen.findByText("Economy routing profile applied.")).toBeVisible();
+    expect(client.getConfig).toHaveBeenCalled();
   });
 
   it("maps approve intent through the confirmation gate", async () => {
