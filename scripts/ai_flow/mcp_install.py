@@ -68,7 +68,7 @@ def _execute_host_install(host: str, root: Path) -> dict[str, Any]:
             errors="replace",
             check=False,
         )
-    except FileNotFoundError as exc:
+    except OSError as exc:
         return {
             "executed": False,
             "already_registered": False,
@@ -287,6 +287,7 @@ def _probe_mcp_server(root: Path) -> dict[str, Any]:
         "patchbay_context",
         "patchbay_metrics",
         "patchbay_setup",
+        "patchbay_install",
         "patchbay_events",
         "patchbay_apply",
         "patchbay_doctor",

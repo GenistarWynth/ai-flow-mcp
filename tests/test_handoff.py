@@ -214,6 +214,16 @@ class HandoffContextTest(unittest.TestCase):
         self.assertEqual(cli_metrics["run_metrics"]["token_usage"]["by_phase"]["plan"]["cached_tokens"], 100)
         self.assertEqual(cli_metrics["run_metrics"]["cost"]["estimated_total"], 0.05)
         self.assertEqual(cli_metrics["run_metrics"]["cost"]["by_phase"]["plan"]["currency"], "USD")
+        provider_usage = next(
+            item
+            for item in cli_metrics["run_metrics"]["provider_usage"]
+            if item["phase"] == "plan" and item["provider"] == "mock" and item["model"] == "mock-model"
+        )
+        self.assertEqual(provider_usage["token_usage"]["total_tokens"], 1100)
+        self.assertEqual(provider_usage["token_usage"]["cached_tokens"], 100)
+        self.assertEqual(provider_usage["total_tokens"], 1100)
+        self.assertEqual(provider_usage["cost"]["estimated_total"], 0.05)
+        self.assertEqual(provider_usage["cost"]["currency"], "USD")
         original_root = mcp_server.ROOT
         try:
             mcp_server.ROOT = self.repo

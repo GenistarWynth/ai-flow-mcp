@@ -287,6 +287,18 @@ describe("Workbench", () => {
       run_metrics: {
         ...readyContext.run_metrics!,
         phase_attempts: { plan: 1, write: 1, test: 1, review: 2, fix: 1 },
+        provider_usage: [
+          {
+            phase: "review",
+            provider: "codex_cli",
+            model: "gpt-5",
+            events: 2,
+            duration_ms: 2200,
+            total_tokens: 4000,
+            token_usage: { known: true, input_tokens: 3000, output_tokens: 1000, cached_tokens: 0, total_tokens: 4000 },
+            cost: { known: true, currency: "USD", estimated_total: 0.12 }
+          }
+        ],
         token_usage: {
           known: true,
           input_tokens: 8200,
@@ -321,6 +333,7 @@ describe("Workbench", () => {
     expect(screen.getByText("USD 0.42")).toBeVisible();
     expect(screen.getByText("审查 4.0k")).toBeVisible();
     expect(screen.getByText("审查 USD 0.12")).toBeVisible();
+    expect(screen.getByText("审查 / codex_cli 4.0k tok | USD 0.12")).toBeVisible();
     expect(screen.getByText("6")).toBeVisible();
     expect(screen.getByText("审查 2x")).toBeVisible();
   });

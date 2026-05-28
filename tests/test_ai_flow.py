@@ -1304,10 +1304,14 @@ class McpSchemaTests(unittest.TestCase):
         self.assertIn("read-only readiness", tools["patchbay_doctor"].lower())
         self.assertIn("patchbay_setup", tools)
         self.assertIn("initialize patchbay", tools["patchbay_setup"].lower())
+        self.assertIn("patchbay_install", tools)
+        self.assertIn("alias for patchbay_setup", tools["patchbay_install"].lower())
 
         # Legacy aliases should still exist and mention alias status
         self.assertIn("ai_flow_plan", tools)
         self.assertIn("legacy", tools["ai_flow_plan"].lower())
+        self.assertIn("ai_flow_install", tools)
+        self.assertIn("legacy", tools["ai_flow_install"].lower())
 
     def test_canonical_and_legacy_names_both_present(self) -> None:
         from scripts.ai_flow.mcp_server import handle
@@ -1315,12 +1319,26 @@ class McpSchemaTests(unittest.TestCase):
         names = {tool["name"] for tool in tools_response["result"]["tools"]}
         for canonical in ("patchbay_plan", "patchbay_approve", "patchbay_write", "patchbay_test",
                           "patchbay_review", "patchbay_fix", "patchbay_status", "patchbay_context",
-                          "patchbay_metrics", "patchbay_doctor", "patchbay_setup", "patchbay_trace", "patchbay_diff", "patchbay_apply", "patchbay_agent"):
+                          "patchbay_metrics", "patchbay_doctor", "patchbay_setup", "patchbay_install", "patchbay_trace", "patchbay_diff", "patchbay_apply", "patchbay_agent"):
             self.assertIn(canonical, names, f"{canonical} missing from tools/list")
         for legacy in ("ai_flow_plan", "ai_flow_approve", "ai_flow_write", "ai_flow_test",
                        "ai_flow_review", "ai_flow_fix", "ai_flow_status", "ai_flow_context",
-                       "ai_flow_metrics", "ai_flow_doctor", "ai_flow_setup", "ai_flow_trace", "ai_flow_diff", "ai_flow_apply", "ai_flow_agent"):
+                       "ai_flow_metrics", "ai_flow_doctor", "ai_flow_setup", "ai_flow_install", "ai_flow_trace", "ai_flow_diff", "ai_flow_apply", "ai_flow_agent"):
             self.assertIn(legacy, names, f"{legacy} missing from tools/list")
+
+    def test_install_aliases_use_setup_schema(self) -> None:
+        from scripts.ai_flow.mcp_server import handle
+        tools_response = handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+        tools = {tool["name"]: tool for tool in tools_response["result"]["tools"]}
+
+        for name in ("patchbay_install", "ai_flow_install"):
+            schema = tools[name]["inputSchema"]
+            self.assertIn("host", schema["properties"])
+            self.assertIn("skill_path", schema["properties"])
+            self.assertIn("skip_mcp", schema["properties"])
+            self.assertIn("create_config", schema["properties"])
+            self.assertNotIn("run_id", schema["properties"])
+            self.assertEqual(schema["required"], [])
 
 
 class MockProviderSmokeTests(AiFlowTestCase):

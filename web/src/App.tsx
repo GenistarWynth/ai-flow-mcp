@@ -26,6 +26,7 @@ import {
   DoctorReport,
   HandoffContext,
   PatchbayClient,
+  ProviderUsage,
   RunMetrics,
   RunStatus,
   RunSummary,
@@ -165,6 +166,23 @@ function tokenEntries(metrics?: RunMetrics | null) {
 
 function costEntries(metrics?: RunMetrics | null) {
   return Object.entries(metrics?.cost?.by_phase ?? {}).filter(([, usage]) => Boolean(usage?.known));
+}
+
+function providerMetricEntries(metrics?: RunMetrics | null) {
+  return (metrics?.provider_usage ?? []).filter((item) => Boolean(item.token_usage?.known || item.cost?.known));
+}
+
+function providerMetricLabel(item: ProviderUsage) {
+  const provider = item.provider || item.model || "provider";
+  const heading = item.phase ? `${phaseLabel(item.phase)} / ${provider}` : provider;
+  const signals: string[] = [];
+  if (item.token_usage?.known || item.total_tokens !== undefined) {
+    signals.push(`${compactNumber(item.token_usage?.total_tokens ?? item.total_tokens)} tok`);
+  }
+  if (item.cost?.known) {
+    signals.push(`${item.cost.currency ?? "USD"} ${compactNumber(item.cost.estimated_total ?? 0)}`);
+  }
+  return signals.length ? `${heading} ${signals.join(" | ")}` : heading;
 }
 
 function timeLabel(timestamp?: string) {
@@ -1044,6 +1062,7 @@ function MetricsGrid({ metrics }: { metrics?: RunMetrics | null }) {
   const retries = retryEntries(metrics);
   const tokenByPhase = tokenEntries(metrics);
   const costByPhase = costEntries(metrics);
+  const providerMetrics = providerMetricEntries(metrics);
   const providerCount = metrics?.provider_usage?.filter((item) => item.provider || item.model).length ?? 0;
   return (
     <div className="metrics-panel">
@@ -1092,6 +1111,13 @@ function MetricsGrid({ metrics }: { metrics?: RunMetrics | null }) {
             <span key={phase}>
               {phaseLabel(phase)} {(usage?.currency ?? metrics?.cost?.currency ?? "USD")} {compactNumber(usage?.estimated_total ?? 0)}
             </span>
+          ))}
+        </div>
+      ) : null}
+      {providerMetrics.length ? (
+        <div className="phase-metrics" aria-label="Provider 消耗">
+          {providerMetrics.map((item, index) => (
+            <span key={`${item.phase}-${item.provider}-${item.model}-${index}`}>{providerMetricLabel(item)}</span>
           ))}
         </div>
       ) : null}

@@ -26,6 +26,7 @@ class McpInstallTest(unittest.TestCase):
                     {"name": "patchbay_context"},
                     {"name": "patchbay_metrics"},
                     {"name": "patchbay_setup"},
+                    {"name": "patchbay_install"},
                     {"name": "patchbay_doctor"},
                     {"name": "patchbay_events"},
                     {"name": "patchbay_apply"},
@@ -95,6 +96,16 @@ class McpInstallTest(unittest.TestCase):
 
         self.assertFalse(result["executed"])
         self.assertIn("codex not found", result["error"])
+        self.assertIn("codex mcp add patchbay", result["command"])
+
+    def test_codex_install_falls_back_when_cli_cannot_execute(self) -> None:
+        from scripts.ai_flow import mcp_install
+
+        with unittest.mock.patch.object(mcp_install.subprocess, "run", side_effect=PermissionError("codex denied")):
+            result = mcp_install.install_codex(self.tmp, dry_run=False)
+
+        self.assertFalse(result["executed"])
+        self.assertIn("codex denied", result["error"])
         self.assertIn("codex mcp add patchbay", result["command"])
 
     def test_codex_install_treats_existing_registration_as_success(self) -> None:

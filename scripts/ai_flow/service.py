@@ -1331,6 +1331,7 @@ def _run_metrics(run_path: Path) -> dict[str, Any]:
 
         provider = str(entry.get("provider") or "")
         model = str(entry.get("model") or "")
+        provider_bucket: dict[str, Any] | None = None
         if provider or model:
             key = (phase, provider, model)
             if key not in provider_usage:
@@ -1342,14 +1343,17 @@ def _run_metrics(run_path: Path) -> dict[str, Any]:
                     "duration_ms": 0,
                 }
                 provider_order.append(key)
-            provider_usage[key]["events"] += 1
+            provider_bucket = provider_usage[key]
+            provider_bucket["events"] += 1
             if duration_ms is not None:
-                provider_usage[key]["duration_ms"] += duration_ms
+                provider_bucket["duration_ms"] += duration_ms
 
         usage = metrics_from_output(entry)
         token_usage = usage.get("token_usage")
         if isinstance(token_usage, dict) and token_usage.get("known"):
             token_known = True
+            if provider_bucket is not None:
+                _accumulate_provider_tokens(provider_bucket, token_usage)
             _accumulate_phase_tokens(token_by_phase, phase, token_usage)
             for field in ("input_tokens", "output_tokens", "cached_tokens", "total_tokens"):
                 value = token_usage.get(field)
@@ -1359,6 +1363,8 @@ def _run_metrics(run_path: Path) -> dict[str, Any]:
         cost = usage.get("cost")
         if isinstance(cost, dict) and cost.get("known"):
             cost_known = True
+            if provider_bucket is not None:
+                _accumulate_provider_cost(provider_bucket, cost)
             estimated = cost.get("estimated_total")
             if estimated is not None:
                 cost_total += float(estimated)
@@ -1414,6 +1420,25 @@ def _accumulate_phase_tokens(store: dict[str, dict[str, Any]], phase: str, token
             bucket[field] += int(value)
 
 
+def _accumulate_provider_tokens(bucket: dict[str, Any], token_usage: dict[str, Any]) -> None:
+    provider_tokens = bucket.setdefault(
+        "token_usage",
+        {
+            "known": False,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cached_tokens": 0,
+            "total_tokens": 0,
+        },
+    )
+    provider_tokens["known"] = True
+    for field in ("input_tokens", "output_tokens", "cached_tokens", "total_tokens"):
+        value = token_usage.get(field)
+        if value is not None:
+            provider_tokens[field] += int(value)
+        bucket[field] = provider_tokens[field]
+
+
 def _accumulate_phase_cost(store: dict[str, dict[str, Any]], phase: str, cost: dict[str, Any]) -> None:
     if not phase:
         phase = "unknown"
@@ -1431,6 +1456,22 @@ def _accumulate_phase_cost(store: dict[str, dict[str, Any]], phase: str, cost: d
         bucket["estimated_total"] += float(estimated)
     currency = str(cost.get("currency") or bucket.get("currency") or "USD")
     bucket["currency"] = currency
+
+
+def _accumulate_provider_cost(bucket: dict[str, Any], cost: dict[str, Any]) -> None:
+    provider_cost = bucket.setdefault(
+        "cost",
+        {
+            "known": False,
+            "currency": str(cost.get("currency") or "USD"),
+            "estimated_total": 0.0,
+        },
+    )
+    provider_cost["known"] = True
+    estimated = cost.get("estimated_total")
+    if estimated is not None:
+        provider_cost["estimated_total"] = round(float(provider_cost["estimated_total"]) + float(estimated), 6)
+    provider_cost["currency"] = str(cost.get("currency") or provider_cost.get("currency") or "USD")
 
 
 def _event_duration_ms(entry: dict[str, Any]) -> int | None:

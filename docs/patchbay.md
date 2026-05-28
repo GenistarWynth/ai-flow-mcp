@@ -97,7 +97,7 @@ scripts/patchbay status <run_id>           # status 现在包含 latest_event �
 scripts/patchbay metrics <run_id>          # 只查看 run_metrics 效率证据
 ```
 
-MCP 工具 `patchbay_agent` 是对话式入口，能启动、恢复和推进运行，但仍保留计划批准和 apply 确认门禁。`patchbay_context` 是跨 host 恢复上下文的首选只读入口；`patchbay_metrics` 可单独读取阶段耗时、尝试次数、provider 使用轨迹、事件/trace 数和成本/token 上报状态；`patchbay_events` 和 `patchbay_status` 仍可用于聚焦查看。每条事件记录包含 `phase`、`provider`、`model`、`action`、`status`、`timestamp`、`detail`、`artifact_paths`、`duration_ms` 和 `next_action`。
+MCP 工具 `patchbay_agent` 是对话式入口，能启动、恢复和推进运行，但仍保留计划批准和 apply 确认门禁。`patchbay_setup` / `patchbay_install` 是一键初始化入口，能创建项目文件、局部配置、Skill，并尝试注册 MCP。`patchbay_context` 是跨 host 恢复上下文的首选只读入口；`patchbay_metrics` 可单独读取阶段耗时、尝试次数、provider 使用轨迹、事件/trace 数和成本/token 上报状态；`patchbay_events` 和 `patchbay_status` 仍可用于聚焦查看。每条事件记录包含 `phase`、`provider`、`model`、`action`、`status`、`timestamp`、`detail`、`artifact_paths`、`duration_ms` 和 `next_action`。
 
 ## 常用命令
 
@@ -123,7 +123,7 @@ scripts/patchbay apply <run_id>
 scripts/patchbay cleanup <run_id>
 ```
 
-`--background` is intended for the conversational agent path: planning and approve/continue turns return a pollable `run_id`, write `JOB.json`, and surface progress through `patchbay_status`, `patchbay_context`, and `patchbay_events`. Destructive apply remains foreground-only and still requires explicit confirmation. Explicit local setup prompts such as `patchbay setup` or `install patchbay` run the one-command setup flow without creating a model run. If the user sends `continue`, `approve`, `apply`, `diff`, or `artifact` without a `run_id`, Patchbay returns local guidance instead of starting a new run.
+`--background` is intended for the conversational agent path: planning and approve/continue turns return a pollable `run_id`, write `JOB.json`, and surface progress through `patchbay_status`, `patchbay_context`, and `patchbay_events`. Destructive apply remains foreground-only and still requires explicit confirmation. Explicit local setup prompts such as `patchbay setup`, `patchbay install`, or `install patchbay` run the one-command setup flow without creating a model run. If the user sends `continue`, `approve`, `apply`, `diff`, or `artifact` without a `run_id`, Patchbay returns local guidance instead of starting a new run.
 
 Web workbench 使用同一套对话式 Agent 流程。`patchbay_agent` 和 `scripts/patchbay agent message "patchbay setup" --json` / `status --json` / `readiness --json` 可直接返回 setup 结果、最近运行或统一 doctor 报告，不创建模型 run；`continue`、`approve`、`apply`、`diff`、`artifact` 这类没有 `run_id` 的消息会返回本地提示。诊断抽屉里的“就绪”页也会调用统一 doctor 检查项目初始化、配置、CLI 入口和 Skill 状态。Web 默认跳过 MCP stdio 探测，避免打开页面时启动额外子进程，需要完整 MCP 检查时再运行 `patchbay doctor --json` 或 `patchbay mcp doctor`。
 
@@ -174,7 +174,7 @@ claude mcp add patchbay -- python scripts/patchbay_mcp_server.py
 # Gemini CLI: 使用对应的 MCP server 注册方式
 ```
 
-MCP 只调用已有服务函数，不复制业务逻辑。工具名使用 `patchbay_*`（包括 `patchbay_agent`、`patchbay_context`、`patchbay_metrics`、`patchbay_doctor`、`patchbay_events`、`patchbay_runs`、`patchbay_artifact` 和 `patchbay_config_*` 配置工具），旧的 `ai_flow_*` 作为兼容别名保留。无论通过哪个 host 调用，流程和门禁保持一致。
+MCP 只调用已有服务函数，不复制业务逻辑。工具名使用 `patchbay_*`（包括 `patchbay_agent`、`patchbay_setup`、`patchbay_install`、`patchbay_context`、`patchbay_metrics`、`patchbay_doctor`、`patchbay_events`、`patchbay_runs`、`patchbay_artifact` 和 `patchbay_config_*` 配置工具），旧的 `ai_flow_*` 作为兼容别名保留。无论通过哪个 host 调用，流程和门禁保持一致。
 
 ## Codex Skill
 

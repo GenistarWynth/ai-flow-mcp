@@ -125,32 +125,34 @@ class SetupFlowTest(unittest.TestCase):
         self.assertIn("MCP server registered successfully.", result["next_actions"])
         self.assertFalse(any(str(item).startswith("Register the MCP server with:") for item in result["next_actions"]))
 
-    def test_mcp_setup_tool_wraps_same_flow(self) -> None:
+    def test_mcp_setup_and_install_tools_wrap_same_flow(self) -> None:
         from scripts.ai_flow import mcp_server
 
         original_root = mcp_server.ROOT
         try:
             mcp_server.ROOT = self.repo
-            response = mcp_server.handle(
-                {
-                    "jsonrpc": "2.0",
-                    "id": 1,
-                    "method": "tools/call",
-                    "params": {
-                        "name": "patchbay_setup",
-                        "arguments": {
-                            "skill_path": str(self.skills),
-                            "skip_mcp": True,
+            for index, name in enumerate(("patchbay_setup", "patchbay_install", "ai_flow_install"), start=1):
+                skill_path = self.tmp / f"skills-{name}"
+                response = mcp_server.handle(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": index,
+                        "method": "tools/call",
+                        "params": {
+                            "name": name,
+                            "arguments": {
+                                "skill_path": str(skill_path),
+                                "skip_mcp": True,
+                            },
                         },
-                    },
-                }
-            )
+                    }
+                )
+
+                payload = json.loads(response["result"]["content"][0]["text"])
+                self.assertTrue(payload["ok"])
+                self.assertTrue((skill_path / "patchbay" / "SKILL.md").exists())
         finally:
             mcp_server.ROOT = original_root
-
-        payload = json.loads(response["result"]["content"][0]["text"])
-        self.assertTrue(payload["ok"])
-        self.assertTrue((self.skills / "patchbay" / "SKILL.md").exists())
 
 
 if __name__ == "__main__":

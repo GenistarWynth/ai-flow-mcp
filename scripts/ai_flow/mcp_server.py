@@ -206,6 +206,7 @@ CANONICAL_TOOLS: dict[str, Callable[..., Any]] = {
     "patchbay_metrics": patchbay_metrics,
     "patchbay_doctor": patchbay_doctor,
     "patchbay_setup": patchbay_setup,
+    "patchbay_install": patchbay_setup,
     "patchbay_events": patchbay_events,
     "patchbay_trace": patchbay_trace,
     "patchbay_runs": patchbay_runs,
@@ -232,6 +233,7 @@ LEGACY_TOOLS: dict[str, Callable[..., Any]] = {
     "ai_flow_metrics": patchbay_metrics,
     "ai_flow_doctor": patchbay_doctor,
     "ai_flow_setup": patchbay_setup,
+    "ai_flow_install": patchbay_setup,
     "ai_flow_events": patchbay_events,
     "ai_flow_trace": patchbay_trace,
     "ai_flow_runs": patchbay_runs,
@@ -296,7 +298,7 @@ def _tool_schema(name: str) -> dict[str, Any]:
             },
         }
         required = []
-    elif name.endswith("_setup"):
+    elif name.endswith(("_setup", "_install")):
         properties = {
             "host": {"type": "string", "description": "MCP host: codex, claude, claude-code, claude-desktop, gemini."},
             "skill_path": {"type": "string", "description": "Optional Codex skills root to install into."},
@@ -371,6 +373,7 @@ def _tool_schema(name: str) -> dict[str, Any]:
         "patchbay_metrics": "Return only run_metrics efficiency evidence: phase durations, attempts, event/trace counts, provider usage, and known cost/token fields.",
         "patchbay_doctor": "Run unified read-only readiness checks for CLI shims, config, MCP reachability/tools, bundled Skill source, and Skill installation state.",
         "patchbay_setup": "Initialize Patchbay project files, create local config, install the Codex Skill, return MCP registration guidance, and include a doctor summary.",
+        "patchbay_install": "Alias for patchbay_setup: initialize Patchbay project files, create local config, install the Codex Skill, register MCP when possible, and include a doctor summary.",
         "patchbay_events": "Return the append-only event log (JSONL stream) for a run so any host can see what every phase/agent did.",
         "patchbay_trace": "Return the structured trace log (JSONL stream) for lower-level agent/tool activity with redacted raw payloads.",
         "patchbay_runs": "List recent Patchbay runs.",

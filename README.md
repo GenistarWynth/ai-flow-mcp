@@ -38,7 +38,7 @@ Legacy `[models]`, `[commands]`, and `[writer].provider` keys remain supported a
 ## What It Provides
 
 - CLI workflow: `setup`/`install`, `doctor`, `agent message`, `web`, `plan`, `approve`, `write`, `test`, `review`, `fix`, `status`, `context`, `metrics`, `trace`, `diff`, `apply`, `cleanup`.
-- MCP tools: `patchbay_agent`, `patchbay_setup`, `patchbay_plan`, `patchbay_approve`, `patchbay_write`, `patchbay_test`, `patchbay_review`, `patchbay_fix`, `patchbay_status`, `patchbay_context`, `patchbay_metrics`, `patchbay_doctor`, `patchbay_events`, `patchbay_trace`, `patchbay_runs`, `patchbay_artifact`, `patchbay_config_show`, `patchbay_config_phase_set`, `patchbay_config_command_set`, `patchbay_config_test_add`, `patchbay_config_provider_add_cli`, `patchbay_diff`, `patchbay_apply`.
+- MCP tools: `patchbay_agent`, `patchbay_setup`, `patchbay_install`, `patchbay_plan`, `patchbay_approve`, `patchbay_write`, `patchbay_test`, `patchbay_review`, `patchbay_fix`, `patchbay_status`, `patchbay_context`, `patchbay_metrics`, `patchbay_doctor`, `patchbay_events`, `patchbay_trace`, `patchbay_runs`, `patchbay_artifact`, `patchbay_config_show`, `patchbay_config_phase_set`, `patchbay_config_command_set`, `patchbay_config_test_add`, `patchbay_config_provider_add_cli`, `patchbay_diff`, `patchbay_apply`.
 - Legacy MCP aliases: `ai_flow_*`.
 - Isolated git worktrees by default.
 - File-backed run artifacts under `.ai/runs/<run_id>/`.
@@ -132,7 +132,7 @@ codex mcp add patchbay -- python scripts/patchbay_mcp_server.py
 
 Use the equivalent MCP server registration command for other MCP hosts. Run `patchbay doctor` for full readiness checks or `patchbay mcp doctor` to focus only on server reachability.
 
-`patchbay doctor` is read-only and reports project initialization, phase config validity, CLI shim/installed command availability, MCP reachability/tools, bundled Skill source, and whether the Codex Skill is installed. `patchbay mcp doctor` starts the stdio MCP server, sends `initialize` and `tools/list`, and verifies required tools including `patchbay_agent`, `patchbay_plan`, `patchbay_context`, `patchbay_metrics`, and `patchbay_doctor`. For Codex, Claude Code, and Gemini, `mcp install` now tries to register automatically and falls back to the command text if the host CLI is unavailable; Claude Desktop writes its JSON config in place.
+`patchbay doctor` is read-only and reports project initialization, phase config validity, CLI shim/installed command availability, MCP reachability/tools, bundled Skill source, and whether the Codex Skill is installed. `patchbay mcp doctor` starts the stdio MCP server, sends `initialize` and `tools/list`, and verifies required tools including `patchbay_agent`, `patchbay_plan`, `patchbay_context`, `patchbay_metrics`, `patchbay_doctor`, and `patchbay_install`. For Codex, Claude Code, and Gemini, `mcp install` now tries to register automatically and falls back to the command text if the host CLI is unavailable; Claude Desktop writes its JSON config in place.
 
 ## Codex Skill Install
 
