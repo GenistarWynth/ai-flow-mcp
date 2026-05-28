@@ -181,6 +181,34 @@ class AgentWorkflowTests(AgentTestCase):
         runs_path = self.repo / ".ai" / "runs"
         self.assertFalse(runs_path.exists() and any(runs_path.iterdir()))
 
+    def test_agent_setup_message_can_target_mcp_host(self) -> None:
+        import scripts.ai_flow.agent as agent_module
+
+        calls: list[str] = []
+
+        def fake_setup(root: Path, *, host: str = "codex", **_: object) -> dict[str, object]:
+            calls.append(host)
+            return {
+                "ok": True,
+                "root": str(root),
+                "mcp": {"host": host},
+                "doctor": {"ok": True},
+                "next_actions": [],
+            }
+
+        with mock.patch.object(agent_module, "run_setup", side_effect=fake_setup):
+            default = agent_message(self.repo, "patchbay setup")
+            desktop = agent_message(self.repo, "patchbay setup for claude-desktop")
+            gemini = agent_message(self.repo, "install patchbay for gemini")
+            claude_code = agent_message(self.repo, "patchbay setup --host=claude-code")
+
+        self.assertEqual(calls, ["codex", "claude-desktop", "gemini", "claude-code"])
+        self.assertEqual(default["setup_host"], "codex")
+        self.assertEqual(desktop["setup_host"], "claude-desktop")
+        self.assertEqual(gemini["setup"]["mcp"]["host"], "gemini")
+        self.assertEqual(claude_code["setup_host"], "claude-code")
+        self.assertFalse((self.repo / ".ai" / "runs").exists())
+
     def test_agent_setup_word_in_task_still_starts_plan(self) -> None:
         response = agent_message(self.repo, "setup auth flow")
 
@@ -407,6 +435,35 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertTrue((codex_home / "skills" / "patchbay" / "SKILL.md").exists())
         runs_path = self.repo / ".ai" / "runs"
         self.assertFalse(runs_path.exists() and any(runs_path.iterdir()))
+
+    def test_mcp_patchbay_agent_setup_can_target_host(self) -> None:
+        from scripts.ai_flow import mcp_server
+        import scripts.ai_flow.agent as agent_module
+
+        original_root = mcp_server.ROOT
+        try:
+            mcp_server.ROOT = self.repo
+            with mock.patch.object(
+                agent_module,
+                "run_setup",
+                return_value={"ok": True, "mcp": {"host": "claude-code"}, "doctor": {"ok": True}, "next_actions": []},
+            ) as setup_mock:
+                response = mcp_server.handle(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "tools/call",
+                        "params": {"name": "patchbay_agent", "arguments": {"message": "install patchbay for claude code"}},
+                    }
+                )
+        finally:
+            mcp_server.ROOT = original_root
+
+        payload = json.loads(response["result"]["content"][0]["text"])
+        self.assertEqual(payload["action"], "setup")
+        self.assertEqual(payload["setup_host"], "claude-code")
+        self.assertEqual(setup_mock.call_args.kwargs["host"], "claude-code")
+        self.assertIsNone(payload["run_id"])
 
     def test_mcp_patchbay_agent_can_list_runs_without_run_id(self) -> None:
         from scripts.ai_flow import mcp_server

@@ -87,6 +87,7 @@ python scripts/patchbay setup --host codex --json
 python scripts/patchbay plan --task "..."
 python scripts/patchbay agent message "..." --json
 python scripts/patchbay agent message "patchbay setup" --json
+python scripts/patchbay agent message "patchbay setup for claude-desktop" --json
 python scripts/patchbay agent message status --json
 python scripts/patchbay agent message readiness --json
 python scripts/patchbay web --port 8765

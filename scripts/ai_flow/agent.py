@@ -88,7 +88,7 @@ def agent_message(
     if intent == "missing_run":
         return _missing_run_response(root, text)
     if intent == "setup":
-        return _setup_response(root)
+        return _setup_response(root, text)
     if intent == "metrics":
         assert run_id is not None
         return _metrics_response(root, run_id)
@@ -666,6 +666,25 @@ def _is_setup_intent(text: str) -> bool:
     return bool(words & {"install", "installation", "setup"}) and not bool(words & TASK_INTENT_WORDS)
 
 
+def _setup_host_from_message(text: str) -> str:
+    normalized = re.sub(r"[\s_]+", " ", text.strip().lower().replace("-", " ").replace("=", " "))
+    if not normalized:
+        return "codex"
+    host_patterns = [
+        ("claude desktop", "claude-desktop"),
+        ("claude code", "claude-code"),
+        ("claude", "claude"),
+        ("gemini", "gemini"),
+        ("codex", "codex"),
+    ]
+    for phrase, host in host_patterns:
+        if re.search(rf"(?:--host\s+|host\s+|for\s+|to\s+)?{re.escape(phrase)}\b", normalized):
+            if phrase == "codex" and not re.search(r"(?:--host\s+|host\s+|for\s+|to\s+)codex\b", normalized):
+                continue
+            return host
+    return "codex"
+
+
 def _is_metrics_intent(text: str) -> bool:
     if text in {
         "cost",
@@ -814,8 +833,9 @@ def _help_response() -> dict[str, Any]:
     )
 
 
-def _setup_response(root: Path) -> dict[str, Any]:
-    result = run_setup(root)
+def _setup_response(root: Path, message: str) -> dict[str, Any]:
+    host = _setup_host_from_message(message)
+    result = run_setup(root, host=host)
     next_actions = list(result.get("next_actions") or [])
     reply = "Patchbay setup completed."
     if next_actions:
@@ -826,7 +846,7 @@ def _setup_response(root: Path) -> dict[str, Any]:
         ok=bool(result.get("ok")),
         error=None if result.get("ok") else reply,
         next_actions=next_actions or ["readiness", "start"],
-        extra={"setup": result},
+        extra={"setup": result, "setup_host": host},
     )
 
 

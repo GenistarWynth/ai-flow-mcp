@@ -109,6 +109,7 @@ MCP 工具 `patchbay_agent` 是对话式入口，能启动、恢复和推进运�
 scripts/patchbay plan --task "..."
 scripts/patchbay agent message "..."
 scripts/patchbay agent message "patchbay setup" --json
+scripts/patchbay agent message "patchbay setup for claude-desktop" --json
 scripts/patchbay agent message status --json
 scripts/patchbay agent message readiness --json
 scripts/patchbay agent message "..." --background --json
