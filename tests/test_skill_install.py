@@ -22,6 +22,8 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("agents/openai.yaml", result["files"])
         self.assertIn("references/install.md", result["files"])
         self.assertIn("patchbay_agent", result["files"]["SKILL.md"])
+        self.assertIn("patchbay setup for claude-desktop", result["files"]["SKILL.md"])
+        self.assertIn("install patchbay for gemini", result["files"]["references/install.md"])
 
     def test_skill_install_copies_bundle(self) -> None:
         from scripts.ai_flow.skill_install import run_skill_install
@@ -34,6 +36,7 @@ class SkillInstallTest(unittest.TestCase):
         self.assertEqual(Path(result["destination"]), destination)
         self.assertTrue((destination / "SKILL.md").exists())
         self.assertTrue((destination / "agents" / "openai.yaml").exists())
+        self.assertIn("patchbay setup for claude-desktop", (destination / "SKILL.md").read_text(encoding="utf-8"))
 
     def test_skill_install_dry_run_does_not_copy(self) -> None:
         from scripts.ai_flow.skill_install import run_skill_install

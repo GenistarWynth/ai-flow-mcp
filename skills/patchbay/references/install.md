@@ -19,6 +19,14 @@ On Windows, `scripts/patchbay.cmd` avoids PowerShell execution-policy issues.
 
 `patchbay setup` and its alias `patchbay install` initialize project files, create `.ai/patchbay.toml` from the ignored example when missing, install the bundled Codex Skill, try to register the selected MCP host, and include a doctor summary. If Codex, Claude Code, or Gemini CLI is unavailable, setup returns the registration command to run manually.
 
+The conversational agent entry point accepts the same explicit local setup intent without creating a model run:
+
+```bash
+python scripts/patchbay agent message "patchbay setup" --json
+python scripts/patchbay agent message "patchbay setup for claude-desktop" --json
+python scripts/patchbay agent message "install patchbay for gemini" --json
+```
+
 ## MCP
 
 Register an MCP host:
