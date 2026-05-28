@@ -113,6 +113,7 @@ export type DoctorReport = {
 export type SetupResult = {
   ok?: boolean;
   dry_run?: boolean;
+  setup_host?: string;
   root?: string;
   doctor?: DoctorReport;
   mcp?: {

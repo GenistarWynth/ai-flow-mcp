@@ -51,6 +51,7 @@ class SetupFlowTest(unittest.TestCase):
         self.assertTrue((self.repo / ".ai" / "patchbay.example.toml").exists())
         self.assertTrue((self.repo / ".ai" / "patchbay.toml").exists())
         self.assertTrue((self.skills / "patchbay" / "SKILL.md").exists())
+        self.assertEqual(result["setup_host"], "codex")
         self.assertTrue(result["config"]["created"])
         self.assertTrue(result["skill"]["installed"])
         self.assertTrue(result["doctor"]["ok"])
@@ -66,6 +67,7 @@ class SetupFlowTest(unittest.TestCase):
         self.assertFalse((self.repo / "AGENTS.md").exists())
         self.assertFalse((self.repo / ".ai" / "patchbay.toml").exists())
         self.assertFalse((self.skills / "patchbay").exists())
+        self.assertEqual(result["setup_host"], "codex")
 
     def test_cli_setup_json(self) -> None:
         completed = run(
@@ -191,6 +193,7 @@ model = "mock"
                         "params": {
                             "name": name,
                             "arguments": {
+                                "host": "gemini",
                                 "skill_path": str(skill_path),
                                 "skip_mcp": True,
                             },
@@ -200,6 +203,7 @@ model = "mock"
 
                 payload = json.loads(response["result"]["content"][0]["text"])
                 self.assertTrue(payload["ok"])
+                self.assertEqual(payload["setup_host"], "gemini")
                 self.assertTrue((skill_path / "patchbay" / "SKILL.md").exists())
         finally:
             mcp_server.ROOT = original_root

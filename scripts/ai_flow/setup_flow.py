@@ -50,6 +50,7 @@ def run_setup(
     return {
         "ok": bool(doctor.get("ok")) and not dry_run,
         "dry_run": dry_run,
+        "setup_host": host,
         "root": str(repo_root),
         "init": init,
         "config": config,

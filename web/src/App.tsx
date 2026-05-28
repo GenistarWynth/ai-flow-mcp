@@ -1387,7 +1387,7 @@ function SetupResultCard({ response }: { response: AgentResponse }) {
   const setup = response.setup;
   if (!setup) return null;
   const mcp = setup.mcp;
-  const host = String(response.setup_host ?? mcp?.host ?? "codex");
+  const host = String(response.setup_host ?? setup.setup_host ?? mcp?.host ?? "codex");
   const command = typeof mcp?.command === "string" ? mcp.command : "";
   const note = typeof mcp?.note === "string" ? mcp.note : "";
   const root = typeof setup.root === "string" ? setup.root : "";
