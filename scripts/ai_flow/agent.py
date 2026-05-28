@@ -875,19 +875,25 @@ def _metrics_response(root: Path, run_id: str) -> dict[str, Any]:
     providers = [item for item in (run_metrics.get("provider_usage") or []) if item.get("provider") or item.get("model")]
     cost = run_metrics.get("cost") or {}
     token_usage = run_metrics.get("token_usage") or {}
+    routing = result.get("routing_evidence") or run_metrics.get("routing_evidence") or {}
     signals = [
         f"{attempts} phase attempt{'s' if attempts != 1 else ''}",
         f"{len(providers)} provider trace entr{'ies' if len(providers) != 1 else 'y'}",
         "cost known" if cost.get("known") else "cost not reported",
         "tokens known" if token_usage.get("known") else "tokens not reported",
     ]
+    if isinstance(routing, dict) and routing.get("summary"):
+        signals.append(str(routing["summary"]))
+    metrics_payload = dict(result)
+    if routing:
+        metrics_payload["routing_evidence"] = routing
     return {
         "schema_version": SCHEMA_VERSION,
         "ok": True,
         "action": "metrics",
         "reply": f"Run {run_id} metrics: " + "; ".join(signals) + ".",
         "run_id": run_id,
-        "status": result,
+        "status": metrics_payload,
         "context": None,
         "events": None,
         "artifacts": {},
@@ -895,7 +901,7 @@ def _metrics_response(root: Path, run_id: str) -> dict[str, Any]:
         "requires_confirmation": None,
         "next_actions": ["status", "continue", "readiness"],
         "error": None,
-        "metrics": result,
+        "metrics": metrics_payload,
     }
 
 
@@ -952,38 +958,82 @@ def _doctor_suggested_actions(next_actions: list[str], recommendations: list[str
     return _dedupe_strings(actions)
 
 
+def _profile_routing_digest(profile_result: dict[str, Any]) -> dict[str, Any]:
+    status = profile_result.get("status") if isinstance(profile_result.get("status"), dict) else profile_result
+    economy = status.get("economy") if isinstance(status.get("economy"), dict) else {}
+    write = _phase_route_snapshot(economy.get("write") if isinstance(economy.get("write"), dict) else {})
+    fix = _phase_route_snapshot(economy.get("fix") if isinstance(economy.get("fix"), dict) else {})
+    economy_active = bool(economy.get("matches"))
+    recommendation = str(status.get("recommendation") or profile_result.get("recommendation") or "")
+    return {
+        "profile": status.get("profile") or profile_result.get("profile") or ("economy" if economy_active else "custom"),
+        "target": {"provider": service.ECONOMY_PROVIDER, "model": service.ECONOMY_MODEL},
+        "economy_configured": economy_active,
+        "phases": {
+            "write": {"configured": write, "configured_economy": _phase_is_economy(write)},
+            "fix": {"configured": fix, "configured_economy": _phase_is_economy(fix)},
+        },
+        "summary": _profile_routing_summary(economy_active=economy_active, write=write, fix=fix),
+        "recommendation": recommendation,
+    }
+
+
+def _phase_route_snapshot(route: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "provider": str(route.get("provider") or ""),
+        "model": str(route.get("model") or ""),
+        "command_key": str(route.get("command_key") or ""),
+    }
+
+
+def _phase_is_economy(route: dict[str, Any]) -> bool:
+    return route.get("provider") == service.ECONOMY_PROVIDER and route.get("model") == service.ECONOMY_MODEL
+
+
+def _route_label(route: dict[str, Any]) -> str:
+    provider = str(route.get("provider") or "-")
+    model = str(route.get("model") or "")
+    return f"{provider} / {model}" if model else provider
+
+
+def _profile_routing_summary(*, economy_active: bool, write: dict[str, Any], fix: dict[str, Any]) -> str:
+    prefix = "Economy routing profile is active" if economy_active else "Economy routing profile is not active"
+    return f"{prefix}: write {_route_label(write)}, fix {_route_label(fix)}."
+
+
 def _profile_apply_response(root: Path) -> dict[str, Any]:
     result = run_config_wizard(root, profile="economy")
     status = result.get("status") or {}
     write = ((status.get("economy") or {}).get("write") or {})
     fix = ((status.get("economy") or {}).get("fix") or {})
+    routing = _profile_routing_digest(result)
     reply = (
         "Economy routing profile applied. High-volume write/fix work now routes to "
         f"{write.get('provider') or 'reasonix_cli'} / {write.get('model') or 'deepseek-v4-pro'}."
     )
     if fix:
         reply += f" Fix uses {fix.get('provider') or '-'} / {fix.get('model') or '-'}."
+    reply += f" {routing['summary']}"
     return _stateless_response(
         action="profile_apply",
         reply=reply,
         next_actions=list(result.get("next_actions") or ["readiness", "start"]),
-        extra={"profile": result},
+        extra={"profile": result, "routing": routing},
     )
 
 
 def _profile_show_response(root: Path) -> dict[str, Any]:
     result = run_config_wizard(root, show_profile=True)
     profile = str(result.get("profile") or "custom")
-    economy = result.get("economy") or {}
-    if economy.get("matches"):
-        reply = "Economy routing profile is active for write/fix work."
-    else:
-        reply = str(result.get("recommendation") or "Economy routing profile is not active.")
+    routing = _profile_routing_digest(result)
+    reply = str(routing["summary"])
+    if not routing.get("economy_configured"):
+        reply += " " + str(result.get("recommendation") or "Run `patchbay config profile apply economy`.")
     return _stateless_response(
         action="profile_show",
         reply=reply,
         next_actions=["apply economy profile", "readiness"] if profile != "economy" else ["readiness", "start"],
-        extra={"profile": result},
+        extra={"profile": result, "routing": routing},
     )
 
 

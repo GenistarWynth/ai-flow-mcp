@@ -307,7 +307,17 @@ describe("Workbench", () => {
           total_tokens: 12300,
           by_phase: { review: { known: true, input_tokens: 3000, output_tokens: 1000, cached_tokens: 0, total_tokens: 4000 } }
         },
-        cost: { known: true, currency: "USD", estimated_total: 0.42, by_phase: { review: { known: true, currency: "USD", estimated_total: 0.12 } } }
+        cost: { known: true, currency: "USD", estimated_total: 0.42, by_phase: { review: { known: true, currency: "USD", estimated_total: 0.12 } } },
+        routing_evidence: {
+          economy_configured: true,
+          summary: "Economy route configured; observed write, fix not observed yet.",
+          phases: {
+            write: { configured: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" }, configured_economy: true },
+            fix: { configured: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" }, configured_economy: true }
+          },
+          observed_economy_phases: ["write"],
+          missing_evidence: ["fix"]
+        }
       }
     };
     const client = createClient({
@@ -334,6 +344,7 @@ describe("Workbench", () => {
     expect(screen.getByText("审查 4.0k")).toBeVisible();
     expect(screen.getByText("审查 USD 0.12")).toBeVisible();
     expect(screen.getByText("审查 / codex_cli 4.0k tok | USD 0.12")).toBeVisible();
+    expect(screen.getByText("Economy route configured; observed write, fix not observed yet.")).toBeVisible();
     expect(screen.getByText("6")).toBeVisible();
     expect(screen.getByText("审查 2x")).toBeVisible();
   });
@@ -567,7 +578,16 @@ describe("Workbench", () => {
       run_id: null,
       action: "profile_apply",
       ok: true,
-      reply: "Economy routing profile applied."
+      reply: "Economy routing profile applied.",
+      routing: {
+        profile: "economy",
+        economy_configured: true,
+        summary: "Economy routing profile is active: write reasonix_cli / deepseek-v4-pro, fix reasonix_cli / deepseek-v4-pro.",
+        phases: {
+          write: { configured: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" }, configured_economy: true },
+          fix: { configured: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" }, configured_economy: true }
+        }
+      }
     });
     const getDoctor = vi
       .fn()
@@ -605,6 +625,9 @@ describe("Workbench", () => {
 
     await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("apply economy profile"));
     expect(await screen.findByText("Economy routing profile applied.")).toBeVisible();
+    const routingResult = await screen.findByLabelText("Routing result");
+    expect(within(routingResult).getByText("经济路由已启用")).toBeVisible();
+    expect(within(routingResult).getAllByText("reasonix_cli / deepseek-v4-pro")).toHaveLength(2);
     expect(client.getConfig).toHaveBeenCalled();
   });
 

@@ -43,6 +43,26 @@ export type ProviderUsage = {
   };
 };
 
+export type RoutingEvidencePhase = {
+  configured?: PhaseProvider;
+  observed?: ProviderUsage[];
+  configured_economy?: boolean;
+  observed_economy?: boolean;
+  status?: string;
+};
+
+export type RoutingEvidence = {
+  profile?: string;
+  target?: PhaseProvider;
+  economy_configured?: boolean;
+  configured_economy_phases?: string[];
+  observed_economy_phases?: string[];
+  missing_evidence?: string[];
+  phases?: Record<string, RoutingEvidencePhase>;
+  summary?: string;
+  recommendation?: string;
+};
+
 export type RunMetrics = {
   duration_known?: boolean;
   duration_source?: string;
@@ -76,6 +96,7 @@ export type RunMetrics = {
       total_tokens?: number;
     }>;
   };
+  routing_evidence?: RoutingEvidence;
 };
 
 export type RunStatus = {
@@ -91,6 +112,7 @@ export type RunStatus = {
   next_commands?: string[];
   artifacts?: string[];
   effective_phase_providers?: Record<string, PhaseProvider>;
+  routing_evidence?: RoutingEvidence;
   run_metrics?: RunMetrics;
 };
 
@@ -254,6 +276,13 @@ export type AgentResponse = {
   doctor?: DoctorReport;
   setup?: SetupResult;
   setup_host?: string;
+  profile?: Record<string, unknown>;
+  routing?: RoutingEvidence;
+  metrics?: {
+    run_metrics?: RunMetrics;
+    routing_evidence?: RoutingEvidence;
+    [key: string]: unknown;
+  };
   capabilities?: { name: string; summary: string }[];
   next_actions?: string[];
   recommendations?: string[];

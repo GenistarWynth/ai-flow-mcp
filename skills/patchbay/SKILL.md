@@ -52,7 +52,7 @@ If `patchbay_*` MCP tools are available, prefer them over shell commands:
 - `patchbay_agent` for conversational setup/start/resume/advance while preserving gates. It also answers explicit local prompts such as `patchbay setup`, `patchbay setup for claude-desktop`, `install patchbay for gemini`, `help`, `status`, `runs`, `readiness`, `diagnose`, `patchbay doctor`, `show economy profile`, or `apply economy profile` with setup results, guidance, recent runs, unified doctor reports, or routing updates without creating a model run. Run-bound prompts like `continue`, `approve`, `apply`, `diff`, or `artifact` without a `run_id` should stay local and point back to an existing run. Use `background: true` for long planning or implementation turns, then poll `patchbay_context` or `patchbay_events`.
 - `patchbay_plan`, `patchbay_approve`, `patchbay_write`, `patchbay_test`, `patchbay_review`, `patchbay_fix`, `patchbay_apply` for explicit phase control.
 - `patchbay_context` for cross-host handoff status, next safe action, timeline, gate state, artifacts, provider trail, and `run_metrics` efficiency evidence.
-- `patchbay_metrics` when only phase durations, attempts, event/trace counts, provider usage, and cost/token availability are needed.
+- `patchbay_metrics` when only phase durations, attempts, event/trace counts, provider usage, cost/token availability, and write/fix `routing_evidence` are needed.
 - `patchbay_config_profile_apply` with `profile: "economy"` to route high-volume write/fix work to Reasonix/DeepSeek while leaving plan/review choices intact.
 - `patchbay_doctor` for read-only setup diagnostics across config, MCP tools, CLI entry points, and Skill installation.
 - `patchbay_events` and `patchbay_trace` for focused diagnostics.

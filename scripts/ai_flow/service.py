@@ -81,6 +81,8 @@ RUN_LOCK_FILE = "RUN.lock"
 RESERVED_RUN_ENV = "PATCHBAY_RESERVED_RUN_ID"
 INHERITED_LOCK_ENV = "PATCHBAY_INHERITED_LOCK"
 LOCK_TOKEN_ENV = "PATCHBAY_LOCK_TOKEN"
+ECONOMY_PROVIDER = "reasonix_cli"
+ECONOMY_MODEL = "deepseek-v4-pro"
 
 
 def resolve_root(cwd: Path) -> Path:
@@ -1273,7 +1275,7 @@ def status(cwd: Path, run_id: str) -> dict[str, Any]:
         data["latest_event"] = latest
     data["current_phase"] = data.get("stage") or (latest or {}).get("phase") or _current_phase_from_status(str(data.get("status", "")))
     data["event_count"] = event_count(run_path)
-    data["run_metrics"] = _run_metrics(run_path)
+    run_metrics = _run_metrics(run_path)
     data["next_commands"] = _next_commands(data)
     data["gate_state"] = _gate_state(data)
     cfg = load_config(root)
@@ -1286,6 +1288,9 @@ def status(cwd: Path, run_id: str) -> dict[str, Any]:
             "command_key": resolved.get("command_key", ""),
         }
     data["effective_phase_providers"] = effective
+    data["routing_evidence"] = _run_routing_evidence(run_metrics, effective)
+    run_metrics["routing_evidence"] = data["routing_evidence"]
+    data["run_metrics"] = run_metrics
     job_path = _job_path(run_path)
     if job_path.exists():
         data["job"] = read_json(job_path)
@@ -1398,6 +1403,94 @@ def _run_metrics(run_path: Path) -> dict[str, Any]:
             "by_phase": token_by_phase,
         },
     }
+
+
+def _run_routing_evidence(run_metrics: dict[str, Any], effective: dict[str, Any]) -> dict[str, Any]:
+    provider_usage = [
+        entry
+        for entry in run_metrics.get("provider_usage", [])
+        if isinstance(entry, dict) and (entry.get("provider") or entry.get("model"))
+    ]
+    phases: dict[str, dict[str, Any]] = {}
+    configured_economy_phases: list[str] = []
+    observed_economy_phases: list[str] = []
+    missing_evidence: list[str] = []
+    for phase in ("write", "fix"):
+        configured = _routing_phase_snapshot(effective.get(phase) or {})
+        observed = [
+            _routing_phase_snapshot(entry)
+            for entry in provider_usage
+            if str(entry.get("phase") or "") == phase
+        ]
+        configured_economy = _is_economy_route(configured)
+        observed_economy = any(_is_economy_route(entry) for entry in observed)
+        if configured_economy:
+            configured_economy_phases.append(phase)
+        if observed_economy:
+            observed_economy_phases.append(phase)
+        if not observed:
+            missing_evidence.append(phase)
+        phases[phase] = {
+            "configured": configured,
+            "observed": observed,
+            "configured_economy": configured_economy,
+            "observed_economy": observed_economy,
+            "status": "observed_economy" if observed_economy else "observed_other" if observed else "not_observed",
+        }
+    economy_configured = configured_economy_phases == ["write", "fix"]
+    return {
+        "target": {"provider": ECONOMY_PROVIDER, "model": ECONOMY_MODEL},
+        "economy_configured": economy_configured,
+        "configured_economy_phases": configured_economy_phases,
+        "observed_economy_phases": observed_economy_phases,
+        "missing_evidence": missing_evidence,
+        "phases": phases,
+        "summary": _routing_evidence_summary(
+            economy_configured=economy_configured,
+            observed_economy_phases=observed_economy_phases,
+            missing_evidence=missing_evidence,
+        ),
+    }
+
+
+def _routing_phase_snapshot(route: dict[str, Any]) -> dict[str, Any]:
+    snapshot: dict[str, Any] = {
+        "provider": str(route.get("provider") or ""),
+        "model": str(route.get("model") or ""),
+    }
+    for key in ("phase", "command_key", "events", "duration_ms", "input_tokens", "output_tokens", "cached_tokens", "total_tokens"):
+        value = route.get(key)
+        if value not in (None, ""):
+            snapshot[key] = value
+    for key in ("cost", "token_usage"):
+        value = route.get(key)
+        if isinstance(value, dict) and value:
+            snapshot[key] = value
+    return snapshot
+
+
+def _is_economy_route(route: dict[str, Any]) -> bool:
+    return route.get("provider") == ECONOMY_PROVIDER and route.get("model") == ECONOMY_MODEL
+
+
+def _routing_evidence_summary(
+    *,
+    economy_configured: bool,
+    observed_economy_phases: list[str],
+    missing_evidence: list[str],
+) -> str:
+    if economy_configured and set(observed_economy_phases) == {"write", "fix"}:
+        return "Economy route configured and observed for write/fix."
+    if economy_configured and observed_economy_phases:
+        missing = "/".join(missing_evidence) if missing_evidence else "remaining phases"
+        observed = "/".join(observed_economy_phases)
+        return f"Economy route configured; observed {observed}, {missing} not observed yet."
+    if economy_configured:
+        return "Economy route configured for write/fix; provider evidence is not observed yet."
+    if observed_economy_phases:
+        observed = "/".join(observed_economy_phases)
+        return f"Observed {observed} on Reasonix/DeepSeek, but current write/fix config is not fully economy."
+    return "Economy route is not configured or not observed for write/fix."
 
 
 def _accumulate_phase_tokens(store: dict[str, dict[str, Any]], phase: str, token_usage: dict[str, Any]) -> None:
@@ -1577,6 +1670,8 @@ def metrics(cwd: Path, run_id: str) -> dict[str, Any]:
         "run_id": run_id,
         "status": status_data.get("status"),
         "current_phase": status_data.get("current_phase"),
+        "effective_phase_providers": status_data.get("effective_phase_providers", {}),
+        "routing_evidence": status_data.get("routing_evidence", {}),
         "run_metrics": status_data.get("run_metrics", {}),
     }
 

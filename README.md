@@ -46,7 +46,7 @@ Legacy `[models]`, `[commands]`, and `[writer].provider` keys remain supported a
 - File-backed run artifacts under `.ai/runs/<run_id>/`.
 - Human approval gate before implementation.
 - Patch safety checks, read-only reviewer verification, and a default apply gate that treats skipped tests as not passed unless `workflow.allow_apply_without_tests = true`.
-- **Cross-host visibility**: `patchbay context <run_id>` / `patchbay_context` is the preferred resume call. It returns the current gate state, next safe action, provider trail, artifacts, timeline, and `run_metrics` efficiency evidence in one handoff digest. `patchbay events <run_id>` and `patchbay_status` remain available for focused inspection.
+- **Cross-host visibility**: `patchbay context <run_id>` / `patchbay_context` is the preferred resume call. It returns the current gate state, next safe action, provider trail, artifacts, timeline, and `run_metrics` efficiency evidence in one handoff digest. `run_metrics.routing_evidence` shows whether write/fix are configured for the Reasonix/DeepSeek economy route and whether provider events have actually observed it. `patchbay events <run_id>` and `patchbay_status` remain available for focused inspection.
 
 ## Quick Start
 
@@ -99,6 +99,8 @@ python scripts/patchbay context <run_id>
 python scripts/patchbay metrics <run_id>
 python scripts/patchbay apply <run_id>
 ```
+
+`metrics` includes phase duration/attempt counts, provider usage, token/cost availability, and `routing_evidence` for the write/fix economy route.
 
 Use `--background` for long conversational turns so the caller can return immediately and poll status/events:
 

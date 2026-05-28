@@ -28,6 +28,7 @@ import {
   PatchbayClient,
   PhaseProvider,
   ProviderUsage,
+  RoutingEvidence,
   RunMetrics,
   RunStatus,
   RunSummary,
@@ -1022,6 +1023,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
               ))}
               {newTaskReply ? <ChatBubble role="assistant" title="Patchbay Agent" body={newTaskReply.reply} tone={newTaskReply.ok === false ? "failed" : "ready"} /> : null}
               {newTaskReply?.setup ? <SetupResultCard response={newTaskReply} /> : null}
+              {newTaskReply?.routing || newTaskReply?.metrics?.routing_evidence ? <RoutingResultCard response={newTaskReply} /> : null}
               {localReplySuggestions.length ? (
                 <div className="empty-actions local-agent-actions" aria-label="Agent 建议动作">
                   {localReplySuggestions.map((action) => (
@@ -1277,6 +1279,7 @@ function MetricsGrid({ metrics }: { metrics?: RunMetrics | null }) {
   const costByPhase = costEntries(metrics);
   const providerMetrics = providerMetricEntries(metrics);
   const providerCount = metrics?.provider_usage?.filter((item) => item.provider || item.model).length ?? 0;
+  const routing = metrics?.routing_evidence;
   return (
     <div className="metrics-panel">
       <div className="metric-row">
@@ -1301,6 +1304,12 @@ function MetricsGrid({ metrics }: { metrics?: RunMetrics | null }) {
         <span>提供方轨迹</span>
         <strong>{providerCount || "待记录"}</strong>
       </div>
+      {routing?.summary ? (
+        <div className={`metric-routing ${routing.economy_configured ? "ready" : "custom"}`} aria-label="路由证据">
+          <span>路由证据</span>
+          <strong>{routing.summary}</strong>
+        </div>
+      ) : null}
       <div className="metric-row">
         <span>Token</span>
         <strong>{metrics?.token_usage?.known ? compactNumber(metrics.token_usage.total_tokens) : "待上报"}</strong>
@@ -1419,6 +1428,38 @@ function SetupResultCard({ response }: { response: AgentResponse }) {
           ))}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function RoutingResultCard({ response }: { response: AgentResponse }) {
+  const routing = response.routing ?? response.metrics?.routing_evidence;
+  if (!routing) return null;
+  return <RoutingEvidenceCard routing={routing} />;
+}
+
+function RoutingEvidenceCard({ routing }: { routing: RoutingEvidence }) {
+  const write = routing.phases?.write?.configured;
+  const fix = routing.phases?.fix?.configured;
+  return (
+    <div className={`routing-result-card ${routing.economy_configured ? "ready" : "custom"}`} aria-label="Routing result">
+      <div className="routing-result-head">
+        <Settings size={15} />
+        <strong>{routing.economy_configured ? "经济路由已启用" : "经济路由未启用"}</strong>
+        {routing.profile ? <span>{routing.profile}</span> : null}
+      </div>
+      {routing.summary ? <p>{routing.summary}</p> : null}
+      <div className="routing-result-routes">
+        <div>
+          <span>实现</span>
+          <strong>{routeSummary(write)}</strong>
+        </div>
+        <div>
+          <span>修复</span>
+          <strong>{routeSummary(fix)}</strong>
+        </div>
+      </div>
+      {routing.recommendation ? <small>{routing.recommendation}</small> : null}
     </div>
   );
 }

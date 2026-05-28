@@ -130,6 +130,8 @@ class AgentWorkflowTests(AgentTestCase):
         shown = agent_message(self.repo, "show economy profile")
         self.assertEqual(shown["action"], "profile_show")
         self.assertEqual(shown["profile"]["profile"], "custom")
+        self.assertFalse(shown["routing"]["economy_configured"])
+        self.assertEqual(shown["routing"]["phases"]["write"]["configured"]["provider"], "mock")
         self.assertIn("config profile apply economy", shown["reply"])
 
         applied = agent_message(self.repo, "apply economy profile")
@@ -137,6 +139,8 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertEqual(applied["action"], "profile_apply")
         self.assertEqual(applied["profile"]["profile"], "economy")
         self.assertEqual(applied["profile"]["status"]["profile"], "economy")
+        self.assertTrue(applied["routing"]["economy_configured"])
+        self.assertEqual(applied["routing"]["phases"]["write"]["configured"]["model"], "deepseek-v4-pro")
         cfg = load_config(self.repo)
         self.assertEqual(resolve_phase(cfg, "write")["model"], "deepseek-v4-pro")
         self.assertEqual(resolve_phase(cfg, "fix")["provider"], "reasonix_cli")
@@ -512,6 +516,33 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertEqual(payload["action"], "metrics")
         self.assertEqual(payload["metrics"]["run_id"], planned["run_id"])
         self.assertIn("run_metrics", payload["metrics"])
+        self.assertIn("routing_evidence", payload["metrics"])
+
+    def test_agent_metrics_reports_economy_routing_evidence(self) -> None:
+        from scripts.ai_flow.events import append_event
+
+        agent_message(self.repo, "apply economy profile")
+        planned = agent_message(self.repo, "routing metrics target")
+        run_path = self.repo / ".ai" / "runs" / planned["run_id"]
+        append_event(
+            run_path,
+            phase="write",
+            provider="reasonix_cli",
+            model="deepseek-v4-pro",
+            action="success",
+            status="IMPLEMENTED",
+            detail="synthetic economy writer event",
+            duration_ms=1200,
+        )
+
+        response = agent_message(self.repo, "cost", run_id=planned["run_id"])
+
+        routing = response["metrics"]["routing_evidence"]
+        self.assertTrue(routing["economy_configured"])
+        self.assertEqual(routing["observed_economy_phases"], ["write"])
+        self.assertIn("fix", routing["missing_evidence"])
+        self.assertEqual(routing["phases"]["write"]["observed"][0]["provider"], "reasonix_cli")
+        self.assertIn("observed write", response["reply"])
 
     def test_mcp_patchbay_agent_continue_without_run_returns_guidance(self) -> None:
         from scripts.ai_flow import mcp_server
