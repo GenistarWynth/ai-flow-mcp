@@ -122,6 +122,7 @@ const tabLabels: Record<TabName, string> = {
   Config: "配置",
   Providers: "提供方"
 };
+const diagnosticTabs = new Set<TabName>(["Trace", "Log", "Diff", "Artifacts", "Config", "Providers"]);
 const defaultClient = createPatchbayClient();
 const busyStatuses = new Set(["IMPLEMENTING", "TESTING", "REVIEWING", "FIXING", "RUNNING"]);
 const setupHostOptions: SetupHostOption[] = [
@@ -866,9 +867,14 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         setError("No recent run was returned by Patchbay Agent.");
         return;
       }
+      const requestedTab = newTaskReply?.run_reference?.requested_view?.tab ?? newTaskReply?.requested_view?.tab;
       setError("");
       setNewTaskMode(false);
       setNewTaskReply(null);
+      if (requestedTab && diagnosticTabs.has(requestedTab as TabName)) {
+        setDiagnosticsOpen(true);
+        setActiveTab(requestedTab as TabName);
+      }
       await loadRuns(runId);
       return;
     }

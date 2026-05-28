@@ -724,6 +724,8 @@ def _is_run_bound_intent(text: str) -> bool:
         "apply",
         "approve",
         "approved",
+        "artifact",
+        "artifacts",
         "confirm",
         "continue",
         "cost",
@@ -917,6 +919,7 @@ def _missing_run_response(root: Path, text: str) -> dict[str, Any]:
     report = service.runs(root, limit=5)
     recent = list(report.get("runs") or [])
     run_reference = None
+    requested_view = _missing_run_requested_view(text)
     if recent:
         latest = recent[0]
         run_reference = {
@@ -926,6 +929,7 @@ def _missing_run_response(root: Path, text: str) -> dict[str, Any]:
             "updated_at": latest.get("updated_at"),
             "suggested_message": "open latest run",
             "safe_actions": ["open_run", "status", "events"],
+            "requested_view": requested_view,
         }
         reply = (
             f"`{text}` needs an existing run_id. Latest run is {latest.get('run_id')} "
@@ -941,8 +945,27 @@ def _missing_run_response(root: Path, text: str) -> dict[str, Any]:
         ok=False,
         error=reply,
         next_actions=next_actions,
-        extra={"runs": report, "recent_run": recent[0] if recent else None, "run_reference": run_reference},
+        extra={
+            "runs": report,
+            "recent_run": recent[0] if recent else None,
+            "run_reference": run_reference,
+            "requested_view": requested_view,
+        },
     )
+
+
+def _missing_run_requested_view(text: str) -> dict[str, Any] | None:
+    normalized = text.strip().lower()
+    words = _words(normalized)
+    if words & {"diff", "patch"} or _has_any(normalized, ("琛ヤ竵", "鍙樻洿")):
+        return {"tab": "Diff", "reason": "The prompt asked for the run diff or patch."}
+    if words & {"events", "trace"} or _has_any(normalized, ("浜嬩欢", "璺熻釜")):
+        return {"tab": "Trace", "reason": "The prompt asked for run events or trace."}
+    if words & {"log", "logs"} or _has_any(normalized, ("鏃ュ織",)):
+        return {"tab": "Log", "reason": "The prompt asked for run logs."}
+    if words & {"artifact", "artifacts", "plan", "review"} or _has_any(normalized, ("浜х墿", "璁″垝")):
+        return {"tab": "Artifacts", "reason": "The prompt asked for run artifacts."}
+    return None
 
 
 def _doctor_response(root: Path) -> dict[str, Any]:

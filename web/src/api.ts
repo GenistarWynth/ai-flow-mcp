@@ -283,7 +283,8 @@ export type AgentResponse = {
   context?: HandoffContext | null;
   runs?: { count?: number; runs?: RunSummary[] };
   recent_run?: RunSummary | null;
-  run_reference?: (RunSummary & { suggested_message?: string; safe_actions?: string[] }) | null;
+  run_reference?: (RunSummary & { suggested_message?: string; safe_actions?: string[]; requested_view?: RunReferenceView | null }) | null;
+  requested_view?: RunReferenceView | null;
   doctor?: DoctorReport;
   setup?: SetupResult;
   setup_host?: string;
@@ -307,6 +308,11 @@ export type AgentResponse = {
     confirmation?: "plan_approved" | "apply_approved";
   } | null;
   error?: string | null;
+};
+
+export type RunReferenceView = {
+  tab?: "Overview" | "Readiness" | "Trace" | "Log" | "Diff" | "Artifacts" | "Config" | "Providers";
+  reason?: string;
 };
 
 export type AgentMessageOptions = {

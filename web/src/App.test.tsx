@@ -443,8 +443,10 @@ describe("Workbench", () => {
         task: "Approve a plan",
         status: "PLANNED",
         suggested_message: "open latest run",
-        safe_actions: ["open_run", "status", "events"]
+        safe_actions: ["open_run", "status", "events"],
+        requested_view: { tab: "Diff", reason: "The prompt asked for the run diff or patch." }
       },
+      requested_view: { tab: "Diff", reason: "The prompt asked for the run diff or patch." },
       runs: { count: 1, runs: [{ run_id: "run-ready", task: "Approve a plan", status: "PLANNED" }] }
     });
     const client = createClient({
@@ -470,7 +472,7 @@ describe("Workbench", () => {
 
     await waitFor(() => expect(client.listRuns).toHaveBeenCalled());
     const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
-    await userEvent.type(composer, "continue{enter}");
+    await userEvent.type(composer, "diff{enter}");
 
     const openLatest = await screen.findByRole("button", { name: /open latest run/ });
     expect(openLatest).toBeVisible();
@@ -478,8 +480,10 @@ describe("Workbench", () => {
 
     expect(await screen.findByRole("heading", { name: "Approve a plan" })).toBeInTheDocument();
     await waitFor(() => expect(client.getContext).toHaveBeenCalledWith("run-ready"));
+    expect(screen.getByRole("tab", { name: "差异" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("diff --git a/web b/web")).toBeVisible();
     expect(agentMessage).toHaveBeenCalledTimes(1);
-    expect(agentMessage).toHaveBeenCalledWith("continue", { include: { plan: true }, background: true });
+    expect(agentMessage).toHaveBeenCalledWith("diff", { include: { plan: true }, background: true });
     expect(agentMessage).not.toHaveBeenCalledWith("continue", expect.objectContaining({ runId: "run-ready" }));
     expect(agentMessage).not.toHaveBeenCalledWith("approve", expect.anything());
     expect(agentMessage).not.toHaveBeenCalledWith("apply", expect.anything());
