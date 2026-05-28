@@ -174,6 +174,33 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertEqual(response["action"], "start")
         self.assertEqual(response["status"]["status"], "PLANNED")
 
+    def test_agent_metrics_without_run_returns_local_guidance(self) -> None:
+        response = agent_message(self.repo, "metrics")
+
+        self.assertEqual(response["action"], "missing_run")
+        self.assertFalse(response["ok"])
+        self.assertIsNone(response["run_id"])
+        self.assertIn("needs an existing run_id", response["reply"])
+        self.assertEqual(len(list((self.repo / ".ai" / "runs").iterdir())), 0)
+
+    def test_agent_metrics_with_run_returns_efficiency_digest(self) -> None:
+        planned = agent_message(self.repo, "metrics target")
+
+        response = agent_message(self.repo, "metrics", run_id=planned["run_id"])
+
+        self.assertEqual(response["action"], "metrics")
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["run_id"], planned["run_id"])
+        self.assertEqual(response["metrics"]["run_id"], planned["run_id"])
+        self.assertIn("run_metrics", response["metrics"])
+        self.assertIn("phase attempt", response["reply"])
+
+    def test_agent_metrics_word_in_task_still_starts_plan(self) -> None:
+        response = agent_message(self.repo, "improve metrics dashboard")
+
+        self.assertEqual(response["action"], "start")
+        self.assertEqual(response["status"]["status"], "PLANNED")
+
     def test_agent_continue_without_run_returns_local_guidance(self) -> None:
         response = agent_message(self.repo, "continue")
 
@@ -352,6 +379,29 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertEqual(payload["action"], "runs")
         self.assertEqual(payload["recent_run"]["run_id"], planned["run_id"])
 
+    def test_mcp_patchbay_agent_can_return_metrics_for_run(self) -> None:
+        from scripts.ai_flow import mcp_server
+
+        planned = agent_message(self.repo, "mcp metrics target")
+        original_root = mcp_server.ROOT
+        try:
+            mcp_server.ROOT = self.repo
+            response = mcp_server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {"name": "patchbay_agent", "arguments": {"message": "cost", "run_id": planned["run_id"]}},
+                }
+            )
+        finally:
+            mcp_server.ROOT = original_root
+
+        payload = json.loads(response["result"]["content"][0]["text"])
+        self.assertEqual(payload["action"], "metrics")
+        self.assertEqual(payload["metrics"]["run_id"], planned["run_id"])
+        self.assertIn("run_metrics", payload["metrics"])
+
     def test_mcp_patchbay_agent_continue_without_run_returns_guidance(self) -> None:
         from scripts.ai_flow import mcp_server
 
@@ -407,6 +457,15 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertEqual(response["action"], "runs")
         self.assertEqual(response["recent_run"]["run_id"], planned["run_id"])
         self.assertIsNone(response["run_id"])
+
+    def test_cli_agent_metrics_with_run_returns_efficiency_digest(self) -> None:
+        planned = agent_message(self.repo, "cli metrics target")
+
+        response = self.cli_json("agent", "message", "tokens", "--run-id", planned["run_id"])
+
+        self.assertEqual(response["action"], "metrics")
+        self.assertEqual(response["metrics"]["run_id"], planned["run_id"])
+        self.assertIn("run_metrics", response["metrics"])
 
     def test_cli_agent_continue_without_run_returns_local_guidance(self) -> None:
         response = self.cli_json("agent", "message", "continue")

@@ -84,6 +84,9 @@ def agent_message(
         return _missing_run_response(root, text)
     if intent == "setup":
         return _setup_response(root)
+    if intent == "metrics":
+        assert run_id is not None
+        return _metrics_response(root, run_id)
     if background:
         return _start_background_agent(
             root,
@@ -554,6 +557,8 @@ def _classify_intent(message: str, *, has_run: bool, confirmation: str) -> str:
         return "help"
     if _is_setup_intent(text):
         return "setup"
+    if _is_metrics_intent(text):
+        return "metrics" if has_run else "missing_run"
     if not has_run:
         if _is_runs_intent(text):
             return "runs"
@@ -568,6 +573,8 @@ def _classify_intent(message: str, *, has_run: bool, confirmation: str) -> str:
         return "continue"
     if _has_any(text, ("diff", "patch", "补丁", "变更")):
         return "diff"
+    if _is_metrics_intent(text):
+        return "metrics"
     if _has_any(text, ("artifact", "plan", "review", "log", "产物", "计划", "日志")):
         return "artifact"
     return "status"
@@ -610,6 +617,32 @@ def _is_setup_intent(text: str) -> bool:
     return bool(words & {"install", "installation", "setup"}) and not bool(words & TASK_INTENT_WORDS)
 
 
+def _is_metrics_intent(text: str) -> bool:
+    if text in {
+        "cost",
+        "costs",
+        "efficiency",
+        "metrics",
+        "performance",
+        "run metrics",
+        "stats",
+        "statistics",
+        "token usage",
+        "tokens",
+        "成本",
+        "耗时",
+        "效率",
+        "性价比",
+    }:
+        return True
+    words = _words(text)
+    if words & TASK_INTENT_WORDS:
+        return False
+    metric_words = {"cost", "costs", "duration", "efficiency", "metrics", "performance", "stats", "statistics", "token", "tokens"}
+    scope_words = {"current", "latest", "patchbay", "run", "this", "usage"}
+    return bool(words & metric_words) and bool(words & scope_words)
+
+
 def _is_run_bound_intent(text: str) -> bool:
     if text in {
         "apply",
@@ -617,20 +650,26 @@ def _is_run_bound_intent(text: str) -> bool:
         "approved",
         "confirm",
         "continue",
+        "cost",
         "diff",
         "events",
+        "metrics",
         "log",
         "logs",
         "next",
         "patch",
         "review",
         "resume",
+        "tokens",
         "trace",
         "应用",
         "批准",
+        "成本",
         "确认",
         "继续",
         "下一步",
+        "耗时",
+        "效率",
         "补丁",
         "变更",
         "计划",
@@ -702,6 +741,10 @@ def _help_response() -> dict[str, Any]:
             "summary": "Send `status` without a run_id to list recent runs, or with a run_id to inspect one run.",
         },
         {
+            "name": "metrics",
+            "summary": "Send `metrics`, `cost`, or `tokens` with a run_id to inspect run efficiency evidence.",
+        },
+        {
             "name": "continue",
             "summary": "Send `continue` with a run_id to advance the next safe phase.",
         },
@@ -750,6 +793,37 @@ def _runs_response(root: Path) -> dict[str, Any]:
         next_actions=next_actions,
         extra={"runs": report, "recent_run": recent[0] if recent else None},
     )
+
+
+def _metrics_response(root: Path, run_id: str) -> dict[str, Any]:
+    result = service.metrics(root, run_id)
+    run_metrics = result.get("run_metrics") or {}
+    attempts = sum(int(value or 0) for value in (run_metrics.get("phase_attempts") or {}).values())
+    providers = [item for item in (run_metrics.get("provider_usage") or []) if item.get("provider") or item.get("model")]
+    cost = run_metrics.get("cost") or {}
+    token_usage = run_metrics.get("token_usage") or {}
+    signals = [
+        f"{attempts} phase attempt{'s' if attempts != 1 else ''}",
+        f"{len(providers)} provider trace entr{'ies' if len(providers) != 1 else 'y'}",
+        "cost known" if cost.get("known") else "cost not reported",
+        "tokens known" if token_usage.get("known") else "tokens not reported",
+    ]
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "ok": True,
+        "action": "metrics",
+        "reply": f"Run {run_id} metrics: " + "; ".join(signals) + ".",
+        "run_id": run_id,
+        "status": result,
+        "context": None,
+        "events": None,
+        "artifacts": {},
+        "diff": None,
+        "requires_confirmation": None,
+        "next_actions": ["status", "continue", "readiness"],
+        "error": None,
+        "metrics": result,
+    }
 
 
 def _missing_run_response(root: Path, text: str) -> dict[str, Any]:
