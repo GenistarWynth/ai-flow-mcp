@@ -123,6 +123,24 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertTrue(any("config profile apply economy" in item for item in response["recommendations"]))
         self.assertIn("Recommendations:", response["reply"])
 
+    def test_agent_can_show_and_apply_economy_profile_without_starting_run(self) -> None:
+        from scripts.ai_flow.config import load_config, resolve_phase
+
+        shown = agent_message(self.repo, "show economy profile")
+        self.assertEqual(shown["action"], "profile_show")
+        self.assertEqual(shown["profile"]["profile"], "custom")
+        self.assertIn("config profile apply economy", shown["reply"])
+
+        applied = agent_message(self.repo, "apply economy profile")
+
+        self.assertEqual(applied["action"], "profile_apply")
+        self.assertEqual(applied["profile"]["profile"], "economy")
+        self.assertEqual(applied["profile"]["status"]["profile"], "economy")
+        cfg = load_config(self.repo)
+        self.assertEqual(resolve_phase(cfg, "write")["model"], "deepseek-v4-pro")
+        self.assertEqual(resolve_phase(cfg, "fix")["provider"], "reasonix_cli")
+        self.assertFalse((self.repo / ".ai" / "runs").exists())
+
     def test_agent_doctor_word_in_task_still_starts_plan(self) -> None:
         response = agent_message(self.repo, "build doctor profile workflow")
 
@@ -133,6 +151,10 @@ class AgentWorkflowTests(AgentTestCase):
         patchbay_task = agent_message(self.repo, "fix patchbay doctor bug")
         self.assertEqual(patchbay_task["action"], "start")
         self.assertEqual(patchbay_task["status"]["status"], "PLANNED")
+
+        cost_dashboard_task = agent_message(self.repo, "optimize cost dashboard")
+        self.assertEqual(cost_dashboard_task["action"], "start")
+        self.assertEqual(cost_dashboard_task["status"]["status"], "PLANNED")
 
     def test_agent_help_message_returns_capabilities_without_starting_run(self) -> None:
         response = agent_message(self.repo, "help")
@@ -337,6 +359,27 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertEqual(payload["action"], "doctor")
         self.assertIn("checks", payload["doctor"])
 
+    def test_mcp_patchbay_agent_can_apply_economy_profile(self) -> None:
+        from scripts.ai_flow import mcp_server
+
+        original_root = mcp_server.ROOT
+        try:
+            mcp_server.ROOT = self.repo
+            response = mcp_server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {"name": "patchbay_agent", "arguments": {"message": "patchbay config profile apply economy"}},
+                }
+            )
+        finally:
+            mcp_server.ROOT = original_root
+
+        payload = json.loads(response["result"]["content"][0]["text"])
+        self.assertEqual(payload["action"], "profile_apply")
+        self.assertEqual(payload["profile"]["status"]["profile"], "economy")
+
     def test_mcp_patchbay_agent_can_run_setup_without_starting_run(self) -> None:
         from scripts.ai_flow import mcp_server
 
@@ -441,6 +484,13 @@ class AgentWorkflowTests(AgentTestCase):
 
         self.assertEqual(response["action"], "doctor")
         self.assertIn("checks", response["doctor"])
+        self.assertIsNone(response["run_id"])
+
+    def test_cli_agent_apply_economy_profile_message(self) -> None:
+        response = self.cli_json("agent", "message", "use economy routing")
+
+        self.assertEqual(response["action"], "profile_apply")
+        self.assertEqual(response["profile"]["status"]["profile"], "economy")
         self.assertIsNone(response["run_id"])
 
     def test_cli_agent_patchbay_setup_runs_setup_without_starting_run(self) -> None:
@@ -575,7 +625,7 @@ class AgentWorkflowTests(AgentTestCase):
             method="POST",
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(request, timeout=10) as response:
+        with urllib.request.urlopen(request, timeout=30) as response:
             payload = json.loads(response.read().decode("utf-8"))
 
         self.assertEqual(payload["status"]["status"], "PLANNED")

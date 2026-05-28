@@ -12,6 +12,7 @@ from typing import Any
 from . import service
 from .artifacts import now_iso, read_text
 from .config import load_config
+from .config_wizard import run_config_wizard
 from .doctor import run_doctor
 from .errors import StateError
 from .events import append_event
@@ -80,6 +81,10 @@ def agent_message(
         return _help_response()
     if intent == "runs":
         return _runs_response(root)
+    if intent == "profile_apply":
+        return _profile_apply_response(root)
+    if intent == "profile_show":
+        return _profile_show_response(root)
     if intent == "missing_run":
         return _missing_run_response(root, text)
     if intent == "setup":
@@ -551,6 +556,9 @@ def _classify_intent(message: str, *, has_run: bool, confirmation: str) -> str:
         return "approve_and_run"
     if confirmation == APPLY_CONFIRMATION:
         return "apply"
+    profile_intent = _config_profile_intent(text)
+    if profile_intent:
+        return profile_intent
     if _is_doctor_intent(text):
         return "doctor"
     if _is_help_intent(text):
@@ -604,6 +612,47 @@ def _is_runs_intent(text: str) -> bool:
     if "status" in words:
         return bool(words & {"agent", "latest", "list", "patchbay", "recent", "run", "runs", "show", "current"})
     return "recent" in words and bool(words & {"run", "runs"})
+
+
+def _config_profile_intent(text: str) -> str | None:
+    if not text:
+        return None
+    if text in {
+        "config profile show",
+        "cost profile",
+        "economy",
+        "economy profile",
+        "profile status",
+        "routing profile",
+        "show economy profile",
+        "show routing profile",
+    }:
+        return "profile_show"
+    if text in {
+        "apply economy profile",
+        "enable economy profile",
+        "patchbay config profile apply economy",
+        "use economy profile",
+        "use economy routing",
+    }:
+        return "profile_apply"
+    if _has_any(text, ("启用经济路由", "应用经济路由", "经济型路由", "经济路由", "使用便宜模型", "使用低成本模型")):
+        return "profile_apply"
+    if _has_any(text, ("查看经济路由", "查看路由配置", "路由状态", "经济路由状态")):
+        return "profile_show"
+    words = _words(text)
+    routing_scope = {"cost", "deepseek", "economy", "profile", "reasonix", "route", "routing"}
+    if "profile" in words and bool(words & {"show", "status", "read", "inspect"}):
+        return "profile_show" if bool(words & routing_scope) else None
+    if bool(words & {"deepseek", "economy", "reasonix"}) and bool(words & {"show", "status", "read", "inspect"}):
+        return "profile_show"
+    apply_words = {"apply", "enable", "route", "switch", "use"}
+    write_fix_words = {"fix", "implementation", "repair", "write", "writer"}
+    if bool(words & {"deepseek", "economy", "reasonix"}) and bool(words & apply_words):
+        return "profile_apply"
+    if bool(words & {"cheap", "cost", "lower", "low", "economy"}) and bool(words & {"model", "models", "routing", "route", "profile"}):
+        return "profile_apply" if bool(words & (apply_words | write_fix_words | {"optimize"})) else "profile_show"
+    return None
 
 
 def _is_setup_intent(text: str) -> bool:
@@ -737,6 +786,10 @@ def _help_response() -> dict[str, Any]:
             "summary": "Send `readiness` or `patchbay doctor` to inspect setup without creating a run.",
         },
         {
+            "name": "economy-profile",
+            "summary": "Send `apply economy profile` to route high-volume write/fix work to Reasonix/DeepSeek without starting a run.",
+        },
+        {
             "name": "status",
             "summary": "Send `status` without a run_id to list recent runs, or with a run_id to inspect one run.",
         },
@@ -755,8 +808,8 @@ def _help_response() -> dict[str, Any]:
     ]
     return _stateless_response(
         action="help",
-        reply="Patchbay Agent can run setup, start a gated run, report readiness, list recent runs, continue a run, show artifacts/diff, and apply only after explicit approval.",
-        next_actions=["setup", "start", "readiness", "runs"],
+        reply="Patchbay Agent can run setup, start a gated run, report readiness, apply economy routing, list recent runs, continue a run, show artifacts/diff, and apply only after explicit approval.",
+        next_actions=["setup", "start", "readiness", "apply economy profile", "runs"],
         extra={"capabilities": capabilities},
     )
 
@@ -868,6 +921,41 @@ def _doctor_response(root: Path) -> dict[str, Any]:
         error=None if report.get("ok") else reply,
         next_actions=next_actions,
         extra={"doctor": report, "recommendations": recommendations},
+    )
+
+
+def _profile_apply_response(root: Path) -> dict[str, Any]:
+    result = run_config_wizard(root, profile="economy")
+    status = result.get("status") or {}
+    write = ((status.get("economy") or {}).get("write") or {})
+    fix = ((status.get("economy") or {}).get("fix") or {})
+    reply = (
+        "Economy routing profile applied. High-volume write/fix work now routes to "
+        f"{write.get('provider') or 'reasonix_cli'} / {write.get('model') or 'deepseek-v4-pro'}."
+    )
+    if fix:
+        reply += f" Fix uses {fix.get('provider') or '-'} / {fix.get('model') or '-'}."
+    return _stateless_response(
+        action="profile_apply",
+        reply=reply,
+        next_actions=list(result.get("next_actions") or ["readiness", "start"]),
+        extra={"profile": result},
+    )
+
+
+def _profile_show_response(root: Path) -> dict[str, Any]:
+    result = run_config_wizard(root, show_profile=True)
+    profile = str(result.get("profile") or "custom")
+    economy = result.get("economy") or {}
+    if economy.get("matches"):
+        reply = "Economy routing profile is active for write/fix work."
+    else:
+        reply = str(result.get("recommendation") or "Economy routing profile is not active.")
+    return _stateless_response(
+        action="profile_show",
+        reply=reply,
+        next_actions=["apply economy profile", "readiness"] if profile != "economy" else ["readiness", "start"],
+        extra={"profile": result},
     )
 
 

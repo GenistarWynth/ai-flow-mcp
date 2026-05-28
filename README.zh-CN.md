@@ -74,6 +74,7 @@ patchbay setup --host codex     # 初始化项目、本地配置、Codex Skill�
 patchbay install --host codex   # setup 的别名
 patchbay config     # 交互式向导，无需手动编辑
 patchbay config profile apply economy   # 保持 write/fix 走 Reasonix + DeepSeek
+patchbay agent message "apply economy profile" --json  # 通过对话式 Agent 做同样的路由调整
 patchbay doctor     # 统一检查 config/MCP/Skill 是否就绪
 patchbay config --doctor     # 验证解析后的阶段配置
 patchbay config --set-key models.planner --set-value claude-opus-4-7
@@ -112,7 +113,7 @@ python scripts/patchbay agent message approve --run-id <run_id> --confirmation p
 python scripts/patchbay agent message continue --run-id <run_id> --background --json
 ```
 
-后台 Agent 会写入 `JOB.json` 并追加 `agent` 事件，同时保留计划批准和 apply 确认门禁。`apply` 仍然只支持前台确认，必须在测试和审查通过后显式执行。`patchbay setup`、`install patchbay`、`help`、`status`、`runs`、`readiness`、`diagnose` 或 `patchbay doctor` 这类本地查询会直接返回 setup 结果、使用提示、最近运行或统一 doctor 报告，不会创建模型 run。`continue`、`approve`、`apply`、`diff`、`artifact` 这类依赖现有 run 的消息在没有 `run_id` 时也只会给出本地提示，不会误开新 run。
+后台 Agent 会写入 `JOB.json` 并追加 `agent` 事件，同时保留计划批准和 apply 确认门禁。`apply` 仍然只支持前台确认，必须在测试和审查通过后显式执行。`patchbay setup`、`install patchbay`、`help`、`status`、`runs`、`readiness`、`diagnose`、`patchbay doctor`、`show economy profile` 或 `apply economy profile` 这类本地查询和配置消息会直接返回 setup 结果、使用提示、最近运行、统一 doctor 报告或路由调整结果，不会创建模型 run。`continue`、`approve`、`apply`、`diff`、`artifact` 这类依赖现有 run 的消息在没有 `run_id` 时也只会给出本地提示，不会误开新 run。
 
 Web workbench 使用同一套对话式流程，并在诊断抽屉里提供“就绪”页。该页面调用统一 doctor 检查但默认不做 MCP stdio 探测，因此可以在桌面 UI 中看到安装与配置缺口，同时避免打开页面时额外启动子进程。
 
