@@ -872,4 +872,76 @@ describe("Workbench", () => {
     expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
     expect(screen.getByRole("button", { name: /开始实现/ })).toBeDisabled();
   });
+
+  it("surfaces failed run recovery guidance without executing a phase action", async () => {
+    const guidance = "Ask the planner to emit valid JSON inside the sentinel block.";
+    const failedContext: HandoffContext = {
+      ...plannedContext,
+      run_id: "run-failed",
+      status: "FAILED",
+      current_phase: "plan",
+      next_actions: [],
+      timeline: [],
+      agent_activity: {
+        ...plannedContext.agent_activity!,
+        headline: "Patchbay Agent 在规划阶段遇到错误。",
+        tone: "failed",
+        current_step: {
+          phase: "plan",
+          label: "规划",
+          status: "FAILED",
+          status_label: "失败",
+          summary: "Planner JSON could not be parsed: Expecting value"
+        },
+        next_action: null,
+        conversation_state: {
+          task: "Bad planner output",
+          status: "FAILED",
+          status_label: "失败",
+          phase: "plan",
+          phase_label: "规划",
+          tone: "failed",
+          next_step: guidance,
+          composer_placeholder: "输入“修复”或打开诊断查看错误",
+          suggestions: []
+        },
+        messages: []
+      }
+    };
+    const runAction = vi.fn().mockResolvedValue({ ok: true });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({
+        runs: [{ run_id: "run-failed", task: "Bad planner output", status: "FAILED" }]
+      }),
+      getStatus: vi.fn().mockResolvedValue({
+        run_id: "run-failed",
+        task: "Bad planner output",
+        status: "FAILED",
+        current_phase: "plan",
+        error: "Planner JSON could not be parsed: Expecting value",
+        suggested_next_action: guidance,
+        gate_state: { approved: false, tests_passed: false, review_result: null, ready_to_apply: false },
+        next_commands: [],
+        artifacts: [],
+        effective_phase_providers: {}
+      }),
+      getContext: vi.fn().mockResolvedValue(failedContext),
+      runAction
+    });
+
+    render(<Workbench client={client} pollIntervalMs={0} />);
+
+    expect(await screen.findByRole("heading", { name: "Bad planner output" })).toBeInTheDocument();
+    expect(await screen.findByText("Patchbay Agent 在规划阶段遇到错误。")).toBeInTheDocument();
+    const card = screen.getByLabelText("失败恢复建议");
+    expect(within(card).getByText("运行失败")).toBeVisible();
+    expect(within(card).getByText(guidance)).toBeVisible();
+    expect(within(card).queryByText("当前没有可执行动作。")).not.toBeInTheDocument();
+
+    await userEvent.click(within(card).getByRole("button", { name: /查看诊断/ }));
+
+    expect(runAction).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "诊断" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("tab", { name: "活动" })).toHaveAttribute("aria-selected", "true");
+  });
 });

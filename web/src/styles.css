@@ -197,6 +197,7 @@ textarea { resize: none; }
 .next-card.ready { border-left-color: #2f6fed; }
 .next-card.running { border-left-color: #7c3aed; }
 .next-card.blocked { border-left-color: #d97706; }
+.next-card.failed { border-left-color: #b42318; }
 .next-card strong, .next-card span { display: block; overflow-wrap: anywhere; }
 .next-card span { margin-top: 3px; color: #647083; font-size: 12px; }
 .next-card button, .suggestion, .modal-actions button {
@@ -214,6 +215,7 @@ textarea { resize: none; }
 }
 .next-card.ready button, .suggestion:not(.blocked), .send-button { color: #ffffff; border-color: #2457c5; background: #2457c5; }
 .next-card.blocked button, .suggestion.blocked { color: #92400e; border-color: #fed7aa; background: #fff7ed; }
+.next-card.failed button { color: #b42318; border-color: #f0b6b2; background: #fff8f7; }
 button:disabled { cursor: not-allowed; opacity: 0.45; }
 button.danger { color: #b42318; border-color: #f0b6b2; background: #fff8f7; }
 

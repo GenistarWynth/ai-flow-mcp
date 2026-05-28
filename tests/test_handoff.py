@@ -10,6 +10,7 @@ from unittest import mock
 
 from scripts.ai_flow import mcp_server, service
 from scripts.ai_flow.events import append_event
+from scripts.ai_flow.state import mark_failed
 from scripts.ai_flow.trace import append_trace
 
 
@@ -123,6 +124,30 @@ class HandoffContextTest(unittest.TestCase):
         self.assertEqual(apply_gate["status"], "ready")
         self.assertEqual(apply_gate["tone"], "ready")
         self.assertIn("review", [item["phase"] for item in context["provider_trail"]])
+
+    def test_context_exposes_failed_recovery_guidance_without_next_action(self) -> None:
+        planned = self.cli_json("plan", "--task", "failed handoff", "--mock")
+        run_id = planned["run_id"]
+        run_dir = self.repo / ".ai" / "runs" / run_id
+        guidance = "Ask the planner to emit valid JSON inside the sentinel block."
+        mark_failed(
+            run_dir,
+            error="Planner JSON could not be parsed: Expecting value",
+            stage="plan",
+            suggested_next_action=guidance,
+        )
+
+        context = service.context(self.repo, run_id)
+
+        self.assertEqual(context["status"], "FAILED")
+        self.assertEqual(context["current_phase"], "plan")
+        self.assertEqual(context["next_actions"], [])
+        activity = context["agent_activity"]
+        self.assertEqual(activity["tone"], "failed")
+        self.assertIsNone(activity["next_action"])
+        self.assertIn(guidance, activity["conversation_state"]["next_step"])
+        self.assertEqual(activity["conversation_state"]["suggestions"], [])
+        self.assertIn("修复", activity["conversation_state"]["composer_placeholder"])
 
     def test_context_can_merge_trace_when_requested_and_returns_cursors(self) -> None:
         planned = self.cli_json("plan", "--task", "trace context", "--mock")

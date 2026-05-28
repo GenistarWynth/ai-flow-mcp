@@ -241,6 +241,8 @@ function fallbackActivity(context: HandoffContext | null, status: RunStatus | nu
   const currentStatus = context?.status ?? status?.status ?? "";
   const gateState = context?.gate_state ?? status?.gate_state ?? {};
   const busy = isBusyStatus(currentStatus);
+  const failed = currentStatus === "FAILED";
+  const recoveryHint = failed ? status?.suggested_next_action || status?.error || "运行遇到错误，请打开诊断查看日志。" : "";
   const suggestions = nextActions.map((action) => ({
     id: action.name,
     label: commandLabel(action.name),
@@ -253,16 +255,18 @@ function fallbackActivity(context: HandoffContext | null, status: RunStatus | nu
   return {
     headline: nextAction
       ? `Patchbay Agent 已准备好执行：${commandLabel(nextAction.name)}。`
+      : failed
+        ? `Patchbay Agent 在${phaseLabel(currentPhase)}阶段遇到错误。`
       : busy
         ? `Patchbay Agent 正在执行${phaseLabel(currentPhase)}阶段。`
         : `Patchbay Agent 当前处于${phaseLabel(currentPhase)}阶段。`,
-    tone: busy ? "running" : nextAction ? "ready" : "idle",
+    tone: failed ? "failed" : busy ? "running" : nextAction ? "ready" : "idle",
     current_step: {
       phase: currentPhase,
       label: phaseLabel(currentPhase),
       status: currentStatus,
       status_label: statusLabel(currentStatus),
-      summary: nextAction?.reason ?? (busy ? "后台任务正在运行，状态会自动刷新。" : "暂无可执行动作。")
+      summary: nextAction?.reason ?? (failed ? recoveryHint : busy ? "后台任务正在运行，状态会自动刷新。" : "暂无可执行动作。")
     },
     next_action: nextAction ? { ...nextAction, label: commandLabel(nextAction.name) } : null,
     conversation_state: {
@@ -271,9 +275,15 @@ function fallbackActivity(context: HandoffContext | null, status: RunStatus | nu
       status_label: statusLabel(currentStatus),
       phase: currentPhase,
       phase_label: phaseLabel(currentPhase),
-      tone: busy ? "running" : nextAction ? "ready" : "idle",
-      next_step: nextAction?.reason ?? (busy ? "后台任务正在运行，完成后会出现下一步。" : "当前没有可执行动作。"),
-      composer_placeholder: busy ? "后台任务运行中，完成后可继续" : nextAction ? `输入“继续”或点击“${commandLabel(nextAction.name)}”` : "输入新任务，或写下本地备注",
+      tone: failed ? "failed" : busy ? "running" : nextAction ? "ready" : "idle",
+      next_step: nextAction?.reason ?? (failed ? recoveryHint : busy ? "后台任务正在运行，完成后会出现下一步。" : "当前没有可执行动作。"),
+      composer_placeholder: failed
+        ? "输入“修复”或打开诊断查看错误"
+        : busy
+          ? "后台任务运行中，完成后可继续"
+          : nextAction
+            ? `输入“继续”或点击“${commandLabel(nextAction.name)}”`
+            : "输入新任务，或写下本地备注",
       suggestions
     },
     gate_cards: [
@@ -578,6 +588,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const activity = activeContext?.agent_activity ?? fallbackActivity(activeContext, activeStatus);
   const conversationState = activity.conversation_state;
   const gateState = activeContext?.gate_state ?? activeStatus?.gate_state ?? {};
+  const loadedStatus = activeContext?.status ?? activeStatus?.status;
   const currentStatus = activeContext?.status ?? activeStatus?.status ?? selectedSummary?.status;
   const currentPhase = activeContext?.current_phase ?? activeStatus?.current_phase ?? "";
   const runBusy = isBusyStatus(currentStatus);
@@ -586,6 +597,10 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const messages = dedupeMessages(activity.messages ?? []);
   const primaryAction = activity.next_action;
   const suggestions = suggestionsFor(activity, activeContext);
+  const failureGuidance =
+    loadedStatus === "FAILED"
+      ? conversationState?.next_step ?? activity.current_step?.summary ?? "运行遇到错误，请查看诊断日志。"
+      : "";
   const selectedTask = conversationState?.task ?? activeStatus?.task ?? selectedSummary?.task ?? "";
   const runKey = selectedRun || "__new__";
   const localRunMessages = localMessages[runKey] ?? [];
@@ -918,7 +933,17 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
               {localRunMessages.map((message) => (
                 <ChatBubble key={message.id} role="user" title="本地消息" body={message.body} timestamp={message.timestamp} />
               ))}
-              <NextActionCard action={primaryAction} suggestions={suggestions} busy={runBusy || actionInFlight} onAction={handleAction} />
+              <NextActionCard
+                action={primaryAction}
+                suggestions={suggestions}
+                busy={runBusy || actionInFlight}
+                failureGuidance={failureGuidance}
+                onInspectDiagnostics={() => {
+                  setDiagnosticsOpen(true);
+                  setActiveTab("Trace");
+                }}
+                onAction={handleAction}
+              />
             </>
           )}
         </section>
@@ -1053,11 +1078,15 @@ function NextActionCard({
   action,
   suggestions,
   busy,
+  failureGuidance,
+  onInspectDiagnostics,
   onAction
 }: {
   action: AgentAction | null | undefined;
   suggestions: SuggestedAction[];
   busy?: boolean;
+  failureGuidance?: string;
+  onInspectDiagnostics?: () => void;
   onAction: (action: SuggestedAction | AgentAction | string) => void;
 }) {
   if (busy) {
@@ -1068,6 +1097,23 @@ function NextActionCard({
           <strong>后台任务运行中</strong>
           <span>Patchbay Agent 会自动刷新进度，完成后显示下一步。</span>
         </div>
+      </div>
+    );
+  }
+  if (!action && !suggestions.length && failureGuidance) {
+    return (
+      <div className="next-card failed" aria-label="失败恢复建议">
+        <AlertTriangle size={16} />
+        <div>
+          <strong>运行失败</strong>
+          <span>{failureGuidance}</span>
+        </div>
+        {onInspectDiagnostics ? (
+          <button type="button" onClick={onInspectDiagnostics}>
+            <Search size={13} />
+            查看诊断
+          </button>
+        ) : null}
       </div>
     );
   }

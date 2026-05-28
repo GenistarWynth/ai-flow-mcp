@@ -83,6 +83,8 @@ export type RunStatus = {
   task?: string;
   status?: string;
   current_phase?: string;
+  error?: string | null;
+  suggested_next_action?: string | null;
   tests_passed?: boolean;
   review_result?: string | null;
   gate_state?: GateState;
