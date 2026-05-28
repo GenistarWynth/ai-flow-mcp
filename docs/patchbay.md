@@ -11,6 +11,7 @@ uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay-mcp --root
 
 # 一条命令初始化本地项目、配置、Skill，并尝试注册 MCP
 patchbay setup --host codex --json
+patchbay install --host codex --json   # setup 的别名
 
 # 交互式配置（无需手动编辑 TOML）
 patchbay config                      # 交互式向导

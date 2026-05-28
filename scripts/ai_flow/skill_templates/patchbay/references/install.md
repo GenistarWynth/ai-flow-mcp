@@ -12,11 +12,12 @@ From a local checkout:
 
 ```bash
 python scripts/patchbay setup --host codex
+python scripts/patchbay install --host codex
 ```
 
 On Windows, `scripts/patchbay.cmd` avoids PowerShell execution-policy issues.
 
-`patchbay setup` initializes project files, creates `.ai/patchbay.toml` from the ignored example when missing, installs the bundled Codex Skill, tries to register the selected MCP host, and includes a doctor summary. If Codex, Claude Code, or Gemini CLI is unavailable, setup returns the registration command to run manually.
+`patchbay setup` and its alias `patchbay install` initialize project files, create `.ai/patchbay.toml` from the ignored example when missing, install the bundled Codex Skill, try to register the selected MCP host, and include a doctor summary. If Codex, Claude Code, or Gemini CLI is unavailable, setup returns the registration command to run manually.
 
 The conversational agent entry point accepts the same explicit local setup intent without creating a model run:
 

@@ -99,6 +99,18 @@ def _add_json(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
 
 
+def _add_setup_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--root", default="", help="Repository root to set up.")
+    parser.add_argument("--host", default="codex", help="MCP host: codex, claude, claude-code, claude-desktop, gemini.")
+    parser.add_argument("--skill-path", default="", help="Destination skills root; defaults to $CODEX_HOME/skills or ~/.codex/skills.")
+    parser.add_argument("--dry-run", action="store_true", help="Preview setup without writing files.")
+    parser.add_argument("--skip-skill", action="store_true", help="Skip Codex Skill installation.")
+    parser.add_argument("--skip-mcp", action="store_true", help="Skip MCP host registration helper.")
+    parser.add_argument("--mcp-dry-run", action="store_true", help="Preview MCP registration without writing host config.")
+    parser.add_argument("--probe-mcp", action="store_true", help="Run stdio MCP doctor after setup.")
+    parser.add_argument("--no-config", action="store_true", help="Do not create .ai/patchbay.toml from the example.")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="patchbay",
@@ -121,16 +133,12 @@ def build_parser() -> argparse.ArgumentParser:
     _add_json(doctor)
 
     setup = sub.add_parser("setup", help="Initialize Patchbay, install the Skill, and print/register MCP host setup.")
-    setup.add_argument("--root", default="", help="Repository root to set up.")
-    setup.add_argument("--host", default="codex", help="MCP host: codex, claude, claude-code, claude-desktop, gemini.")
-    setup.add_argument("--skill-path", default="", help="Destination skills root; defaults to $CODEX_HOME/skills or ~/.codex/skills.")
-    setup.add_argument("--dry-run", action="store_true", help="Preview setup without writing files.")
-    setup.add_argument("--skip-skill", action="store_true", help="Skip Codex Skill installation.")
-    setup.add_argument("--skip-mcp", action="store_true", help="Skip MCP host registration helper.")
-    setup.add_argument("--mcp-dry-run", action="store_true", help="Preview MCP registration without writing host config.")
-    setup.add_argument("--probe-mcp", action="store_true", help="Run stdio MCP doctor after setup.")
-    setup.add_argument("--no-config", action="store_true", help="Do not create .ai/patchbay.toml from the example.")
+    _add_setup_args(setup)
     _add_json(setup)
+
+    install = sub.add_parser("install", help="Alias for setup.")
+    _add_setup_args(install)
+    _add_json(install)
 
     agent = sub.add_parser("agent", help="Conversational Patchbay Agent entry point.")
     agent_sub = agent.add_subparsers(dest="agent_command", required=True)
@@ -381,6 +389,18 @@ def dispatch(args: argparse.Namespace, cwd: Path) -> Any:
             skill_path=getattr(a, "skill_path", "") or None,
         ),
         "setup": lambda a, c: run_setup(
+            c,
+            root=getattr(a, "root", "") or None,
+            host=getattr(a, "host", "codex"),
+            skill_path=getattr(a, "skill_path", "") or None,
+            dry_run=bool(getattr(a, "dry_run", False)),
+            skip_skill=bool(getattr(a, "skip_skill", False)),
+            skip_mcp=bool(getattr(a, "skip_mcp", False)),
+            mcp_dry_run=bool(getattr(a, "mcp_dry_run", False)),
+            probe_mcp=bool(getattr(a, "probe_mcp", False)),
+            create_config=not bool(getattr(a, "no_config", False)),
+        ),
+        "install": lambda a, c: run_setup(
             c,
             root=getattr(a, "root", "") or None,
             host=getattr(a, "host", "codex"),

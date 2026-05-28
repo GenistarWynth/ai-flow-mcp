@@ -22,6 +22,7 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertIn("review", help_text)
         self.assertIn("doctor", help_text)
         self.assertIn("setup", help_text)
+        self.assertIn("install", help_text)
         self.assertIn("status", help_text)
         self.assertIn("events", help_text)
         self.assertIn("metrics", help_text)
@@ -142,6 +143,12 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertEqual(setup.host, "codex")
         self.assertEqual(setup.skill_path, "C:/tmp/skills")
         self.assertTrue(setup.skip_mcp)
+
+        install = parser.parse_args(["install", "--host", "codex", "--skill-path", "C:/tmp/skills", "--skip-mcp", "--json"])
+        self.assertEqual(install.command, "install")
+        self.assertEqual(install.host, "codex")
+        self.assertEqual(install.skill_path, "C:/tmp/skills")
+        self.assertTrue(install.skip_mcp)
 
         agent = parser.parse_args(["agent", "message", "continue", "--run-id", "run-1", "--confirmation", "plan_approved", "--background", "--json"])
         self.assertEqual(agent.command, "agent")

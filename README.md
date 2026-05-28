@@ -37,7 +37,7 @@ Legacy `[models]`, `[commands]`, and `[writer].provider` keys remain supported a
 
 ## What It Provides
 
-- CLI workflow: `setup`, `doctor`, `agent message`, `web`, `plan`, `approve`, `write`, `test`, `review`, `fix`, `status`, `context`, `metrics`, `trace`, `diff`, `apply`, `cleanup`.
+- CLI workflow: `setup`/`install`, `doctor`, `agent message`, `web`, `plan`, `approve`, `write`, `test`, `review`, `fix`, `status`, `context`, `metrics`, `trace`, `diff`, `apply`, `cleanup`.
 - MCP tools: `patchbay_agent`, `patchbay_setup`, `patchbay_plan`, `patchbay_approve`, `patchbay_write`, `patchbay_test`, `patchbay_review`, `patchbay_fix`, `patchbay_status`, `patchbay_context`, `patchbay_metrics`, `patchbay_doctor`, `patchbay_events`, `patchbay_trace`, `patchbay_runs`, `patchbay_artifact`, `patchbay_config_show`, `patchbay_config_phase_set`, `patchbay_config_command_set`, `patchbay_config_test_add`, `patchbay_config_provider_add_cli`, `patchbay_diff`, `patchbay_apply`.
 - Legacy MCP aliases: `ai_flow_*`.
 - Isolated git worktrees by default.
@@ -65,6 +65,7 @@ python scripts/patchbay setup --host codex
 
 ```bash
 patchbay setup --host codex     # init + local config + Codex Skill + MCP registration attempt + doctor summary
+patchbay install --host codex    # alias for setup
 patchbay config     # Interactive wizard — no hand-editing required
 patchbay doctor     # Unified config/MCP/Skill readiness checks
 patchbay config --doctor     # Validate your resolved phase configuration

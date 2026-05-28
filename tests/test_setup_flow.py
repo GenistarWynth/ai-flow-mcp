@@ -87,6 +87,26 @@ class SetupFlowTest(unittest.TestCase):
         self.assertTrue((self.repo / ".ai" / "patchbay.toml").exists())
         self.assertTrue((self.skills / "patchbay" / "SKILL.md").exists())
 
+    def test_cli_install_alias_json(self) -> None:
+        completed = run(
+            [
+                "python",
+                str(self.script),
+                "install",
+                "--skill-path",
+                str(self.skills),
+                "--skip-mcp",
+                "--json",
+            ],
+            self.repo,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        result = json.loads(completed.stdout)
+        self.assertTrue(result["ok"])
+        self.assertTrue((self.repo / ".ai" / "patchbay.toml").exists())
+        self.assertTrue((self.skills / "patchbay" / "SKILL.md").exists())
+
     def test_setup_omits_manual_mcp_step_after_successful_registration(self) -> None:
         from scripts.ai_flow import setup_flow
 
