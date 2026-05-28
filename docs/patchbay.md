@@ -101,7 +101,7 @@ scripts/patchbay status <run_id>           # status 现在包含 latest_event �
 scripts/patchbay metrics <run_id>          # 只查看 run_metrics 效率证据
 ```
 
-MCP 工具 `patchbay_agent` 是对话式入口，能启动、恢复和推进运行，但仍保留计划批准和 apply 确认门禁。`patchbay_setup` / `patchbay_install` 是一键初始化入口，能创建项目文件、局部配置、Skill，并尝试注册 MCP。`patchbay_context` 是跨 host 恢复上下文的首选只读入口；`patchbay_metrics` 可单独读取阶段耗时、尝试次数、provider 使用轨迹、事件/trace 数、成本/token 上报状态，以及 `run_metrics.routing_evidence` 里的 write/fix 经济路由配置与实际 provider 事件证据；`patchbay_events` 和 `patchbay_status` 仍可用于聚焦查看。每条事件记录包含 `phase`、`provider`、`model`、`action`、`status`、`timestamp`、`detail`、`artifact_paths`、`duration_ms` 和 `next_action`。
+MCP 工具 `patchbay_agent` 是对话式入口，能启动、恢复和推进运行，但仍保留计划批准和 apply 确认门禁。`patchbay_setup` / `patchbay_install` 是一键初始化入口，能创建项目文件、局部配置、Skill，并尝试注册 MCP。`patchbay_context` 是跨 host 恢复上下文的首选只读入口；`patchbay_metrics` 可单独读取阶段耗时、尝试次数、provider 使用轨迹、事件/trace 数、成本/token 上报状态，以及 `run_metrics.routing_evidence` 里的 write/fix 经济路由配置与实际 provider 事件证据。失败运行会在 `status`、`context` 和对话式 Agent 响应里暴露 `failure_recovery`，包含失败阶段、建议动作、安全检查动作和应优先查看的产物；`patchbay_events` 和 `patchbay_status` 仍可用于聚焦查看。每条事件记录包含 `phase`、`provider`、`model`、`action`、`status`、`timestamp`、`detail`、`artifact_paths`、`duration_ms` 和 `next_action`。
 
 ## 常用命令
 
@@ -130,7 +130,7 @@ scripts/patchbay cleanup <run_id>
 
 `--background` is intended for the conversational agent path: planning and approve/continue turns return a pollable `run_id`, write `JOB.json`, and surface progress through `patchbay_status`, `patchbay_context`, and `patchbay_events`. Destructive apply remains foreground-only and still requires explicit confirmation. Explicit local setup prompts such as `patchbay setup`, `patchbay setup for claude-desktop`, `install patchbay for gemini`, or `patchbay install` run the one-command setup flow without creating a model run. If the user sends `continue`, `approve`, `apply`, `diff`, or `artifact` without a `run_id`, Patchbay returns local guidance instead of starting a new run.
 
-Web workbench 使用同一套对话式 Agent 流程。`patchbay_agent` 和 `scripts/patchbay agent message "patchbay setup" --json` / `status --json` / `readiness --json` / `"apply economy profile" --json` 可直接返回 setup 结果、最近运行、统一 doctor 报告或经济路由配置结果，不创建模型 run；`continue`、`approve`、`apply`、`diff`、`artifact` 这类没有 `run_id` 的消息会返回本地提示。诊断抽屉里的“就绪”页也会调用统一 doctor 检查项目初始化、配置、CLI 入口和 Skill 状态，展示当前 write/fix 路由，并能直接应用经济路由建议；“状态”页的效率指标会展示 `routing_evidence`，区分“已配置 economy”和“本次运行已实际观察到 economy provider 事件”。Web 默认跳过 MCP stdio 探测，避免打开页面时启动额外子进程，需要完整 MCP 检查时再运行 `patchbay doctor --json` 或 `patchbay mcp doctor`。
+Web workbench 使用同一套对话式 Agent 流程。`patchbay_agent` 和 `scripts/patchbay agent message "patchbay setup" --json` / `status --json` / `readiness --json` / `"apply economy profile" --json` 可直接返回 setup 结果、最近运行、统一 doctor 报告或经济路由配置结果，不创建模型 run；`continue`、`approve`、`apply`、`diff`、`artifact` 这类没有 `run_id` 的消息会返回本地提示。诊断抽屉里的“就绪”页也会调用统一 doctor 检查项目初始化、配置、CLI 入口和 Skill 状态，展示当前 write/fix 路由，并能直接应用经济路由建议；“状态”页的效率指标会展示 `routing_evidence`，区分“已配置 economy”和“本次运行已实际观察到 economy provider 事件”。运行失败时，线程里的失败恢复卡片会读取 `failure_recovery`，展示建议动作和应优先检查的产物，但不会自动执行任何阶段动作。Web 默认跳过 MCP stdio 探测，避免打开页面时启动额外子进程，需要完整 MCP 检查时再运行 `patchbay doctor --json` 或 `patchbay mcp doctor`。
 
 mock 模式：
 

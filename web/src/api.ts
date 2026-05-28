@@ -13,6 +13,15 @@ export type GateState = {
   ready_to_apply?: boolean;
 };
 
+export type FailureRecovery = {
+  stage?: string;
+  error?: string;
+  suggested_next_action?: string;
+  safe_actions?: string[];
+  artifacts?: string[];
+  summary?: string;
+};
+
 export type PhaseProvider = {
   provider?: string;
   model?: string;
@@ -106,6 +115,7 @@ export type RunStatus = {
   current_phase?: string;
   error?: string | null;
   suggested_next_action?: string | null;
+  failure_recovery?: FailureRecovery | null;
   tests_passed?: boolean;
   review_result?: string | null;
   gate_state?: GateState;
@@ -276,6 +286,7 @@ export type AgentResponse = {
   doctor?: DoctorReport;
   setup?: SetupResult;
   setup_host?: string;
+  recovery?: FailureRecovery;
   profile?: Record<string, unknown>;
   routing?: RoutingEvidence;
   metrics?: {
@@ -311,6 +322,7 @@ export type HandoffContext = {
   status?: string;
   current_phase?: string;
   gate_state?: GateState;
+  failure_recovery?: FailureRecovery | null;
   run_metrics?: RunMetrics;
   next_actions?: NextAction[];
   provider_trail?: ProviderTrailEntry[];

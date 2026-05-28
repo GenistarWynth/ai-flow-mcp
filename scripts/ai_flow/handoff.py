@@ -120,6 +120,7 @@ def build_handoff_context(
         "status": status_data.get("status"),
         "current_phase": status_data.get("current_phase"),
         "gate_state": status_data.get("gate_state", {}),
+        "failure_recovery": status_data.get("failure_recovery"),
         "run_metrics": status_data.get("run_metrics", {}),
         "next_actions": next_actions,
         "provider_trail": provider_trail,
@@ -309,7 +310,8 @@ def _conversation_next_step(status_data: dict[str, Any], next_action: dict[str, 
     if status == "APPLIED":
         return "补丁已应用。你可以在诊断里查看产物，或清理本次运行。"
     if status == "FAILED":
-        return str(status_data.get("suggested_next_action") or "运行遇到错误，请查看诊断日志。")
+        recovery = status_data.get("failure_recovery") if isinstance(status_data.get("failure_recovery"), dict) else {}
+        return str(recovery.get("suggested_next_action") or status_data.get("suggested_next_action") or "运行遇到错误，请查看诊断日志。")
     return "当前没有可执行动作。你可以查看诊断，或输入新任务创建新的运行。"
 
 
@@ -361,7 +363,8 @@ def _current_step_summary(status_data: dict[str, Any], next_action: dict[str, An
     if status == "APPLIED":
         return "补丁已应用，可以清理本次运行。"
     if status == "FAILED":
-        return str(status_data.get("suggested_next_action") or "检查日志后继续。")
+        recovery = status_data.get("failure_recovery") if isinstance(status_data.get("failure_recovery"), dict) else {}
+        return str(recovery.get("error") or status_data.get("error") or recovery.get("suggested_next_action") or "检查日志后继续。")
     return "暂无可执行动作。"
 
 

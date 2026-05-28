@@ -1024,6 +1024,14 @@ describe("Workbench", () => {
         current_phase: "plan",
         error: "Planner JSON could not be parsed: Expecting value",
         suggested_next_action: guidance,
+        failure_recovery: {
+          stage: "plan",
+          error: "Planner JSON could not be parsed: Expecting value",
+          suggested_next_action: guidance,
+          safe_actions: ["status", "events", "artifact", "diff", "new_run"],
+          artifacts: ["PLAN.md", "plan.json", "events.jsonl"],
+          summary: "Run failed in plan; inspect PLAN.md, plan.json, events.jsonl before taking another action."
+        },
         gate_state: { approved: false, tests_passed: false, review_result: null, ready_to_apply: false },
         next_commands: [],
         artifacts: [],
@@ -1039,7 +1047,10 @@ describe("Workbench", () => {
     expect(await screen.findByText("Patchbay Agent 在规划阶段遇到错误。")).toBeInTheDocument();
     const card = screen.getByLabelText("失败恢复建议");
     expect(within(card).getByText("运行失败")).toBeVisible();
+    expect(within(card).getByText("Run failed in plan; inspect PLAN.md, plan.json, events.jsonl before taking another action.")).toBeVisible();
     expect(within(card).getByText(guidance)).toBeVisible();
+    expect(within(card).getByText("PLAN.md")).toBeVisible();
+    expect(within(card).getByText("events.jsonl")).toBeVisible();
     expect(within(card).queryByText("当前没有可执行动作。")).not.toBeInTheDocument();
 
     await userEvent.click(within(card).getByRole("button", { name: /查看诊断/ }));

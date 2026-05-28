@@ -527,6 +527,7 @@ def agent_autopilot(
             if status_value in {IMPLEMENTING, TESTING, REVIEWING, FIXING}:
                 return _autopilot_result(root, run_id, "A Patchbay phase is already running. Poll status, context, or events for progress.")
             if status_value == FAILED:
+                recovery = current.get("failure_recovery") or _failure_recovery_summary(current)
                 _append_agent_event(
                     root,
                     run_id,
@@ -535,7 +536,14 @@ def agent_autopilot(
                     detail=str(current.get("error") or "Run failed."),
                     next_action="inspect",
                 )
-                return _autopilot_result(root, run_id, "Run failed. Inspect artifacts and events before continuing.", ok=False, error=str(current.get("error") or "Run failed."))
+                return _autopilot_result(
+                    root,
+                    run_id,
+                    "Run failed. Inspect artifacts and events before continuing.",
+                    ok=False,
+                    error=str(current.get("error") or "Run failed."),
+                    extra={"recovery": recovery},
+                )
             if status_value == APPLIED:
                 return _autopilot_result(root, run_id, "Reviewed diff is already applied.")
             return _autopilot_result(root, run_id, f"Current status is {status_value}; no automatic action is available.")
@@ -1095,9 +1103,10 @@ def _autopilot_result(
     requires_confirmation: dict[str, Any] | None = None,
     ok: bool = True,
     error: str | None = None,
+    extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     current = service.status(root, run_id)
-    return {
+    result = {
         "run_id": run_id,
         "ok": ok,
         "reply": reply,
@@ -1106,6 +1115,11 @@ def _autopilot_result(
         "next_actions": _next_actions_for_status(current),
         "error": error,
     }
+    if current.get("failure_recovery"):
+        result["recovery"] = current["failure_recovery"]
+    if extra:
+        result.update(extra)
+    return result
 
 
 def _agent_response(
@@ -1137,6 +1151,8 @@ def _agent_response(
         "next_actions": _next_actions_for_status(current),
         "error": None,
     }
+    if current.get("failure_recovery"):
+        response["recovery"] = current["failure_recovery"]
     if extra:
         response.update(extra)
     return response
@@ -1278,8 +1294,22 @@ def _reply_for_status(status_data: dict[str, Any]) -> str:
     if status_data.get("gate_state", {}).get("ready_to_apply"):
         return "Tests and review passed; waiting for explicit apply approval."
     if status_data.get("status") == FAILED:
-        return f"Run failed in {status_data.get('stage') or 'unknown'}: {status_data.get('error') or ''}".strip()
+        recovery = status_data.get("failure_recovery") or _failure_recovery_summary(status_data)
+        return f"{recovery.get('summary')} Suggested next action: {recovery.get('suggested_next_action')}".strip()
     return f"Run status: {status_data.get('status')}."
+
+
+def _failure_recovery_summary(status_data: dict[str, Any]) -> dict[str, Any]:
+    stage = str(status_data.get("stage") or status_data.get("current_phase") or "unknown")
+    suggested = str(status_data.get("suggested_next_action") or "Inspect artifacts and events before continuing.")
+    return {
+        "stage": stage,
+        "error": str(status_data.get("error") or "Run failed."),
+        "suggested_next_action": suggested,
+        "safe_actions": ["status", "events", "artifact", "diff", "new_run"],
+        "artifacts": list(status_data.get("artifacts") or []),
+        "summary": f"Run failed in {stage}.",
+    }
 
 
 def _append_agent_event(root: Path, run_id: str, **kwargs: Any) -> None:

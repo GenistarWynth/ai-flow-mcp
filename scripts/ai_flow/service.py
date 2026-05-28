@@ -1278,6 +1278,8 @@ def status(cwd: Path, run_id: str) -> dict[str, Any]:
     run_metrics = _run_metrics(run_path)
     data["next_commands"] = _next_commands(data)
     data["gate_state"] = _gate_state(data)
+    if data.get("status") == FAILED:
+        data["failure_recovery"] = _failure_recovery(data)
     cfg = load_config(root)
     effective: dict[str, Any] = {}
     for phase in ("plan", "write", "review", "fix"):
@@ -1295,6 +1297,40 @@ def status(cwd: Path, run_id: str) -> dict[str, Any]:
     if job_path.exists():
         data["job"] = read_json(job_path)
     return data
+
+
+def _failure_recovery(status_data: dict[str, Any]) -> dict[str, Any]:
+    stage = str(status_data.get("stage") or status_data.get("current_phase") or "unknown")
+    artifacts = list(status_data.get("artifacts") or [])
+    inspect = _failure_artifacts_for_stage(stage, artifacts)
+    suggested = str(status_data.get("suggested_next_action") or "").strip()
+    if not suggested:
+        suggested = "Inspect diagnostics before retrying or starting a replacement run."
+    return {
+        "stage": stage,
+        "error": str(status_data.get("error") or "Run failed."),
+        "suggested_next_action": suggested,
+        "safe_actions": ["status", "events", "artifact", "diff", "new_run"],
+        "artifacts": inspect,
+        "summary": f"Run failed in {stage}; inspect {', '.join(inspect) if inspect else 'diagnostics'} before taking another action.",
+    }
+
+
+def _failure_artifacts_for_stage(stage: str, artifacts: list[str]) -> list[str]:
+    preferred: dict[str, list[str]] = {
+        "plan": ["PLAN.md", "plan.json", "claude-planner.log", "events.jsonl", "trace.jsonl", "STATUS.json"],
+        "write": ["writer.log", "IMPLEMENTATION.md", "FINAL.diff", "events.jsonl", "trace.jsonl", "STATUS.json"],
+        "test": ["TEST.log", "FINAL.diff", "events.jsonl", "trace.jsonl", "STATUS.json"],
+        "review": ["REVIEW.md", "codex-reviewer.log", "FINAL.diff", "events.jsonl", "trace.jsonl", "STATUS.json"],
+        "fix": ["writer.log", "FIXES.md", "FINAL.diff", "TEST.log", "REVIEW.md", "events.jsonl", "trace.jsonl", "STATUS.json"],
+        "apply": ["FINAL.diff", "git.log", "events.jsonl", "trace.jsonl", "STATUS.json"],
+    }
+    ordered = preferred.get(stage, ["events.jsonl", "trace.jsonl", "STATUS.json"])
+    available = [name for name in ordered if name in artifacts]
+    if available:
+        return available
+    fallback = [name for name in artifacts if name.endswith((".log", ".md", ".diff", ".json", ".jsonl"))]
+    return fallback[:6]
 
 
 def _run_metrics(run_path: Path) -> dict[str, Any]:

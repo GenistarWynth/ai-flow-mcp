@@ -24,6 +24,7 @@ import {
   AgentMessage,
   createPatchbayClient,
   DoctorReport,
+  FailureRecovery,
   HandoffContext,
   PatchbayClient,
   PhaseProvider,
@@ -667,6 +668,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     loadedStatus === "FAILED"
       ? conversationState?.next_step ?? activity.current_step?.summary ?? "运行遇到错误，请查看诊断日志。"
       : "";
+  const failureRecovery = loadedStatus === "FAILED" ? activeContext?.failure_recovery ?? activeStatus?.failure_recovery ?? undefined : undefined;
   const selectedTask = conversationState?.task ?? activeStatus?.task ?? selectedSummary?.task ?? "";
   const runKey = selectedRun || "__new__";
   const localRunMessages = localMessages[runKey] ?? [];
@@ -1062,6 +1064,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                 suggestions={suggestions}
                 busy={runBusy || actionInFlight}
                 failureGuidance={failureGuidance}
+                failureRecovery={failureRecovery}
                 onInspectDiagnostics={() => {
                   setDiagnosticsOpen(true);
                   setActiveTab("Trace");
@@ -1204,6 +1207,7 @@ function NextActionCard({
   suggestions,
   busy,
   failureGuidance,
+  failureRecovery,
   onInspectDiagnostics,
   onAction
 }: {
@@ -1211,6 +1215,7 @@ function NextActionCard({
   suggestions: SuggestedAction[];
   busy?: boolean;
   failureGuidance?: string;
+  failureRecovery?: FailureRecovery | null;
   onInspectDiagnostics?: () => void;
   onAction: (action: SuggestedAction | AgentAction | string) => void;
 }) {
@@ -1231,7 +1236,15 @@ function NextActionCard({
         <AlertTriangle size={16} />
         <div>
           <strong>运行失败</strong>
-          <span>{failureGuidance}</span>
+          <span>{failureRecovery?.summary || failureGuidance}</span>
+          {failureRecovery?.suggested_next_action ? <p>{failureRecovery.suggested_next_action}</p> : null}
+          {failureRecovery?.artifacts?.length ? (
+            <div className="recovery-artifacts" aria-label="建议检查的失败产物">
+              {failureRecovery.artifacts.slice(0, 4).map((artifact) => (
+                <span key={artifact}>{artifact}</span>
+              ))}
+            </div>
+          ) : null}
         </div>
         {onInspectDiagnostics ? (
           <button type="button" onClick={onInspectDiagnostics}>

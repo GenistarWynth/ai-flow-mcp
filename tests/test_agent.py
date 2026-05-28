@@ -266,6 +266,28 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertEqual(response["action"], "start")
         self.assertEqual(response["status"]["status"], "PLANNED")
 
+    def test_agent_status_returns_structured_failed_recovery(self) -> None:
+        from scripts.ai_flow.state import mark_failed
+
+        planned = agent_message(self.repo, "failed recovery target")
+        run_path = self.repo / ".ai" / "runs" / planned["run_id"]
+        (run_path / "writer.log").write_text("writer exploded\n", encoding="utf-8")
+        mark_failed(
+            run_path,
+            error="writer exploded",
+            stage="write",
+            suggested_next_action="Inspect writer.log and rerun with a narrower task.",
+        )
+
+        response = agent_message(self.repo, "status", run_id=planned["run_id"])
+
+        self.assertEqual(response["status"]["status"], "FAILED")
+        self.assertIn("recovery", response)
+        self.assertEqual(response["recovery"]["stage"], "write")
+        self.assertIn("writer.log", response["recovery"]["artifacts"])
+        self.assertIn("Inspect writer.log", response["reply"])
+        self.assertEqual(response["next_actions"], ["status", "events", "artifact", "diff"])
+
     def test_agent_continue_without_run_returns_local_guidance(self) -> None:
         response = agent_message(self.repo, "continue")
 
