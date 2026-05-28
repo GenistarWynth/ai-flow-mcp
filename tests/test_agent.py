@@ -121,6 +121,7 @@ class AgentWorkflowTests(AgentTestCase):
 
         self.assertEqual(response["action"], "doctor")
         self.assertTrue(any("config profile apply economy" in item for item in response["recommendations"]))
+        self.assertIn("apply economy profile", response["next_actions"])
         self.assertIn("Recommendations:", response["reply"])
 
     def test_agent_can_show_and_apply_economy_profile_without_starting_run(self) -> None:

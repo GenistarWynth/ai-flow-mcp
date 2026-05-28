@@ -906,6 +906,7 @@ def _doctor_response(root: Path) -> dict[str, Any]:
     report = run_doctor(root, include_mcp=False)
     next_actions = list(report.get("next_actions") or [])
     recommendations = list(report.get("recommendations") or [])
+    suggested_actions = _doctor_suggested_actions(next_actions, recommendations)
     if report.get("ok"):
         reply = "Patchbay readiness checks passed."
     elif next_actions:
@@ -919,9 +920,16 @@ def _doctor_response(root: Path) -> dict[str, Any]:
         reply=reply,
         ok=bool(report.get("ok")),
         error=None if report.get("ok") else reply,
-        next_actions=next_actions,
+        next_actions=suggested_actions,
         extra={"doctor": report, "recommendations": recommendations},
     )
+
+
+def _doctor_suggested_actions(next_actions: list[str], recommendations: list[str]) -> list[str]:
+    actions = list(next_actions)
+    if any("config profile apply economy" in item or "Reasonix/DeepSeek" in item for item in recommendations):
+        actions.append("apply economy profile")
+    return _dedupe_strings(actions)
 
 
 def _profile_apply_response(root: Path) -> dict[str, Any]:
@@ -986,6 +994,17 @@ def _stateless_response(
     if extra:
         response.update(extra)
     return response
+
+
+def _dedupe_strings(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        result.append(item)
+    return result
 
 
 def _has_any(text: str, needles: tuple[str, ...]) -> bool:

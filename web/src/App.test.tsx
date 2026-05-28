@@ -398,6 +398,7 @@ describe("Workbench", () => {
         action: "runs",
         ok: true,
         reply: "No Patchbay runs found. Send a task to start with a plan.",
+        next_actions: ["readiness", "apply economy profile", "start"],
         runs: { count: 0, runs: [] }
       })
     });
@@ -410,6 +411,11 @@ describe("Workbench", () => {
 
     await waitFor(() => expect(client.agentMessage).toHaveBeenCalledWith("status", { include: { plan: true }, background: true }));
     expect(await screen.findByText("No Patchbay runs found. Send a task to start with a plan.")).toBeVisible();
+    expect(screen.getByRole("button", { name: /readiness/ })).toBeVisible();
+    expect(screen.getByRole("button", { name: /apply economy profile/ })).toBeVisible();
+    expect(screen.getByRole("button", { name: /start/ })).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: /apply economy profile/ }));
+    await waitFor(() => expect(client.agentMessage).toHaveBeenCalledWith("apply economy profile"));
     expect(client.getStatus).not.toHaveBeenCalled();
   });
 

@@ -49,6 +49,12 @@ type DoctorProfileStatus = {
     fix?: PhaseProvider;
   };
 };
+type LocalReplyAction = {
+  id: string;
+  label: string;
+  message: string;
+  icon: "play" | "settings" | "shield" | "search";
+};
 
 const phases = ["plan", "approve", "write", "test", "review", "fix", "apply", "cleanup"];
 const phaseLabels: Record<string, string> = {
@@ -140,6 +146,39 @@ function commandReason(command: string, safe: boolean) {
   if (command === "write") return "Plan was approved; writer may work inside the isolated worktree.";
   if (command === "cleanup") return "Run is applied; cleanup can remove the isolated worktree.";
   return `Run the ${command} phase next.`;
+}
+
+function localReplyActions(response: AgentResponse | null): LocalReplyAction[] {
+  const actions = response?.next_actions ?? [];
+  const seen = new Set<string>();
+  const result: LocalReplyAction[] = [];
+  for (const raw of actions) {
+    const mapped = mapLocalReplyAction(raw);
+    if (!mapped || seen.has(mapped.id)) continue;
+    seen.add(mapped.id);
+    result.push(mapped);
+  }
+  return result;
+}
+
+function mapLocalReplyAction(raw: string): LocalReplyAction | null {
+  const text = raw.toLowerCase();
+  if (text.includes("economy") || text.includes("deepseek") || text.includes("reasonix")) {
+    return { id: "apply-economy", label: "经济路由", message: "apply economy profile", icon: "play" };
+  }
+  if (text.includes("readiness") || text.includes("doctor") || text.includes("diagnose")) {
+    return { id: "readiness", label: "就绪", message: "readiness", icon: "shield" };
+  }
+  if (text.includes("setup") || text.includes("install")) {
+    return { id: "setup", label: "运行 setup", message: "patchbay setup", icon: "settings" };
+  }
+  if (text.includes("runs") || text.includes("status")) {
+    return { id: "runs", label: "运行列表", message: "status", icon: "search" };
+  }
+  if (text === "start" || text.includes("start")) {
+    return { id: "start", label: "开始任务", message: "start", icon: "play" };
+  }
+  return null;
 }
 
 function compactDuration(ms?: number | null) {
@@ -442,6 +481,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const [rawTrace, setRawTrace] = useState<TraceEntry[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<AgentMessage | null>(null);
   const eventCursor = useRef(0);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const [diff, setDiff] = useState("");
   const [artifactText, setArtifactText] = useState("");
   const [config, setConfig] = useState<unknown>(null);
@@ -604,6 +644,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const selectedTask = conversationState?.task ?? activeStatus?.task ?? selectedSummary?.task ?? "";
   const runKey = selectedRun || "__new__";
   const localRunMessages = localMessages[runKey] ?? [];
+  const localReplySuggestions = localReplyActions(newTaskReply);
   const composerPlaceholder = selectedRun
     ? conversationState?.composer_placeholder ?? "输入“继续”，或写下本地备注"
     : "描述一个新任务，Patchbay Agent 会先生成计划";
@@ -764,6 +805,46 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }
   };
 
+  const openReadinessAction = async () => {
+    setDiagnosticsOpen(true);
+    setActiveTab("Readiness");
+    if (doctor) return;
+    try {
+      setDoctor(await client.getDoctor({ include_mcp: false }));
+    } catch (err) {
+      setError(String(err));
+    }
+  };
+
+  const runLocalReplyAction = async (action: LocalReplyAction) => {
+    if (action.id === "setup") {
+      await runSetupAction();
+      return;
+    }
+    if (action.id === "apply-economy") {
+      await applyEconomyProfileAction();
+      return;
+    }
+    if (action.id === "readiness") {
+      await openReadinessAction();
+      return;
+    }
+    if (action.id === "start") {
+      composerRef.current?.focus();
+      return;
+    }
+    if (action.id === "runs") {
+      setError("");
+      try {
+        const response = await client.agentMessage("status");
+        setNewTaskReply(response);
+        await loadRuns();
+      } catch (err) {
+        setError(String(err));
+      }
+    }
+  };
+
   const submitComposer = async (event?: FormEvent) => {
     event?.preventDefault();
     const text = composer.trim();
@@ -903,10 +984,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                   <button
                     className="empty-action secondary"
                     type="button"
-                    onClick={() => {
-                      setDiagnosticsOpen(true);
-                      setActiveTab("Readiness");
-                    }}
+                    onClick={() => void openReadinessAction()}
                   >
                     <ShieldCheck size={14} />
                     就绪
@@ -917,6 +995,23 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                 <ChatBubble key={message.id} role="user" title="本地消息" body={message.body} timestamp={message.timestamp} />
               ))}
               {newTaskReply ? <ChatBubble role="assistant" title="Patchbay Agent" body={newTaskReply.reply} tone={newTaskReply.ok === false ? "failed" : "ready"} /> : null}
+              {localReplySuggestions.length ? (
+                <div className="empty-actions local-agent-actions" aria-label="Agent 建议动作">
+                  {localReplySuggestions.map((action) => (
+                    <button
+                      className={`empty-action ${action.id === "apply-economy" ? "" : "secondary"}`}
+                      type="button"
+                      key={action.id}
+                      aria-label={`建议动作 ${action.message}`}
+                      onClick={() => void runLocalReplyAction(action)}
+                      disabled={setupInFlight || profileInFlight}
+                    >
+                      {action.icon === "settings" ? <Settings size={14} /> : action.icon === "shield" ? <ShieldCheck size={14} /> : action.icon === "search" ? <Search size={14} /> : <Play size={14} />}
+                      {action.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </>
           ) : (
             <>
@@ -961,6 +1056,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
           ) : null}
           <div className="composer-box">
             <textarea
+              ref={composerRef}
               aria-label="给 Patchbay Agent 输入消息"
               value={composer}
               rows={2}
