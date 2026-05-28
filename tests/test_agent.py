@@ -165,6 +165,9 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertIn("capabilities", response)
         self.assertIn("setup", response["next_actions"])
         self.assertIn("readiness", response["next_actions"])
+        setup_capability = next(item for item in response["capabilities"] if item["name"] == "setup")
+        self.assertIn("claude-desktop", setup_capability["summary"])
+        self.assertIn("gemini", setup_capability["summary"])
         self.assertFalse((self.repo / ".ai" / "runs").exists())
 
     def test_agent_patchbay_setup_runs_local_setup_without_starting_run(self) -> None:

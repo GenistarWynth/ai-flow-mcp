@@ -794,7 +794,7 @@ def _help_response() -> dict[str, Any]:
     capabilities = [
         {
             "name": "setup",
-            "summary": "Send `patchbay setup` to initialize project files, local config, Skill installation, MCP guidance, and a doctor summary.",
+            "summary": "Send `patchbay setup` for Codex or `patchbay setup for claude-desktop` / `install patchbay for gemini` to initialize project files, local config, Skill installation, host MCP guidance, and a doctor summary.",
         },
         {
             "name": "start",
