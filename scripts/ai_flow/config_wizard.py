@@ -317,10 +317,37 @@ def _profile_status(cfg: dict[str, Any]) -> dict[str, Any]:
             "fix": fix,
             "intent": "High-volume write/fix work runs on the low-cost Reasonix/DeepSeek route.",
         },
+        "phase_strategy": _phase_strategy(cfg),
         "recommendation": ""
         if economy_matches
         else "Run `patchbay config profile apply economy` to route write/fix work to Reasonix/DeepSeek.",
     }
+
+
+def _phase_strategy(cfg: dict[str, Any]) -> dict[str, Any]:
+    from .config import resolve_phase
+
+    roles = {
+        "plan": ("supervision", "Use a stronger model for task decomposition, constraints, and the execution plan."),
+        "write": ("economy", "Route high-volume implementation work to the low-cost writer."),
+        "fix": ("economy", "Route iterative repair work to the low-cost writer."),
+        "review": ("supervision", "Use an independent stronger reviewer before apply."),
+    }
+    strategy: dict[str, Any] = {}
+    for phase, (tier, reason) in roles.items():
+        try:
+            resolved = _public_phase(resolve_phase(cfg, phase))
+            provider = str(resolved.get("provider") or "")
+            model = str(resolved.get("model") or "")
+            strategy[phase] = {
+                **resolved,
+                "tier": tier,
+                "reason": reason,
+                "economy_route": provider == "reasonix_cli" and model == "deepseek-v4-pro",
+            }
+        except Exception as exc:
+            strategy[phase] = {"tier": tier, "reason": reason, "error": str(exc)}
+    return strategy
 
 
 def _public_phase(phase: dict[str, Any]) -> dict[str, Any]:

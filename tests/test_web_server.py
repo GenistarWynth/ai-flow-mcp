@@ -208,9 +208,20 @@ class WebServerTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("checks", doctor)
         self.assertTrue(doctor["checks"]["mcp"]["skipped"])
+        self.assertIn("profile", doctor["checks"]["config"])
+        self.assertIn("phase_strategy", doctor["checks"]["config"]["profile"])
 
         _, updated = self._request("PUT", "/api/config", {"key": "models.planner", "value": "mock-model"})
         self.assertEqual(updated["set"], {"models.planner": "mock-model"})
+
+        _, profile = self._request("GET", "/api/config/profile")
+        self.assertIn("economy", profile)
+        self.assertIn("phase_strategy", profile)
+
+        _, applied_profile = self._request("POST", "/api/config/profile/apply", {"profile": "economy"})
+        self.assertEqual(applied_profile["profile"], "economy")
+        self.assertTrue(applied_profile["status"]["economy"]["matches"])
+        self.assertEqual(applied_profile["status"]["phase_strategy"]["write"]["model"], "deepseek-v4-pro")
 
         provider_payload = {
             "provider_id": "local_writer",

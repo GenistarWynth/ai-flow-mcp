@@ -314,6 +314,8 @@ textarea { resize: none; }
 .bubble-title strong { min-width: 0; overflow-wrap: anywhere; }
 .bubble-title span, .bubble-body small { color: #647083; font-size: 12px; white-space: nowrap; }
 .bubble-body p { margin: 5px 0 0; color: #344255; overflow-wrap: anywhere; line-height: 1.45; }
+.event-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.event-badges span { border: 1px solid #d9dee6; border-radius: 999px; padding: 2px 7px; color: #344255; background: #fbfcfe; font-size: 11px; font-weight: 800; overflow-wrap: anywhere; }
 .tone-ready .bubble-body { border-left-color: #2f6fed; }
 .tone-running .bubble-body { border-left-color: #7c3aed; }
 .tone-success .bubble-body { border-left-color: #168a54; }
@@ -463,6 +465,16 @@ button.danger { color: #b42318; border-color: #f0b6b2; background: #fff8f7; }
 .metric-routing.ready { border-color: #b7e4c7; color: #166534; background: #f1fbf6; }
 .metric-routing span { color: inherit; font-size: 12px; font-weight: 800; }
 .metric-routing strong { color: #172033; font-size: 12px; overflow-wrap: anywhere; }
+.phase-strategy-map { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 7px; }
+.phase-strategy-node { display: grid; gap: 6px; border: 1px solid #d9dee6; border-radius: 8px; padding: 8px; background: #ffffff; min-width: 0; }
+.phase-strategy-node.economy { border-color: #b7e4c7; background: #f1fbf6; }
+.phase-strategy-node.supervision { border-color: #bfdbfe; background: #eff6ff; }
+.phase-strategy-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.phase-strategy-head span { color: #647083; font-size: 12px; font-weight: 800; }
+.phase-strategy-head strong { color: #172033; font-size: 12px; }
+.phase-strategy-node code { display: block; min-width: 0; color: #344255; background: transparent; font-family: inherit; font-size: 12px; font-weight: 800; overflow-wrap: anywhere; }
+.phase-strategy-node small, .phase-strategy-node em { color: #647083; font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; }
+.phase-strategy-node em { color: #92400e; font-style: normal; }
 .doctor-panel { display: grid; align-content: start; gap: 14px; padding: 14px; }
 .doctor-panel h2 { margin: 0 0 8px; font-size: 13px; color: #344255; }
 .doctor-toolbar { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
@@ -500,6 +512,7 @@ button.danger { color: #b42318; border-color: #f0b6b2; background: #fff8f7; }
 .doctor-routes div { display: grid; gap: 3px; border: 1px solid #d9dee6; border-radius: 8px; padding: 7px 8px; background: #ffffff; }
 .doctor-routes span { color: #647083; font-size: 12px; font-weight: 700; }
 .doctor-routes strong { color: #344255; overflow-wrap: anywhere; }
+.doctor-routes small, .routing-result-routes small { color: #647083; font-size: 11px; font-weight: 700; }
 .doctor-check { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 8px; }
 .doctor-check span { color: #647083; font-size: 12px; font-weight: 700; }
 .doctor-check strong { font-size: 13px; }

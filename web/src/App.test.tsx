@@ -229,6 +229,25 @@ function createClient(overrides: Partial<PatchbayClient> = {}): PatchbayClient {
     getDiff: vi.fn().mockResolvedValue({ diff: "diff --git a/web b/web" }),
     getArtifact: vi.fn().mockResolvedValue({ text: "artifact text" }),
     getConfig: vi.fn().mockResolvedValue({ phases: { write: { provider: "reasonix_cli" } } }),
+    getConfigProfile: vi.fn().mockResolvedValue({ profile: "custom" }),
+    applyConfigProfile: vi.fn().mockResolvedValue({
+      profile: "economy",
+      status: {
+        profile: "economy",
+        economy: {
+          matches: true,
+          write: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" },
+          fix: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" }
+        },
+        phase_strategy: {
+          plan: { provider: "claude_cli", model: "opus", tier: "supervision", reason: "Use a stronger planner." },
+          write: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix", tier: "economy", economy_route: true },
+          fix: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix", tier: "economy", economy_route: true },
+          review: { provider: "codex_cli", model: "gpt-5", tier: "supervision", reason: "Use a stronger reviewer." }
+        }
+      },
+      next_actions: ["readiness", "start"]
+    }),
     getDoctor: vi.fn().mockResolvedValue({
       ok: false,
       root: "C:/repo",
@@ -426,7 +445,7 @@ describe("Workbench", () => {
     expect(screen.getByRole("button", { name: /apply economy profile/ })).toBeVisible();
     expect(screen.getByRole("button", { name: /start/ })).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: /apply economy profile/ }));
-    await waitFor(() => expect(client.agentMessage).toHaveBeenCalledWith("apply economy profile"));
+    await waitFor(() => expect(client.applyConfigProfile).toHaveBeenCalledWith("economy"));
     expect(client.getStatus).not.toHaveBeenCalled();
   });
 
@@ -636,20 +655,23 @@ describe("Workbench", () => {
   });
 
   it("shows non-blocking doctor recommendations in readiness", async () => {
-    const agentMessage = vi.fn().mockResolvedValue({
-      run_id: null,
-      action: "profile_apply",
-      ok: true,
-      reply: "Economy routing profile applied.",
-      routing: {
+    const applyConfigProfile = vi.fn().mockResolvedValue({
+      profile: "economy",
+      status: {
         profile: "economy",
-        economy_configured: true,
-        summary: "Economy routing profile is active: write reasonix_cli / deepseek-v4-pro, fix reasonix_cli / deepseek-v4-pro.",
-        phases: {
-          write: { configured: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" }, configured_economy: true },
-          fix: { configured: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" }, configured_economy: true }
+        economy: {
+          matches: true,
+          write: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" },
+          fix: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" }
+        },
+        phase_strategy: {
+          plan: { provider: "claude_cli", model: "opus", tier: "supervision", reason: "Use a stronger planner." },
+          write: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix", tier: "economy", economy_route: true },
+          fix: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix", tier: "economy", economy_route: true },
+          review: { provider: "codex_cli", model: "gpt-5", tier: "supervision", reason: "Use a stronger reviewer." }
         }
-      }
+      },
+      next_actions: ["readiness", "start"]
     });
     const getDoctor = vi
       .fn()
@@ -672,7 +694,7 @@ describe("Workbench", () => {
     const client = createClient({
       listRuns: vi.fn().mockResolvedValue({ runs: [] }),
       getDoctor,
-      agentMessage
+      applyConfigProfile
     });
 
     render(<Workbench client={client} />);
@@ -685,7 +707,7 @@ describe("Workbench", () => {
     expect(screen.getByText(/patchbay config profile apply economy/)).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "应用经济路由" }));
 
-    await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("apply economy profile"));
+    await waitFor(() => expect(applyConfigProfile).toHaveBeenCalledWith("economy"));
     expect(await screen.findByText("Economy routing profile applied.")).toBeVisible();
     const routingResult = await screen.findByLabelText("Routing result");
     expect(within(routingResult).getByText("经济路由已启用")).toBeVisible();
@@ -711,6 +733,12 @@ describe("Workbench", () => {
                 intent: "High-volume write/fix work runs on the low-cost Reasonix/DeepSeek route.",
                 write: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" },
                 fix: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" }
+              },
+              phase_strategy: {
+                plan: { provider: "claude_cli", model: "opus", tier: "supervision", reason: "Use a stronger planner." },
+                write: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix", tier: "economy", economy_route: true },
+                fix: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix", tier: "economy", economy_route: true },
+                review: { provider: "codex_cli", model: "gpt-5", tier: "supervision", reason: "Use a stronger reviewer." }
               }
             }
           }
@@ -729,9 +757,12 @@ describe("Workbench", () => {
     const details = screen.getByRole("complementary", { name: "诊断详情" });
     expect(await within(details).findByText("路由")).toBeVisible();
     expect(within(details).getByText("经济路由已启用")).toBeVisible();
-    expect(within(details).getByText("实现")).toBeVisible();
-    expect(within(details).getByText("修复")).toBeVisible();
-    expect(within(details).getAllByText("reasonix_cli / deepseek-v4-pro")).toHaveLength(2);
+    expect(within(details).getAllByText("实现")).toHaveLength(2);
+    expect(within(details).getAllByText("修复")).toHaveLength(2);
+    expect(within(details).getAllByText("reasonix_cli / deepseek-v4-pro")).toHaveLength(4);
+    expect(within(details).getByText("四阶段路由")).toBeVisible();
+    expect(within(details).getAllByText("经济")).toHaveLength(2);
+    expect(within(details).getAllByText("监督")).toHaveLength(2);
   });
 
   it("maps approve intent through the confirmation gate", async () => {

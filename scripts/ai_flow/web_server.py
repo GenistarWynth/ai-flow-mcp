@@ -95,6 +95,9 @@ class _Handler(SimpleHTTPRequestHandler):
             if path == "/api/config":
                 self._json(run_config_wizard(self.repo_root, show=True))
                 return
+            if path == "/api/config/profile":
+                self._json(run_config_wizard(self.repo_root, show_profile=True))
+                return
             if path == "/api/doctor":
                 self._json(
                     run_doctor(
@@ -156,6 +159,10 @@ class _Handler(SimpleHTTPRequestHandler):
                 if not key:
                     raise SafetyError("PUT /api/config requires a dotted 'key'.", stage="config")
                 self._json(run_config_wizard(self.repo_root, set_key=key, set_value=str(payload.get("value", ""))))
+                return
+            if method == "POST" and parsed.path == "/api/config/profile/apply":
+                profile = str(payload.get("profile", "economy") or "economy").strip()
+                self._json(run_config_wizard(self.repo_root, profile=profile))
                 return
             if method == "POST" and parsed.path == "/api/providers":
                 self._json(_add_provider(self.repo_root, payload))

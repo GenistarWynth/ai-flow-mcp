@@ -28,6 +28,13 @@ export type PhaseProvider = {
   command_key?: string;
 };
 
+export type PhaseStrategy = PhaseProvider & {
+  tier?: "economy" | "supervision" | string;
+  reason?: string;
+  economy_route?: boolean;
+  error?: string;
+};
+
 export type ProviderUsage = {
   phase?: string;
   provider?: string;
@@ -68,6 +75,7 @@ export type RoutingEvidence = {
   observed_economy_phases?: string[];
   missing_evidence?: string[];
   phases?: Record<string, RoutingEvidencePhase>;
+  phase_strategy?: Record<string, PhaseStrategy>;
   summary?: string;
   recommendation?: string;
 };
@@ -140,6 +148,24 @@ export type DoctorReport = {
   checks?: Record<string, DoctorCheck>;
   next_actions?: string[];
   recommendations?: string[];
+};
+
+export type ConfigProfileStatus = {
+  config?: string;
+  profile?: string;
+  economy?: {
+    matches?: boolean;
+    intent?: string;
+    write?: PhaseProvider;
+    fix?: PhaseProvider;
+    error?: string;
+  };
+  phase_strategy?: Record<string, PhaseStrategy>;
+  recommendation?: string;
+  status?: ConfigProfileStatus;
+  summary?: string;
+  updated?: Record<string, unknown>;
+  next_actions?: string[];
 };
 
 export type SetupResult = {
@@ -349,6 +375,8 @@ export type PatchbayClient = {
   getDiff(runId: string): Promise<{ text?: string; diff?: string }>;
   getArtifact(runId: string, artifact: string, options?: { tail?: number }): Promise<{ text: string }>;
   getConfig(): Promise<unknown>;
+  getConfigProfile(): Promise<ConfigProfileStatus>;
+  applyConfigProfile(profile?: "economy" | string): Promise<ConfigProfileStatus>;
   getDoctor(options?: { include_mcp?: boolean; skill_path?: string }): Promise<DoctorReport>;
   runAction(runId: string, action: string): Promise<unknown>;
   apply(runId: string): Promise<unknown>;
@@ -443,6 +471,18 @@ export function fetchConfig(client?: ClientOptions) {
   return requestJson<unknown>("/api/config", client);
 }
 
+export function fetchConfigProfile(client?: ClientOptions) {
+  return requestJson<ConfigProfileStatus>("/api/config/profile", client);
+}
+
+export function applyConfigProfile(profile: "economy" | string = "economy", client?: ClientOptions) {
+  return requestJson<ConfigProfileStatus>("/api/config/profile/apply", client, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ profile })
+  });
+}
+
 export function fetchDoctor(options: { include_mcp?: boolean; skill_path?: string } = {}, client?: ClientOptions) {
   return requestJson<DoctorReport>(`/api/doctor${query(options)}`, client);
 }
@@ -470,6 +510,8 @@ export function createPatchbayClient(client?: ClientOptions): PatchbayClient {
     getDiff: (runId) => fetchDiff(runId, client),
     getArtifact: (runId, artifact, options) => fetchArtifact(runId, artifact, options, client),
     getConfig: () => fetchConfig(client),
+    getConfigProfile: () => fetchConfigProfile(client),
+    applyConfigProfile: (profile) => applyConfigProfile(profile, client),
     getDoctor: (options) => fetchDoctor(options, client),
     runAction: (runId, action) => postRunAction(runId, action, client),
     apply: (runId) => applyRun(runId, client),

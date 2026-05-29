@@ -140,6 +140,23 @@ class ConfigWizardTest(unittest.TestCase):
         result = run_config_wizard(self.tmp, set_key="workflow.require_plan_approval", set_value="false")
         self.assertEqual(result["set"]["workflow.require_plan_approval"], False)
 
+    def test_economy_profile_reports_four_phase_strategy(self) -> None:
+        from scripts.ai_flow.config_wizard import run_config_wizard
+        self._make_git_repo()
+
+        result = run_config_wizard(self.tmp, profile="economy")
+        status = result["status"]
+        strategy = status["phase_strategy"]
+
+        self.assertEqual(status["profile"], "economy")
+        self.assertEqual(strategy["plan"]["tier"], "supervision")
+        self.assertEqual(strategy["review"]["tier"], "supervision")
+        self.assertEqual(strategy["write"]["tier"], "economy")
+        self.assertEqual(strategy["fix"]["tier"], "economy")
+        self.assertTrue(strategy["write"]["economy_route"])
+        self.assertTrue(strategy["fix"]["economy_route"])
+        self.assertEqual(strategy["write"]["model"], "deepseek-v4-pro")
+
 
 if __name__ == "__main__":
     unittest.main()

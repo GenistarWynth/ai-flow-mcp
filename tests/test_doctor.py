@@ -46,6 +46,40 @@ class DoctorTest(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertTrue(any("skill install codex" in action for action in result["next_actions"]))
 
+    def test_doctor_exposes_custom_profile_contract_without_mcp_probe(self) -> None:
+        from scripts.ai_flow import service
+        from scripts.ai_flow.doctor import run_doctor
+
+        service.init_project(self.tmp)
+        config_path = self.tmp / ".ai" / "patchbay.toml"
+        config_path.write_text(
+            """[phases.plan]
+provider = "mock"
+
+[phases.write]
+provider = "mock"
+
+[phases.review]
+provider = "mock"
+
+[phases.fix]
+provider = "mock"
+""",
+            encoding="utf-8",
+        )
+
+        result = run_doctor(self.tmp, include_mcp=False, skill_path=self.tmp / "skills")
+        profile = result["checks"]["config"]["profile"]
+
+        self.assertEqual(profile["profile"], "custom")
+        self.assertFalse(profile["economy"]["matches"])
+        self.assertEqual(profile["economy"]["write"]["provider"], "mock")
+        self.assertEqual(profile["economy"]["fix"]["provider"], "mock")
+        self.assertEqual(profile["phase_strategy"]["write"]["tier"], "economy")
+        self.assertFalse(profile["phase_strategy"]["write"]["economy_route"])
+        self.assertTrue(result["checks"]["mcp"]["skipped"])
+        self.assertTrue(any("patchbay config profile apply economy" in item for item in result["recommendations"]))
+
 
 if __name__ == "__main__":
     unittest.main()

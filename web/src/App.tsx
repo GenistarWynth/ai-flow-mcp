@@ -22,12 +22,14 @@ import {
   AgentActivity,
   AgentAction,
   AgentMessage,
+  ConfigProfileStatus,
   createPatchbayClient,
   DoctorReport,
   FailureRecovery,
   HandoffContext,
   PatchbayClient,
   PhaseProvider,
+  PhaseStrategy,
   ProviderUsage,
   RoutingEvidence,
   RunMetrics,
@@ -50,6 +52,7 @@ type DoctorProfileStatus = {
     write?: PhaseProvider;
     fix?: PhaseProvider;
   };
+  phase_strategy?: Record<string, PhaseStrategy>;
 };
 type LocalReplyAction = {
   id: string;
@@ -64,6 +67,7 @@ type SetupHostOption = {
 };
 
 const phases = ["plan", "approve", "write", "test", "review", "fix", "apply", "cleanup"];
+const strategyPhases = ["plan", "write", "fix", "review"];
 const phaseLabels: Record<string, string> = {
   plan: "规划",
   approve: "批准",
@@ -424,6 +428,73 @@ function routeSummary(route?: PhaseProvider) {
   const provider = route.provider || "-";
   const model = route.model || route.command_key || "默认";
   return `${provider} / ${model}`;
+}
+
+function strategyTierLabel(tier?: string) {
+  if (tier === "economy") return "经济";
+  if (tier === "supervision") return "监督";
+  return tier || "自定义";
+}
+
+function strategyReason(phase: string) {
+  if (phase === "write") return "大量实现工作交给低成本 writer。";
+  if (phase === "fix") return "迭代修复工作交给低成本 writer。";
+  if (phase === "review") return "应用前由独立强模型审查。";
+  return "计划拆解和约束判断使用强模型。";
+}
+
+function strategyFromRouting(routing?: RoutingEvidence | null, providers?: Record<string, PhaseProvider>): Record<string, PhaseStrategy> {
+  const strategy: Record<string, PhaseStrategy> = {};
+  for (const phase of strategyPhases) {
+    const tier = phase === "write" || phase === "fix" ? "economy" : "supervision";
+    const configured = phase === "write" || phase === "fix" ? routing?.phases?.[phase]?.configured : undefined;
+    strategy[phase] = {
+      ...(providers?.[phase] ?? configured ?? {}),
+      tier,
+      reason: strategyReason(phase),
+      economy_route: phase === "write" || phase === "fix" ? Boolean(routing?.phases?.[phase]?.configured_economy) : false
+    };
+  }
+  return strategy;
+}
+
+function phaseStrategyEntries(strategy?: Record<string, PhaseStrategy> | null, routing?: RoutingEvidence | null, providers?: Record<string, PhaseProvider>) {
+  if (!strategy && !routing && !Object.keys(providers ?? {}).length) return [];
+  const source = strategy ?? routing?.phase_strategy ?? strategyFromRouting(routing, providers);
+  return strategyPhases
+    .map((phase) => [phase, source[phase]] as const)
+    .filter(([, item]) => Boolean(item && (item.provider || item.model || item.command_key || item.tier || item.error)));
+}
+
+function routeEvidenceLabel(phase: string, routing?: RoutingEvidence | null) {
+  const item = routing?.phases?.[phase];
+  if (!item) return "";
+  if (item.observed_economy) return "已观测";
+  if (item.configured_economy) return "待观测";
+  if (item.observed?.length) return "观测到自定义";
+  return "未观测";
+}
+
+function profileStatusToRouting(result: ConfigProfileStatus): RoutingEvidence {
+  const status = result.status ?? result;
+  const economy = status.economy ?? {};
+  const write = economy.write ?? {};
+  const fix = economy.fix ?? {};
+  const configuredEconomy = Boolean(economy.matches);
+  return {
+    profile: status.profile ?? result.profile ?? (configuredEconomy ? "economy" : "custom"),
+    target: { provider: "reasonix_cli", model: "deepseek-v4-pro" },
+    economy_configured: configuredEconomy,
+    phase_strategy: status.phase_strategy ?? result.phase_strategy,
+    phases: {
+      write: { configured: write, configured_economy: write.provider === "reasonix_cli" && write.model === "deepseek-v4-pro" },
+      fix: { configured: fix, configured_economy: fix.provider === "reasonix_cli" && fix.model === "deepseek-v4-pro" }
+    },
+    summary: configuredEconomy
+      ? `Economy routing profile is active: write ${routeSummary(write)}, fix ${routeSummary(fix)}.`
+      : `Economy routing profile is not active: write ${routeSummary(write)}, fix ${routeSummary(fix)}.`,
+    recommendation: status.recommendation ?? result.recommendation
+  };
 }
 
 function confirmCopy(action: SuggestedAction, readyToApply: boolean): ConfirmState {
@@ -824,7 +895,17 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     setError("");
     setProfileInFlight(true);
     try {
-      const response = await client.agentMessage("apply economy profile");
+      const profile = await client.applyConfigProfile("economy");
+      const routing = profileStatusToRouting(profile);
+      const response: AgentResponse = {
+        run_id: null,
+        action: "profile_apply",
+        ok: true,
+        reply: "Economy routing profile applied.",
+        profile,
+        routing,
+        next_actions: profile.next_actions ?? ["readiness", "start"]
+      };
       if (!selectedRun) setNewTaskReply(response);
       const [nextDoctor, nextConfig] = await Promise.all([client.getDoctor({ include_mcp: false }), client.getConfig()]);
       setDoctor(nextDoctor);
@@ -1209,6 +1290,7 @@ function ChatBubble({
 }
 
 function AgentEventBubble({ message, selected, onSelect }: { message: AgentMessage; selected: boolean; onSelect: () => void }) {
+  const badges = [message.provider, message.model, message.tool].filter(Boolean) as string[];
   return (
     <button className={`chat-bubble event tone-${message.tone ?? "idle"} ${selected ? "selected" : ""}`} onClick={onSelect}>
       <div className="avatar">{message.kind === "gate" ? <ShieldCheck size={16} /> : message.kind === "agent" ? <Bot size={16} /> : <MessageSquare size={16} />}</div>
@@ -1218,6 +1300,13 @@ function AgentEventBubble({ message, selected, onSelect }: { message: AgentMessa
           <span>{timeLabel(message.timestamp)}</span>
         </div>
         {message.body ? <p>{message.body}</p> : null}
+        {badges.length ? (
+          <div className="event-badges" aria-label="Provider evidence">
+            {badges.map((badge) => (
+              <span key={badge}>{badge}</span>
+            ))}
+          </div>
+        ) : null}
         <small>{message.status_label ?? statusLabel(message.status)}</small>
       </div>
     </button>
@@ -1476,6 +1565,8 @@ function RoutingResultCard({ response }: { response: AgentResponse }) {
 function RoutingEvidenceCard({ routing }: { routing: RoutingEvidence }) {
   const write = routing.phases?.write?.configured;
   const fix = routing.phases?.fix?.configured;
+  const writeSignal = routeEvidenceLabel("write", routing);
+  const fixSignal = routeEvidenceLabel("fix", routing);
   return (
     <div className={`routing-result-card ${routing.economy_configured ? "ready" : "custom"}`} aria-label="Routing result">
       <div className="routing-result-head">
@@ -1488,13 +1579,47 @@ function RoutingEvidenceCard({ routing }: { routing: RoutingEvidence }) {
         <div>
           <span>实现</span>
           <strong>{routeSummary(write)}</strong>
+          {writeSignal ? <small>{writeSignal}</small> : null}
         </div>
         <div>
           <span>修复</span>
           <strong>{routeSummary(fix)}</strong>
+          {fixSignal ? <small>{fixSignal}</small> : null}
         </div>
       </div>
       {routing.recommendation ? <small>{routing.recommendation}</small> : null}
+    </div>
+  );
+}
+
+function PhaseStrategyMap({
+  strategy,
+  routing,
+  providers
+}: {
+  strategy?: Record<string, PhaseStrategy> | null;
+  routing?: RoutingEvidence | null;
+  providers?: Record<string, PhaseProvider>;
+}) {
+  const entries = phaseStrategyEntries(strategy, routing, providers);
+  if (!entries.length) return null;
+  return (
+    <div className="phase-strategy-map" aria-label="四阶段路由策略">
+      {entries.map(([phase, item]) => {
+        const tier = item.tier ?? (phase === "write" || phase === "fix" ? "economy" : "supervision");
+        const signal = routeEvidenceLabel(phase, routing);
+        return (
+          <div className={`phase-strategy-node ${tier === "economy" ? "economy" : "supervision"}`} key={phase}>
+            <div className="phase-strategy-head">
+              <span>{phaseLabel(phase)}</span>
+              <strong>{strategyTierLabel(tier)}</strong>
+            </div>
+            <code>{routeSummary(item)}</code>
+            {signal ? <small>{signal}</small> : <small>{item.reason ?? strategyReason(phase)}</small>}
+            {item.error ? <em>{item.error}</em> : null}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -1584,6 +1709,12 @@ function DoctorPanel({
           </div>
         </section>
       ) : null}
+      {profile?.phase_strategy ? (
+        <section>
+          <h2>四阶段路由</h2>
+          <PhaseStrategyMap strategy={profile.phase_strategy} />
+        </section>
+      ) : null}
       <section>
         <h2>检查项</h2>
         <div className="doctor-checks">
@@ -1644,8 +1775,17 @@ function DetailPanel({
     const currentPhase = context?.current_phase ?? status?.current_phase ?? "";
     const currentStatus = context?.status ?? status?.status ?? "";
     const metrics = context?.run_metrics ?? status?.run_metrics;
+    const routing = metrics?.routing_evidence ?? status?.routing_evidence;
+    const effectiveProviders = status?.effective_phase_providers ?? {};
+    const hasStrategy = phaseStrategyEntries(undefined, routing, effectiveProviders).length > 0;
     return (
       <div className="overview-panel">
+        {hasStrategy ? (
+          <section>
+            <h2>路由策略</h2>
+            <PhaseStrategyMap routing={routing} providers={effectiveProviders} />
+          </section>
+        ) : null}
         <section>
           <h2>效率</h2>
           <MetricsGrid metrics={metrics} />

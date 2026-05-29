@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   applyRun,
+  applyConfigProfile,
   cleanupRun,
   createRun,
   fetchArtifact,
   fetchConfig,
+  fetchConfigProfile,
   fetchContext,
   fetchDiff,
   fetchDoctor,
@@ -30,6 +32,7 @@ describe("Patchbay API client", () => {
       if (url.endsWith("/api/runs/run-1/diff")) return jsonResponse({ diff: "diff --git" });
       if (url.endsWith("/api/runs/run-1/artifact/PLAN.md?tail=60")) return jsonResponse({ text: "plan" });
       if (url.endsWith("/api/config")) return jsonResponse({ phases: {} });
+      if (url.endsWith("/api/config/profile")) return jsonResponse({ profile: "custom" });
       if (url.endsWith("/api/doctor")) return jsonResponse({ ok: false, checks: {} });
       throw new Error(`unexpected URL ${url}`);
     });
@@ -43,6 +46,7 @@ describe("Patchbay API client", () => {
     await fetchDiff("run-1", client);
     await fetchArtifact("run-1", "PLAN.md", { tail: 60 }, client);
     await fetchConfig(client);
+    await fetchConfigProfile(client);
     await fetchDoctor({}, client);
 
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
@@ -53,6 +57,7 @@ describe("Patchbay API client", () => {
       "/api/runs/run-1/diff",
       "/api/runs/run-1/artifact/PLAN.md?tail=60",
       "/api/config",
+      "/api/config/profile",
       "/api/doctor"
     ]);
   });
@@ -108,5 +113,54 @@ describe("Patchbay API client", () => {
         })
       })
     );
+  });
+
+  it("passes doctor query options and local command payloads explicitly", async () => {
+    const fetchMock = vi.fn(() => jsonResponse({ ok: true }));
+    const client = { fetch: fetchMock };
+
+    await fetchDoctor({ include_mcp: false, skill_path: "C:/tmp/skills" }, client);
+    await postAgentMessage("apply economy profile", {}, client);
+    await postAgentMessage("continue", { maxFixRounds: 2 }, client);
+
+    const calls = fetchMock.mock.calls as unknown as Array<[RequestInfo | URL, RequestInit | undefined]>;
+    expect(calls[0][0]).toBe("/api/doctor?include_mcp=false&skill_path=C%3A%2Ftmp%2Fskills");
+    expect(calls[1]).toEqual([
+      "/api/agent/message",
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: "apply economy profile",
+          run_id: "",
+          confirmation: "none",
+          include: {},
+          background: false
+        })
+      })
+    ]);
+    expect(JSON.parse(String(calls[2][1]?.body))).toMatchObject({
+      message: "continue",
+      max_fix_rounds: 2
+    });
+  });
+
+  it("uses explicit config profile endpoints for economy routing", async () => {
+    const fetchMock = vi.fn(() => jsonResponse({ profile: "economy" }));
+    const client = { fetch: fetchMock };
+
+    await fetchConfigProfile(client);
+    await applyConfigProfile("economy", client);
+
+    const calls = fetchMock.mock.calls as unknown as Array<[RequestInfo | URL, RequestInit | undefined]>;
+    expect(calls[0][0]).toBe("/api/config/profile");
+    expect(calls[1]).toEqual([
+      "/api/config/profile/apply",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile: "economy" })
+      }
+    ]);
   });
 });

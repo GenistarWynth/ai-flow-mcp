@@ -1009,6 +1009,7 @@ def _profile_routing_digest(profile_result: dict[str, Any]) -> dict[str, Any]:
         "profile": status.get("profile") or profile_result.get("profile") or ("economy" if economy_active else "custom"),
         "target": {"provider": service.ECONOMY_PROVIDER, "model": service.ECONOMY_MODEL},
         "economy_configured": economy_active,
+        "phase_strategy": status.get("phase_strategy") or {},
         "phases": {
             "write": {"configured": write, "configured_economy": _phase_is_economy(write)},
             "fix": {"configured": fix, "configured_economy": _phase_is_economy(fix)},
