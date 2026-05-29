@@ -433,7 +433,7 @@ def _tool_schema(name: str) -> dict[str, Any]:
         "patchbay_fix": "Run the fix phase after a CHANGES_REQUESTED review (provider defaults to write).",
         "patchbay_status": "Return current run status and artifacts, including latest cross-phase event.",
         "patchbay_context": "Return the unified handoff digest for resuming a run across MCP hosts, CLI sessions, and the web workbench, including agent_activity.health_cards with safe local/diagnostic actions.",
-        "patchbay_metrics": "Return only run_metrics efficiency evidence: phase durations, attempts, event/trace counts, provider usage, known cost/token fields, and routing_evidence.economy_health.",
+        "patchbay_metrics": "Return only run_metrics efficiency evidence: phase durations, attempts, event/trace counts, provider usage, known cost/token fields, routing_evidence.economy_health, and top-level actions[] mirrored from routing_evidence.actions[] for safe local_agent or diagnostic_tab routing follow-ups.",
         "patchbay_doctor": "Run unified read-only readiness checks for CLI shims, config, MCP reachability/tools, bundled Skill source, and Skill installation state; returns next_actions, recommendations, and structured actions[].",
         "patchbay_setup": "Initialize Patchbay project files, create local config, install the Codex Skill, return MCP registration guidance, include a doctor summary, and expose structured actions[] for safe follow-ups.",
         "patchbay_install": "Alias for patchbay_setup: initialize Patchbay project files, create local config, install the Codex Skill, register MCP when possible, include a doctor summary, and expose structured actions[].",
