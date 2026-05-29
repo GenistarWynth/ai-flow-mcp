@@ -237,8 +237,31 @@ model = "mock"
                 self.assertTrue(payload["ok"])
                 self.assertEqual(payload["setup_host"], "gemini")
                 self.assertTrue((skill_path / "patchbay" / "SKILL.md").exists())
+                actions = {item["id"]: item for item in payload["actions"]}
+                self.assertIn("probe_mcp", actions)
+                self.assertEqual(actions["probe_mcp"]["kind"], "command")
+                self.assertTrue(actions["probe_mcp"]["safe"])
         finally:
             mcp_server.ROOT = original_root
+
+    def test_setup_exposes_register_mcp_action_when_auto_registration_is_not_run(self) -> None:
+        from scripts.ai_flow import setup_flow
+
+        mcp_result = {
+            "host": "codex",
+            "command": "codex mcp add patchbay -- python scripts/patchbay_mcp_server.py",
+            "executed": False,
+            "dry_run": False,
+            "note": "Codex CLI unavailable.",
+        }
+        with mock.patch.object(setup_flow, "run_mcp_install", return_value=mcp_result):
+            result = setup_flow.run_setup(self.repo, skill_path=self.skills)
+
+        action = next(item for item in result["actions"] if item["id"] == "register_mcp")
+        self.assertEqual(action["kind"], "command")
+        self.assertEqual(action["command"], "codex mcp add patchbay -- python scripts/patchbay_mcp_server.py")
+        self.assertTrue(action["safe"])
+        self.assertTrue(any("Register the MCP server with:" in item for item in result["next_actions"]))
 
     def test_mcp_skill_tools_install_and_verify_bundle(self) -> None:
         from scripts.ai_flow import mcp_server

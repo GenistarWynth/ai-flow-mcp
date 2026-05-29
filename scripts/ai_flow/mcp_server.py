@@ -424,7 +424,7 @@ def _tool_schema(name: str) -> dict[str, Any]:
         required = ["run_id"]
 
     descriptions: dict[str, str] = {
-        "patchbay_agent": "Primary conversational Patchbay Agent tool. Starts, resumes, advances, applies runs, and returns metrics/cost/token evidence while preserving plan/apply approval gates; explicit setup, help, status, and readiness prompts return local answers, setup prompts can target hosts like claude-desktop or gemini, and run-bound prompts without run_id return local guidance instead of creating a run.",
+        "patchbay_agent": "Primary conversational Patchbay Agent tool. Starts, resumes, advances, applies runs, and returns metrics/cost/token evidence while preserving plan/apply approval gates; explicit setup, help, status, and readiness prompts return local answers with structured actions[] for safe client follow-ups, setup prompts can target hosts like claude-desktop or gemini, and run-bound prompts without run_id return local guidance instead of creating a run.",
         "patchbay_plan": "Run the planning phase (host-agnostic — provider configurable via [phases.plan] in .ai/patchbay.toml).",
         "patchbay_approve": "Approve the plan so the writer phase can proceed.",
         "patchbay_write": "Run the implementation phase (provider configurable via [phases.write] / [writer].provider).",
@@ -434,9 +434,9 @@ def _tool_schema(name: str) -> dict[str, Any]:
         "patchbay_status": "Return current run status and artifacts, including latest cross-phase event.",
         "patchbay_context": "Return the unified handoff digest for resuming a run across MCP hosts, CLI sessions, and the web workbench, including agent_activity.health_cards with safe local/diagnostic actions.",
         "patchbay_metrics": "Return only run_metrics efficiency evidence: phase durations, attempts, event/trace counts, provider usage, known cost/token fields, and routing_evidence.economy_health.",
-        "patchbay_doctor": "Run unified read-only readiness checks for CLI shims, config, MCP reachability/tools, bundled Skill source, and Skill installation state.",
-        "patchbay_setup": "Initialize Patchbay project files, create local config, install the Codex Skill, return MCP registration guidance, and include a doctor summary.",
-        "patchbay_install": "Alias for patchbay_setup: initialize Patchbay project files, create local config, install the Codex Skill, register MCP when possible, and include a doctor summary.",
+        "patchbay_doctor": "Run unified read-only readiness checks for CLI shims, config, MCP reachability/tools, bundled Skill source, and Skill installation state; returns next_actions, recommendations, and structured actions[].",
+        "patchbay_setup": "Initialize Patchbay project files, create local config, install the Codex Skill, return MCP registration guidance, include a doctor summary, and expose structured actions[] for safe follow-ups.",
+        "patchbay_install": "Alias for patchbay_setup: initialize Patchbay project files, create local config, install the Codex Skill, register MCP when possible, include a doctor summary, and expose structured actions[].",
         "patchbay_skill_install": "Install only the bundled Patchbay Codex Skill into a selected skills root.",
         "patchbay_skill_print": "Return the bundled Patchbay Skill files for inspection or external installation.",
         "patchbay_skill_doctor": "Validate the bundled Patchbay Skill source and whether it is installed in the selected Codex skills root.",

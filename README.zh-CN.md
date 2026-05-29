@@ -45,6 +45,7 @@ timeout = 900
 - 实现前必须经过人工确认计划。
 - 应用补丁前会做路径与安全检查；默认情况下“没有测试命令”不算测试通过，除非显式设置 `workflow.allow_apply_without_tests = true`。
 - reviewer 默认只读，并检查审查阶段没有修改 worktree。
+- `doctor`、`setup` 和对话式 `readiness` 响应会返回结构化 `actions[]`，桌面端/MCP host 可以直接渲染安全的一键后续操作，而不需要解析自然语言。
 
 ## 快速开始
 
@@ -120,9 +121,9 @@ python scripts/patchbay agent message approve --run-id <run_id> --confirmation p
 python scripts/patchbay agent message continue --run-id <run_id> --background --json
 ```
 
-后台 Agent 会写入 `JOB.json` 并追加 `agent` 事件，同时保留计划批准和 apply 确认门禁。`apply` 仍然只支持前台确认，必须在测试和审查通过后显式执行。`patchbay setup`、`install patchbay`、`help`、`status`、`runs`、`readiness`、`diagnose`、`patchbay doctor`、`show economy profile` 或 `apply economy profile` 这类本地查询和配置消息会直接返回 setup 结果、使用提示、最近运行、统一 doctor 报告或路由调整结果，不会创建模型 run。`continue`、`approve`、`apply`、`diff`、`artifact` 这类依赖现有 run 的消息在没有 `run_id` 时也只会给出本地提示，不会误开新 run。
+后台 Agent 会写入 `JOB.json` 并追加 `agent` 事件，同时保留计划批准和 apply 确认门禁。`apply` 仍然只支持前台确认，必须在测试和审查通过后显式执行。`patchbay setup`、`install patchbay`、`help`、`status`、`runs`、`readiness`、`diagnose`、`patchbay doctor`、`show economy profile` 或 `apply economy profile` 这类本地查询和配置消息会直接返回 setup 结果、使用提示、最近运行、统一 doctor 报告或路由调整结果，不会创建模型 run。setup/readiness 结果里的 `actions[]` 条目包含 `id`、`label`、`kind`、`safe`、`reason`，以及 `message`、`command` 或 `tab`；当前 `kind` 包括 `local_agent`、`command` 和 `diagnostic_tab`。`continue`、`approve`、`apply`、`diff`、`artifact` 这类依赖现有 run 的消息在没有 `run_id` 时也只会给出本地提示，不会误开新 run。
 
-Web workbench 使用同一套对话式流程，并在诊断抽屉里提供“就绪”页。该页面调用统一 doctor 检查但默认不做 MCP stdio 探测，因此可以在桌面 UI 中看到安装与配置缺口，同时避免打开页面时额外启动子进程。该页面还会显示当前 write/fix 路由画像，经济路由这类非阻塞建议可以直接在同一面板里通过本地 Agent 操作应用。Overview 会展示 `routing_evidence.economy_health` 与 `agent_activity.health_cards`，让桌面端直接看到经济路由是健康、待观测、漂移，还是未配置。
+Web workbench 使用同一套对话式流程，并在诊断抽屉里提供“就绪”页。该页面调用统一 doctor 检查但默认不做 MCP stdio 探测，因此可以在桌面 UI 中看到安装与配置缺口，同时避免打开页面时额外启动子进程。该页面还会显示当前 write/fix 路由画像，并渲染结构化 `actions[]` 来执行安全的 setup、Skill、MCP 探测、刷新和经济路由后续操作。Overview 会展示 `routing_evidence.economy_health` 与 `agent_activity.health_cards`，让桌面端直接看到经济路由是健康、待观测、漂移，还是未配置。
 
 启动 `patchbay web --port 8765` 后，打开 `http://127.0.0.1:8765`。
 
@@ -180,7 +181,7 @@ codex mcp add patchbay -- python scripts/patchbay_mcp_server.py
 
 Claude Desktop、Claude Code、Gemini CLI 或其他 MCP host 使用各自等价的 MCP server 注册方式即可。运行 `patchbay doctor` 做完整就绪检查，或运行 `patchbay mcp doctor` 只验证服务器是否可达。
 
-`patchbay doctor` 是只读检查，会汇总项目初始化、阶段配置、CLI shim/已安装命令、MCP 可达性和工具列表、内置 Skill 源、Codex Skill 安装状态。`patchbay mcp doctor` 会真正启动 stdio MCP server，发送 `initialize` 和 `tools/list`，并检查 `patchbay_agent`、`patchbay_plan`、`patchbay_context`、`patchbay_metrics`、`patchbay_doctor`、`patchbay_install`、`patchbay_skill_install`、`patchbay_skill_doctor` 等核心工具是否存在。Codex、Claude Code、Gemini 的 install 命令会先尝试自动注册，若 host CLI 不可用则回退为可复制的注册命令；Claude Desktop 会直接写入 JSON 配置。
+`patchbay doctor` 是只读检查，会汇总项目初始化、阶段配置、CLI shim/已安装命令、MCP 可达性和工具列表、内置 Skill 源、Codex Skill 安装状态，并同时返回文字版 `next_actions`/`recommendations` 与结构化 `actions[]`。`patchbay mcp doctor` 会真正启动 stdio MCP server，发送 `initialize` 和 `tools/list`，并检查 `patchbay_agent`、`patchbay_plan`、`patchbay_context`、`patchbay_metrics`、`patchbay_doctor`、`patchbay_install`、`patchbay_skill_install`、`patchbay_skill_doctor` 等核心工具是否存在。Codex、Claude Code、Gemini 的 install 命令会先尝试自动注册，若 host CLI 不可用则回退为可复制的注册命令；Claude Desktop 会直接写入 JSON 配置。
 
 MCP 注册后，如果目标 host 会缓存工具列表，请重启或 reload 对应 host。可以运行 `patchbay mcp doctor --json` 验证 stdio server，也可以在 host 中确认 `patchbay_agent` 已可见。
 
