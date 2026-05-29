@@ -134,6 +134,10 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertFalse(shown["routing"]["economy_configured"])
         self.assertEqual(shown["routing"]["phases"]["write"]["configured"]["provider"], "mock")
         self.assertIn("config profile apply economy", shown["reply"])
+        shown_actions = {item["id"]: item for item in shown["actions"]}
+        self.assertEqual(shown_actions["apply_economy_profile"]["kind"], "local_agent")
+        self.assertEqual(shown_actions["apply_economy_profile"]["message"], "apply economy profile")
+        self.assertTrue(shown_actions["apply_economy_profile"]["safe"])
 
         applied = agent_message(self.repo, "apply economy profile")
 
@@ -142,6 +146,9 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertEqual(applied["profile"]["status"]["profile"], "economy")
         self.assertTrue(applied["routing"]["economy_configured"])
         self.assertEqual(applied["routing"]["phases"]["write"]["configured"]["model"], "deepseek-v4-pro")
+        applied_actions = {item["id"]: item for item in applied["actions"]}
+        self.assertEqual(applied_actions["open_readiness"]["message"], "readiness")
+        self.assertEqual(applied_actions["start_new_task"]["kind"], "focus_composer")
         cfg = load_config(self.repo)
         self.assertEqual(resolve_phase(cfg, "write")["model"], "deepseek-v4-pro")
         self.assertEqual(resolve_phase(cfg, "fix")["provider"], "reasonix_cli")

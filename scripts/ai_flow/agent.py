@@ -1144,7 +1144,27 @@ def _profile_apply_response(root: Path) -> dict[str, Any]:
         action="profile_apply",
         reply=reply,
         next_actions=list(result.get("next_actions") or ["readiness", "start"]),
-        extra={"profile": result, "routing": routing},
+        extra={
+            "profile": result,
+            "routing": routing,
+            "actions": [
+                {
+                    "id": "open_readiness",
+                    "label": "Open readiness",
+                    "kind": "local_agent",
+                    "message": "readiness",
+                    "safe": True,
+                    "reason": "Validate setup and resolved write/fix routing after applying the economy profile.",
+                },
+                {
+                    "id": "start_new_task",
+                    "label": "Start new task",
+                    "kind": "focus_composer",
+                    "safe": True,
+                    "reason": "Start a new Patchbay plan that will use the updated write/fix routing.",
+                },
+            ],
+        },
     )
 
 
@@ -1155,11 +1175,50 @@ def _profile_show_response(root: Path) -> dict[str, Any]:
     reply = str(routing["summary"])
     if not routing.get("economy_configured"):
         reply += " " + str(result.get("recommendation") or "Run `patchbay config profile apply economy`.")
+    if profile != "economy":
+        next_actions = ["apply economy profile", "readiness"]
+        actions = [
+            {
+                "id": "apply_economy_profile",
+                "label": "Apply economy profile",
+                "kind": "local_agent",
+                "message": "apply economy profile",
+                "safe": True,
+                "reason": "Route high-volume write/fix work to the Reasonix/DeepSeek economy profile.",
+            },
+            {
+                "id": "open_readiness",
+                "label": "Open readiness",
+                "kind": "local_agent",
+                "message": "readiness",
+                "safe": True,
+                "reason": "Inspect setup and current routing before changing the profile.",
+            },
+        ]
+    else:
+        next_actions = ["readiness", "start"]
+        actions = [
+            {
+                "id": "open_readiness",
+                "label": "Open readiness",
+                "kind": "local_agent",
+                "message": "readiness",
+                "safe": True,
+                "reason": "Inspect setup and resolved write/fix routing.",
+            },
+            {
+                "id": "start_new_task",
+                "label": "Start new task",
+                "kind": "focus_composer",
+                "safe": True,
+                "reason": "Start a new Patchbay plan using the active economy routing profile.",
+            },
+        ]
     return _stateless_response(
         action="profile_show",
         reply=reply,
-        next_actions=["apply economy profile", "readiness"] if profile != "economy" else ["readiness", "start"],
-        extra={"profile": result, "routing": routing},
+        next_actions=next_actions,
+        extra={"profile": result, "routing": routing, "actions": actions},
     )
 
 

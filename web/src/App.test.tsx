@@ -629,7 +629,32 @@ describe("Workbench", () => {
         action: "runs",
         ok: true,
         reply: "No Patchbay runs found. Send a task to start with a plan.",
-        next_actions: ["readiness", "apply economy profile", "start"],
+        next_actions: [],
+        actions: [
+          {
+            id: "open_readiness",
+            label: "Open readiness",
+            kind: "local_agent",
+            message: "readiness",
+            safe: true,
+            reason: "Run read-only setup diagnostics."
+          },
+          {
+            id: "apply_economy_profile",
+            label: "Apply economy profile",
+            kind: "local_agent",
+            message: "apply economy profile",
+            safe: true,
+            reason: "Route write/fix work to Reasonix/DeepSeek."
+          },
+          {
+            id: "start_new_task",
+            label: "Start new task",
+            kind: "focus_composer",
+            safe: true,
+            reason: "Focus the composer."
+          }
+        ],
         runs: { count: 0, runs: [] }
       })
     });
@@ -642,10 +667,10 @@ describe("Workbench", () => {
 
     await waitFor(() => expect(client.agentMessage).toHaveBeenCalledWith("status", { include: { plan: true }, background: true }));
     expect(await screen.findByText("No Patchbay runs found. Send a task to start with a plan.")).toBeVisible();
-    expect(screen.getByRole("button", { name: /readiness/ })).toBeVisible();
-    expect(screen.getByRole("button", { name: /apply economy profile/ })).toBeVisible();
-    expect(screen.getByRole("button", { name: /start/ })).toBeVisible();
-    await userEvent.click(screen.getByRole("button", { name: /apply economy profile/ }));
+    expect(screen.getByRole("button", { name: /Open readiness/ })).toBeVisible();
+    expect(screen.getByRole("button", { name: /Apply economy profile/ })).toBeVisible();
+    expect(screen.getByRole("button", { name: /Start new task/ })).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: /Apply economy profile/ }));
     await waitFor(() => expect(client.applyConfigProfile).toHaveBeenCalledWith("economy"));
     expect(client.getStatus).not.toHaveBeenCalled();
   });
@@ -713,7 +738,7 @@ describe("Workbench", () => {
     const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
     await userEvent.type(composer, "diff{enter}");
 
-    const openLatest = await screen.findByRole("button", { name: /open latest run/ });
+    const openLatest = await screen.findByRole("button", { name: /open latest run/i });
     expect(openLatest).toBeVisible();
     await userEvent.click(openLatest);
 
@@ -783,7 +808,7 @@ describe("Workbench", () => {
     const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
     await userEvent.type(composer, "continue{enter}");
 
-    const openLatest = await screen.findByRole("button", { name: /open latest run/ });
+    const openLatest = await screen.findByRole("button", { name: /open latest run/i });
     await userEvent.click(openLatest);
 
     expect(await screen.findByRole("heading", { name: "Approve a plan" })).toBeInTheDocument();
@@ -846,7 +871,7 @@ describe("Workbench", () => {
     const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
     await userEvent.type(composer, "status{enter}");
 
-    const openLatest = await screen.findByRole("button", { name: /open latest run/ });
+    const openLatest = await screen.findByRole("button", { name: /open latest run/i });
     await userEvent.click(openLatest);
 
     expect(await screen.findByRole("heading", { name: "Approve a plan" })).toBeInTheDocument();
@@ -905,7 +930,7 @@ describe("Workbench", () => {
     const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
     await userEvent.type(composer, "status{enter}");
 
-    await userEvent.click(await screen.findByRole("button", { name: /open latest run/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /open latest run/i }));
 
     expect(await screen.findByRole("heading", { name: "Approve a plan" })).toBeInTheDocument();
     await waitFor(() => expect(client.getContext).toHaveBeenCalledWith("run-ready"));

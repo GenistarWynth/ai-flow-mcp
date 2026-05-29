@@ -230,7 +230,11 @@ function mapStructuredLocalReplyAction(action: AgentHealthAction): LocalReplyAct
     return { id: "start", label: action.label || "开始任务", message: "start", icon: "play" };
   }
   if (action.kind === "local_agent" && action.message) {
-    return mapLocalReplyAction(action.message) ?? { id: action.id, label: action.label, message: action.message, icon: "play" };
+    const mapped = mapLocalReplyAction(action.message);
+    return {
+      ...(mapped ?? { id: action.id, label: action.label, message: action.message, icon: "play" as const }),
+      label: action.label || mapped?.label || action.message
+    };
   }
   return null;
 }
@@ -1307,7 +1311,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                       className={`empty-action ${action.id === "apply-economy" ? "" : "secondary"}`}
                       type="button"
                       key={action.id}
-                      aria-label={`建议动作 ${action.message}`}
+                      aria-label={action.label}
                       onClick={() => void runLocalReplyAction(action)}
                       disabled={setupInFlight || profileInFlight}
                     >
