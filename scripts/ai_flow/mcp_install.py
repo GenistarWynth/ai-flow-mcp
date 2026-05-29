@@ -23,11 +23,50 @@ from typing import Any
 
 SERVER_SCRIPT = "scripts/patchbay_mcp_server.py"
 SERVER_NAME = "patchbay"
+CANONICAL_HOSTS = ("codex", "claude", "claude-code", "claude-desktop", "gemini")
+HOST_ALIASES = {
+    "codex": "codex",
+    "codex cli": "codex",
+    "codex desktop": "codex",
+    "openai codex": "codex",
+    "claude": "claude",
+    "claude cli": "claude",
+    "anthropic claude": "claude",
+    "claude code": "claude-code",
+    "claude-code": "claude-code",
+    "claude_code": "claude-code",
+    "claudecode": "claude-code",
+    "claude desktop": "claude-desktop",
+    "claude-desktop": "claude-desktop",
+    "claude_desktop": "claude-desktop",
+    "claudedesktop": "claude-desktop",
+    "gemini": "gemini",
+    "gemini cli": "gemini",
+    "google gemini": "gemini",
+}
 
 
 def _repo_root(cwd: Path) -> Path:
     from .config import find_project_root
     return find_project_root(cwd, prefer_git=True)
+
+
+def normalize_mcp_host(host: str | None, *, default: str = "codex", strict: bool = False) -> str:
+    """Return the canonical MCP host id used by setup, doctor, and install."""
+    raw = str(host or default).strip()
+    key = " ".join(raw.replace("_", " ").replace("-", " ").split()).lower()
+    normalized = HOST_ALIASES.get(key) or HOST_ALIASES.get(raw.lower())
+    if normalized:
+        return normalized
+    if strict:
+        from .errors import AiFlowError
+
+        raise AiFlowError(
+            f"Unknown MCP host: {raw or host}. Supported: {', '.join(CANONICAL_HOSTS)}.",
+            stage="config",
+            suggested_next_action="Run `patchbay mcp install codex` or one of the supported hosts.",
+        )
+    return normalize_mcp_host(default, default="codex", strict=True)
 
 
 def _server_command(root: Path) -> str:
@@ -250,14 +289,8 @@ HOST_HANDLERS: dict[str, Any] = {
 def run_mcp_install(cwd: Path, host: str, *, root: str | Path | None = None, dry_run: bool = False) -> dict[str, Any]:
     """Entry point for ``patchbay mcp install <host>``."""
     repo_root = Path(root).expanduser().resolve() if root else _repo_root(cwd)
-    handler = HOST_HANDLERS.get(host.lower())
-    if handler is None:
-        from .errors import AiFlowError
-        raise AiFlowError(
-            f"Unknown MCP host: {host}. Supported: {', '.join(sorted(HOST_HANDLERS))}.",
-            stage="config",
-            suggested_next_action="Run `patchbay mcp install codex` or one of the supported hosts.",
-        )
+    normalized_host = normalize_mcp_host(host, strict=True)
+    handler = HOST_HANDLERS[normalized_host]
     return handler(repo_root, dry_run=dry_run)
 
 
@@ -269,7 +302,7 @@ def run_mcp_doctor(cwd: Path, *, root: str | Path | None = None) -> dict[str, An
     return {
         "server_command": server_cmd,
         "server_script_exists": (repo_root / SERVER_SCRIPT).exists(),
-        "supported_hosts": sorted(HOST_HANDLERS.keys()),
+        "supported_hosts": list(CANONICAL_HOSTS),
         "server_reachable": probe["ok"],
         "tool_count": probe.get("tool_count", 0),
         "required_tools_present": probe.get("required_tools_present", False),

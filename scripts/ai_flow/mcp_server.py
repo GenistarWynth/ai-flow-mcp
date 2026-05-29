@@ -341,7 +341,7 @@ def _tool_schema(name: str) -> dict[str, Any]:
         properties = {
             "host": {
                 "type": "string",
-                "description": "MCP host for concrete registration actions: codex, claude, claude-code, claude-desktop, gemini.",
+                "description": "MCP host or alias for concrete registration actions: codex, claude, claude-code, claude-desktop, gemini; also accepts names like Claude Desktop or Gemini CLI.",
             },
             "include_mcp": {
                 "type": "boolean",
@@ -355,7 +355,10 @@ def _tool_schema(name: str) -> dict[str, Any]:
         required = []
     elif name.endswith(("_setup", "_install")):
         properties = {
-            "host": {"type": "string", "description": "MCP host: codex, claude, claude-code, claude-desktop, gemini."},
+            "host": {
+                "type": "string",
+                "description": "MCP host or alias: codex, claude, claude-code, claude-desktop, gemini; also accepts names like Claude Desktop or Gemini CLI.",
+            },
             "skill_path": {"type": "string", "description": "Optional Codex skills root to install into."},
             "dry_run": {"type": "boolean", "description": "Preview setup without writing files."},
             "skip_skill": {"type": "boolean", "description": "Skip Codex Skill installation."},

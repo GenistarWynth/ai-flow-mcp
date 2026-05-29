@@ -268,6 +268,26 @@ model = "mock"
         self.assertTrue(action["safe"])
         self.assertTrue(any("Register the MCP server with:" in item for item in result["next_actions"]))
 
+    def test_setup_normalizes_natural_host_names(self) -> None:
+        from scripts.ai_flow import setup_flow
+
+        mcp_result = {
+            "host": "claude-desktop",
+            "command": "claude mcp add patchbay -- python scripts/patchbay_mcp_server.py",
+            "executed": False,
+            "dry_run": False,
+            "note": "Claude Desktop registration command.",
+        }
+        with mock.patch.object(setup_flow, "run_mcp_install", return_value=mcp_result) as install_mock:
+            result = setup_flow.run_setup(self.repo, host=" Claude Desktop ", skill_path=self.skills)
+
+        install_mock.assert_called_once()
+        self.assertEqual(install_mock.call_args.args[1], "claude-desktop")
+        self.assertEqual(result["setup_host"], "claude-desktop")
+        self.assertEqual(result["doctor"]["host"], "claude-desktop")
+        action = next(item for item in result["actions"] if item["id"] == "register_mcp")
+        self.assertEqual(action["host"], "claude-desktop")
+
     def test_setup_doctor_actions_inherit_target_host(self) -> None:
         from scripts.ai_flow import doctor, setup_flow
 

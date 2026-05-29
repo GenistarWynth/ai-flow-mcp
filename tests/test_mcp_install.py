@@ -137,6 +137,20 @@ class McpInstallTest(unittest.TestCase):
         self.assertEqual(result["host"], "claude-code")
         self.assertIn("claude mcp add patchbay", result["command"])
 
+    def test_run_mcp_install_accepts_common_host_aliases(self) -> None:
+        from scripts.ai_flow.mcp_install import run_mcp_install
+
+        cases = [
+            (" Codex Desktop ", "codex"),
+            ("claude code", "claude-code"),
+            ("Claude_Desktop", "claude-desktop"),
+            ("Gemini CLI", "gemini"),
+        ]
+        for host, expected in cases:
+            with self.subTest(host=host):
+                result = run_mcp_install(self.tmp, host, dry_run=True)
+                self.assertEqual(result["host"], expected)
+
     def test_gemini_dry_run_returns_command(self) -> None:
         from scripts.ai_flow.mcp_install import install_gemini
         result = install_gemini(self.tmp, dry_run=True)

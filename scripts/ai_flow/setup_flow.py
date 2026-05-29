@@ -8,7 +8,7 @@ from .artifacts import read_text, write_text
 from .config import config_path, example_config_path, find_project_root
 from .doctor import run_doctor
 from .errors import AiFlowError
-from .mcp_install import run_mcp_install
+from .mcp_install import normalize_mcp_host, run_mcp_install
 from .skill_install import run_skill_install
 
 
@@ -27,6 +27,7 @@ def run_setup(
 ) -> dict[str, Any]:
     """One-command local setup for Patchbay CLI, MCP, and Skill usage."""
     repo_root = Path(root).expanduser().resolve() if root else find_project_root(cwd, prefer_git=True)
+    setup_host = normalize_mcp_host(host, strict=True)
     init = _init_step(repo_root, dry_run=dry_run)
     config = _config_step(repo_root, dry_run=dry_run, create_config=create_config)
     skill = (
@@ -37,9 +38,9 @@ def run_setup(
     mcp = (
         {"skipped": True, "reason": "skip_mcp"}
         if skip_mcp
-        else run_mcp_install(repo_root, host, root=repo_root, dry_run=dry_run or mcp_dry_run)
+        else run_mcp_install(repo_root, setup_host, root=repo_root, dry_run=dry_run or mcp_dry_run)
     )
-    doctor = run_doctor(repo_root, include_mcp=probe_mcp, skill_path=skill_path, host=host)
+    doctor = run_doctor(repo_root, include_mcp=probe_mcp, skill_path=skill_path, host=setup_host)
     next_actions = list(doctor.get("next_actions") or [])
     if isinstance(mcp, dict) and mcp.get("command") and not mcp.get("dry_run") and not mcp.get("executed"):
         next_actions.append(f"Register the MCP server with: {mcp['command']}")
@@ -55,6 +56,7 @@ def run_setup(
                 "label": "Register MCP",
                 "kind": "command",
                 "command": str(mcp["command"]),
+                "host": str(mcp.get("host") or setup_host),
                 "safe": True,
                 "reason": "Register the MCP server command returned by setup.",
             }
@@ -63,7 +65,7 @@ def run_setup(
         "ok": bool(doctor.get("ok")),
         "dry_run": dry_run,
         "applied": not dry_run,
-        "setup_host": host,
+        "setup_host": setup_host,
         "root": str(repo_root),
         "init": init,
         "config": config,

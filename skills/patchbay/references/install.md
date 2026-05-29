@@ -21,7 +21,7 @@ python scripts/patchbay install --host codex
 
 On Windows, `scripts/patchbay.cmd` avoids PowerShell execution-policy issues.
 
-`patchbay setup` and its alias `patchbay install` initialize project files, create `.ai/patchbay.toml` from the ignored example when missing, install the bundled Codex Skill, try to register the selected MCP host, and include a doctor summary. If Codex, Claude Code, or Gemini CLI is unavailable, setup returns the registration command to run manually.
+`patchbay setup` and its alias `patchbay install` initialize project files, create `.ai/patchbay.toml` from the ignored example when missing, install the bundled Codex Skill, try to register the selected MCP host, and include a doctor summary. Setup, doctor, and `mcp install` normalize common host names such as `Claude Desktop`, `claude desktop`, `claude-desktop`, `Claude Code`, and `Gemini CLI`. If Codex, Claude Code, or Gemini CLI is unavailable, setup returns the registration command to run manually.
 
 The conversational agent entry point accepts the same explicit local setup intent without creating a model run:
 
@@ -42,7 +42,7 @@ patchbay mcp install claude-desktop
 patchbay mcp install gemini
 ```
 
-Codex, Claude Code, and Gemini try to run the host registration command directly and fall back to printing it if the host CLI is unavailable. Claude Desktop writes its JSON config directly.
+Codex, Claude Code, and Gemini try to run the host registration command directly and fall back to printing it if the host CLI is unavailable. Claude Desktop writes its JSON config directly. For full host-aware readiness, prefer `patchbay doctor --host <host> --json`; use `patchbay mcp doctor` only when you specifically need stdio server reachability.
 
 Verify the server:
 

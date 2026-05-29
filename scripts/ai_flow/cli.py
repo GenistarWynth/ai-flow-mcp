@@ -108,7 +108,11 @@ def _add_json(parser: argparse.ArgumentParser) -> None:
 
 def _add_setup_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--root", default="", help="Repository root to set up.")
-    parser.add_argument("--host", default="codex", help="MCP host: codex, claude, claude-code, claude-desktop, gemini.")
+    parser.add_argument(
+        "--host",
+        default="codex",
+        help="MCP host or alias: codex, claude, claude-code, claude-desktop, gemini (for example Claude Desktop or Gemini CLI).",
+    )
     parser.add_argument("--skill-path", default="", help="Destination skills root; defaults to $CODEX_HOME/skills or ~/.codex/skills.")
     parser.add_argument("--dry-run", action="store_true", help="Preview setup without writing files.")
     parser.add_argument("--skip-skill", action="store_true", help="Skip Codex Skill installation.")

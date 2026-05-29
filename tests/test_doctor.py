@@ -39,7 +39,7 @@ class DoctorTest(unittest.TestCase):
         from scripts.ai_flow import doctor
 
         with mock.patch.object(doctor, "run_mcp_doctor", return_value={"server_reachable": False, "required_tools_present": False}):
-            result = doctor.run_doctor(self.tmp, include_mcp=True, host="claude-desktop")
+            result = doctor.run_doctor(self.tmp, include_mcp=True, host="Claude Desktop")
 
         actions = {item["id"]: item for item in result["actions"]}
         self.assertEqual(result["host"], "claude-desktop")

@@ -7,7 +7,7 @@ from typing import Any
 
 from .config import config_path, example_config_path, find_project_root, load_config
 from .config_wizard import _profile_status, _run_doctor as run_config_doctor
-from .mcp_install import run_mcp_doctor
+from .mcp_install import normalize_mcp_host, run_mcp_doctor
 from .skill_install import run_skill_doctor
 
 
@@ -276,8 +276,7 @@ def _setup_message(host: str) -> str:
 
 
 def _doctor_host(host: str) -> str:
-    normalized = str(host or "codex").strip().lower()
-    return normalized if normalized in {"codex", "claude", "claude-code", "claude-desktop", "gemini"} else "codex"
+    return normalize_mcp_host(host, strict=False)
 
 
 def _dedupe_actions(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
