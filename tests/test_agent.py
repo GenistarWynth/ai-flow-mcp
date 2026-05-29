@@ -199,9 +199,19 @@ class AgentWorkflowTests(AgentTestCase):
             return {
                 "ok": True,
                 "root": str(root),
-                "mcp": {"host": host},
+                "mcp": {"host": host, "command": f"patchbay mcp install {host}", "executed": False},
                 "doctor": {"ok": True},
-                "next_actions": [],
+                "next_actions": [f"Register the MCP server with: patchbay mcp install {host}"],
+                "actions": [
+                    {
+                        "id": "register_mcp",
+                        "label": "Register MCP",
+                        "kind": "command",
+                        "command": f"patchbay mcp install {host}",
+                        "safe": True,
+                        "reason": "Register the MCP server command returned by setup.",
+                    }
+                ],
             }
 
         with mock.patch.object(agent_module, "run_setup", side_effect=fake_setup):
@@ -215,6 +225,10 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertEqual(desktop["setup_host"], "claude-desktop")
         self.assertEqual(gemini["setup"]["mcp"]["host"], "gemini")
         self.assertEqual(claude_code["setup_host"], "claude-code")
+        desktop_actions = {item["id"]: item for item in desktop["actions"]}
+        self.assertEqual(desktop_actions["register_mcp"]["kind"], "command")
+        self.assertEqual(desktop_actions["register_mcp"]["command"], "patchbay mcp install claude-desktop")
+        self.assertTrue(desktop_actions["register_mcp"]["safe"])
         self.assertFalse((self.repo / ".ai" / "runs").exists())
 
     def test_agent_setup_word_in_task_still_starts_plan(self) -> None:
@@ -555,7 +569,22 @@ class AgentWorkflowTests(AgentTestCase):
             with mock.patch.object(
                 agent_module,
                 "run_setup",
-                return_value={"ok": True, "mcp": {"host": "claude-code"}, "doctor": {"ok": True}, "next_actions": []},
+                return_value={
+                    "ok": True,
+                    "mcp": {"host": "claude-code", "command": "patchbay mcp install claude-code", "executed": False},
+                    "doctor": {"ok": True},
+                    "next_actions": ["Register the MCP server with: patchbay mcp install claude-code"],
+                    "actions": [
+                        {
+                            "id": "register_mcp",
+                            "label": "Register MCP",
+                            "kind": "command",
+                            "command": "patchbay mcp install claude-code",
+                            "safe": True,
+                            "reason": "Register the MCP server command returned by setup.",
+                        }
+                    ],
+                },
             ) as setup_mock:
                 response = mcp_server.handle(
                     {
@@ -573,6 +602,9 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertEqual(payload["setup_host"], "claude-code")
         self.assertEqual(setup_mock.call_args.kwargs["host"], "claude-code")
         self.assertIsNone(payload["run_id"])
+        actions = {item["id"]: item for item in payload["actions"]}
+        self.assertEqual(actions["register_mcp"]["kind"], "command")
+        self.assertEqual(actions["register_mcp"]["command"], "patchbay mcp install claude-code")
 
     def test_mcp_patchbay_agent_can_list_runs_without_run_id(self) -> None:
         from scripts.ai_flow import mcp_server
@@ -775,6 +807,8 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertIsNone(response["run_id"])
         self.assertIn("setup", response)
         self.assertTrue((codex_home / "skills" / "patchbay" / "SKILL.md").exists())
+        self.assertIn("actions", response)
+        self.assertIsInstance(response["actions"], list)
         runs_path = self.repo / ".ai" / "runs"
         self.assertFalse(runs_path.exists() and any(runs_path.iterdir()))
 
