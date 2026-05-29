@@ -279,6 +279,12 @@ export type AgentGateCard = {
   detail?: string;
 };
 
+export type AgentHealthCard = AgentGateCard & {
+  recommendation?: string;
+  next_action?: string;
+  coverage_percent?: number | null;
+};
+
 export type AgentMessage = {
   id: string;
   kind?: string;
@@ -328,6 +334,7 @@ export type AgentActivity = {
   next_action?: AgentAction | null;
   conversation_state?: ConversationState;
   gate_cards?: AgentGateCard[];
+  health_cards?: AgentHealthCard[];
   messages?: AgentMessage[];
   artifacts?: HandoffArtifact[];
 };

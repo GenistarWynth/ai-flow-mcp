@@ -96,6 +96,18 @@ const readyContext: HandoffContext = {
       { key: "review", label: "审查", status: "PASS", tone: "success", detail: "审查通过" },
       { key: "apply", label: "应用", status: "ready", tone: "ready", detail: "可以应用" }
     ],
+    health_cards: [
+      {
+        key: "economy_route",
+        label: "Economy route",
+        status: "healthy",
+        tone: "success",
+        detail: "Economy route is configured and observed for all high-volume write/fix phases.",
+        recommendation: "",
+        next_action: "none",
+        coverage_percent: 100
+      }
+    ],
     messages: [
       {
         id: "event-0",
@@ -390,6 +402,9 @@ describe("Workbench", () => {
     expect(screen.getByText("审查 USD 0.12")).toBeVisible();
     expect(screen.getByText("审查 / codex_cli 4.0k tok | USD 0.12")).toBeVisible();
     expect(screen.getByText("Economy route configured; observed write, fix not observed yet.")).toBeVisible();
+    const healthSection = screen.getByRole("heading", { name: "健康" }).closest("section")!;
+    expect(within(healthSection).getByText("Economy route")).toBeVisible();
+    expect(within(healthSection).getByText("100% economy observed")).toBeVisible();
     expect(screen.getByText("经济覆盖")).toBeVisible();
     expect(screen.getByText("50% · 1/2")).toBeVisible();
     expect(screen.getByText("经济健康")).toBeVisible();

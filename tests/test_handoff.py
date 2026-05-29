@@ -92,6 +92,10 @@ class HandoffContextTest(unittest.TestCase):
         self.assertTrue(activity["conversation_state"]["suggestions"][0]["requires_human_confirmation"])
         self.assertIn("确认", activity["conversation_state"]["composer_placeholder"])
         self.assertEqual([card["key"] for card in activity["gate_cards"]], ["approval", "tests", "review", "apply"])
+        self.assertEqual(activity["health_cards"][0]["key"], "economy_route")
+        self.assertEqual(activity["health_cards"][0]["status"], "pending_evidence")
+        self.assertEqual(activity["health_cards"][0]["tone"], "ready")
+        self.assertEqual(activity["health_cards"][0]["coverage_percent"], 0)
         self.assertNotIn("provider", activity["headline"].lower())
         self.assertEqual(activity["messages"][0]["kind"], "event")
         artifact = {item["name"]: item for item in context["artifacts"]}

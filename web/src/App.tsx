@@ -21,6 +21,7 @@ import {
   AgentResponse,
   AgentActivity,
   AgentAction,
+  AgentHealthCard,
   AgentMessage,
   ConfigProfileStatus,
   createPatchbayClient,
@@ -366,6 +367,7 @@ function fallbackActivity(context: HandoffContext | null, status: RunStatus | nu
       { key: "review", label: "审查", tone: gateState.review_result === "PASS" ? "success" : gateState.review_result ? "blocked" : "idle", detail: statusLabel(gateState.review_result) },
       { key: "apply", label: "应用", tone: gateState.ready_to_apply ? "ready" : "blocked", detail: gateState.ready_to_apply ? "可以应用" : "等待门禁" }
     ],
+    health_cards: economyHealthCard(status),
     messages: (context?.timeline ?? []).map((entry, index) => ({
       id: `${entry.source ?? "event"}-${entry.index ?? entry.seq ?? index}`,
       kind: entry.source,
@@ -430,6 +432,14 @@ function routeSummary(route?: PhaseProvider) {
   return `${provider} / ${model}`;
 }
 
+function healthStatusLabel(status?: string) {
+  if (status === "healthy") return "健康";
+  if (status === "pending_evidence") return "待观测";
+  if (status === "drift") return "漂移";
+  if (status === "not_configured") return "未配置";
+  return status || "未知";
+}
+
 function strategyTierLabel(tier?: string) {
   if (tier === "economy") return "经济";
   if (tier === "supervision") return "监督";
@@ -488,11 +498,9 @@ function routingCoverageLabel(routing?: RoutingEvidence | null) {
 function economyHealthLabel(routing?: RoutingEvidence | null) {
   const health = routing?.economy_health;
   if (!health?.status) return "";
-  if (health.status === "healthy") return "健康";
-  if (health.status === "pending_evidence") return "待观测";
-  if (health.status === "drift") return `漂移 · ${(health.drift_phases ?? []).join("/") || "write/fix"}`;
-  if (health.status === "not_configured") return `未配置 · ${(health.missing_config_phases ?? []).join("/") || "write/fix"}`;
-  return health.status;
+  if (health.status === "drift") return `${healthStatusLabel(health.status)} · ${(health.drift_phases ?? []).join("/") || "write/fix"}`;
+  if (health.status === "not_configured") return `${healthStatusLabel(health.status)} · ${(health.missing_config_phases ?? []).join("/") || "write/fix"}`;
+  return healthStatusLabel(health.status);
 }
 
 function profileStatusToRouting(result: ConfigProfileStatus): RoutingEvidence {
@@ -515,6 +523,24 @@ function profileStatusToRouting(result: ConfigProfileStatus): RoutingEvidence {
       : `Economy routing profile is not active: write ${routeSummary(write)}, fix ${routeSummary(fix)}.`,
     recommendation: status.recommendation ?? result.recommendation
   };
+}
+
+function economyHealthCard(status: RunStatus | null) {
+  const routing = status?.run_metrics?.routing_evidence ?? status?.routing_evidence;
+  const health = routing?.economy_health;
+  if (!health?.status) return [];
+  return [
+    {
+      key: "economy_route",
+      label: "Economy route",
+      status: health.status,
+      tone: (health.severity === "warning" ? "blocked" : health.severity === "ok" ? "success" : "ready") as AgentHealthCard["tone"],
+      detail: health.summary ?? routing?.summary ?? "",
+      recommendation: health.recommendation,
+      next_action: health.next_action,
+      coverage_percent: routing?.coverage?.observed_economy_percent ?? null
+    }
+  ];
 }
 
 function confirmCopy(action: SuggestedAction, readyToApply: boolean): ConfirmState {
@@ -1550,6 +1576,26 @@ function SetupHostButtons({
   );
 }
 
+function HealthCardGrid({ cards }: { cards?: AgentHealthCard[] | null }) {
+  const visible = (cards ?? []).filter((card) => card.key || card.label || card.detail);
+  if (!visible.length) return null;
+  return (
+    <div className="health-card-grid">
+      {visible.map((card) => (
+        <div className={`health-card tone-${card.tone ?? "idle"}`} key={card.key || card.label}>
+          <div className="health-card-head">
+            <span>{card.label || card.key}</span>
+            <strong>{healthStatusLabel(card.status)}</strong>
+          </div>
+          {typeof card.coverage_percent === "number" ? <small>{card.coverage_percent}% economy observed</small> : null}
+          {card.detail ? <p>{card.detail}</p> : null}
+          {card.recommendation ? <em>{card.recommendation}</em> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SetupResultCard({ response }: { response: AgentResponse }) {
   const setup = response.setup;
   if (!setup) return null;
@@ -1824,6 +1870,12 @@ function DetailPanel({
           <h2>效率</h2>
           <MetricsGrid metrics={metrics} />
         </section>
+        {(activity.health_cards ?? []).length ? (
+          <section>
+            <h2>健康</h2>
+            <HealthCardGrid cards={activity.health_cards} />
+          </section>
+        ) : null}
         <section>
           <h2>阶段</h2>
           <div className="phase-list">

@@ -258,6 +258,7 @@ def _agent_activity(
         "next_action": next_action,
         "conversation_state": _conversation_state(status_data, next_action, next_actions, tone),
         "gate_cards": _gate_cards(status_data, gate_state),
+        "health_cards": _health_cards(status_data),
         "messages": messages,
         "artifacts": artifacts,
     }
@@ -402,6 +403,40 @@ def _gate_cards(status_data: dict[str, Any], gate_state: dict[str, Any]) -> list
             "detail": "已应用到当前工作区" if status == "APPLIED" else "可以应用" if ready_to_apply else "需通过测试和审查",
         },
     ]
+
+
+def _health_cards(status_data: dict[str, Any]) -> list[dict[str, Any]]:
+    run_metrics = status_data.get("run_metrics") if isinstance(status_data.get("run_metrics"), dict) else {}
+    routing = run_metrics.get("routing_evidence") if isinstance(run_metrics.get("routing_evidence"), dict) else {}
+    health = routing.get("economy_health") if isinstance(routing.get("economy_health"), dict) else {}
+    if not health:
+        return []
+    status = str(health.get("status") or "unknown")
+    severity = str(health.get("severity") or "")
+    coverage = routing.get("coverage") if isinstance(routing.get("coverage"), dict) else {}
+    percent = coverage.get("observed_economy_percent")
+    return [
+        {
+            "key": "economy_route",
+            "label": "Economy route",
+            "status": status,
+            "tone": _health_tone(status, severity),
+            "detail": str(health.get("summary") or routing.get("summary") or ""),
+            "recommendation": str(health.get("recommendation") or ""),
+            "next_action": str(health.get("next_action") or ""),
+            "coverage_percent": percent if isinstance(percent, (int, float)) else None,
+        }
+    ]
+
+
+def _health_tone(status: str, severity: str) -> str:
+    if status == "healthy" or severity == "ok":
+        return "success"
+    if status == "pending_evidence" or severity == "info":
+        return "ready"
+    if status in {"drift", "not_configured"} or severity == "warning":
+        return "blocked"
+    return "idle"
 
 
 def _activity_message(item: dict[str, Any], fallback_index: int) -> dict[str, Any]:
