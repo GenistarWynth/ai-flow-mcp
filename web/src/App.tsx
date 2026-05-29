@@ -153,8 +153,21 @@ function setupHostLabel(host?: string | null) {
   return setupHostLabels.get(host) ?? host;
 }
 
+function setupHostById(host?: string | null) {
+  return setupHostOptions.find((option) => option.id === host) ?? setupHostOptions[0];
+}
+
 function setupMessageToHost(message: string) {
   return setupHostOptions.find((host) => host.message === message) ?? setupHostOptions[0];
+}
+
+function setupHostFromAction(action: AgentHealthAction, fallback: SetupHostOption) {
+  if (action.host) return setupHostById(action.host);
+  if (action.message) {
+    const host = setupHostOptions.find((option) => option.message === action.message);
+    if (host) return host;
+  }
+  return fallback;
 }
 
 function statusLabel(status?: string | null) {
@@ -735,6 +748,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const [confirm, setConfirm] = useState<ConfirmState>(null);
   const [error, setError] = useState("");
   const [composer, setComposer] = useState("");
+  const [readinessHost, setReadinessHost] = useState<SetupHostOption>(setupHostOptions[0]);
   const [submitting, setSubmitting] = useState(false);
   const [actionInFlight, setActionInFlight] = useState(false);
   const [setupInFlight, setSetupInFlight] = useState(false);
@@ -760,7 +774,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
 
   useEffect(() => {
     void loadRuns().catch((err) => setError(String(err)));
-    void client.getDoctor({ include_mcp: false }).then(setDoctor).catch((err) => setError(String(err)));
+    void client.getDoctor({ include_mcp: false, host: setupHostOptions[0].id }).then(setDoctor).catch((err) => setError(String(err)));
   }, []);
 
   useEffect(() => {
@@ -1010,9 +1024,10 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }));
   };
 
-  const runSetupAction = async (host: SetupHostOption = setupHostOptions[0]) => {
+  const runSetupAction = async (host: SetupHostOption = readinessHost) => {
     if (setupInFlight) return;
     setError("");
+    setReadinessHost(host);
     setSetupInFlight(true);
     try {
       const response = await client.agentMessage(host.message);
@@ -1021,7 +1036,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       if (setupDoctor) {
         setDoctor(setupDoctor);
       } else {
-        setDoctor(await client.getDoctor({ include_mcp: false }));
+        setDoctor(await client.getDoctor({ include_mcp: false, host: host.id }));
       }
       await loadRuns(selectedRun || undefined);
     } catch (err) {
@@ -1049,7 +1064,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         actions: profile.actions ?? []
       };
       if (!selectedRun) setNewTaskReply(response);
-      const [nextDoctor, nextConfig] = await Promise.all([client.getDoctor({ include_mcp: false }), client.getConfig()]);
+      const [nextDoctor, nextConfig] = await Promise.all([client.getDoctor({ include_mcp: false, host: readinessHost.id }), client.getConfig()]);
       setDoctor(nextDoctor);
       setConfig(nextConfig);
       await loadRuns(selectedRun || undefined);
@@ -1060,12 +1075,16 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }
   };
 
-  const openReadinessAction = async (force = false) => {
+  const openReadinessAction = async (force = false, host: SetupHostOption = readinessHost) => {
+    if (host.id !== readinessHost.id) {
+      setReadinessHost(host);
+      force = true;
+    }
     setDiagnosticsOpen(true);
     setActiveTab("Readiness");
     if (doctor && !force) return;
     try {
-      setDoctor(await client.getDoctor({ include_mcp: false }));
+      setDoctor(await client.getDoctor({ include_mcp: false, host: host.id }));
     } catch (err) {
       setError(String(err));
     }
@@ -1092,8 +1111,9 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
 
   const runDoctorAction = async (action: AgentHealthAction) => {
     if (action.safe === false) return;
-    if (action.id === "run_setup" || action.message === "patchbay setup") {
-      await runSetupAction();
+    const actionHost = setupHostFromAction(action, readinessHost);
+    if (action.id === "run_setup" || action.message?.startsWith("patchbay setup")) {
+      await runSetupAction(actionHost);
       return;
     }
     if (action.id === "apply_economy_profile" || action.message === "apply economy profile") {
@@ -1101,7 +1121,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       return;
     }
     if (action.id === "refresh_readiness" || action.message === "readiness") {
-      await openReadinessAction(true);
+      await openReadinessAction(true, actionHost);
     }
   };
 
@@ -1284,7 +1304,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                 <strong>告诉 Patchbay Agent 要做什么</strong>
                 <span>它会先生成计划，后续批准、实现、测试、审查和应用都从这个线程推进。</span>
                 <div className="empty-actions">
-                  <button className="empty-action" type="button" onClick={() => void runSetupAction()} disabled={setupInFlight}>
+                  <button className="empty-action" type="button" onClick={() => void runSetupAction(readinessHost)} disabled={setupInFlight}>
                     {setupInFlight ? <RefreshCw size={14} /> : <Settings size={14} />}
                     {setupInFlight ? "运行中" : "运行 setup"}
                   </button>
@@ -1297,7 +1317,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                     就绪
                   </button>
                 </div>
-                <SetupHostButtons onRunSetup={runSetupAction} setupBusy={setupInFlight} />
+                <SetupHostButtons onRunSetup={runSetupAction} setupBusy={setupInFlight} selectedHost={readinessHost} onSelectHost={setReadinessHost} />
               </div>
               {localRunMessages.map((message) => (
                 <ChatBubble key={message.id} role="user" title="本地消息" body={message.body} timestamp={message.timestamp} />
@@ -1416,6 +1436,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
               artifactText={artifactText}
               config={config}
               doctor={doctor}
+              readinessHost={readinessHost}
+              onReadinessHostChange={(host) => void openReadinessAction(true, host)}
               onRunSetup={runSetupAction}
               onApplyEconomy={applyEconomyProfileAction}
               onDoctorAction={(action) => void runDoctorAction(action)}
@@ -1728,10 +1750,14 @@ function MetricsGrid({
 
 function SetupHostButtons({
   onRunSetup,
+  onSelectHost,
+  selectedHost,
   setupBusy,
   compact = false
 }: {
   onRunSetup: (host?: SetupHostOption) => void;
+  onSelectHost?: (host: SetupHostOption) => void;
+  selectedHost?: SetupHostOption;
   setupBusy?: boolean;
   compact?: boolean;
 }) {
@@ -1743,7 +1769,11 @@ function SetupHostButtons({
           type="button"
           key={host.id}
           aria-label={`Setup ${host.label}`}
-          onClick={() => onRunSetup(host)}
+          aria-pressed={selectedHost?.id === host.id}
+          onClick={() => {
+            onSelectHost?.(host);
+            onRunSetup(host);
+          }}
           disabled={setupBusy}
         >
           {host.label}
@@ -1957,6 +1987,8 @@ function DoctorActionButtons({
 
 function DoctorPanel({
   report,
+  readinessHost,
+  onReadinessHostChange,
   onRunSetup,
   onApplyEconomy,
   onDoctorAction,
@@ -1964,6 +1996,8 @@ function DoctorPanel({
   profileBusy
 }: {
   report?: DoctorReport | null;
+  readinessHost?: SetupHostOption;
+  onReadinessHostChange?: (host: SetupHostOption) => void;
   onRunSetup?: (host?: SetupHostOption) => void;
   onApplyEconomy?: () => void;
   onDoctorAction?: (action: AgentHealthAction) => void;
@@ -1974,22 +2008,40 @@ function DoctorPanel({
   const profile = doctorProfileStatus(report);
   const economy = profile?.economy;
   const doctorActions = report?.actions ?? [];
+  const selectedHost = readinessHost ?? setupHostById(report?.host);
   return (
     <div className="doctor-panel">
       {onRunSetup ? (
         <div className="doctor-toolbar">
-          <button className="doctor-setup-button" type="button" onClick={() => onRunSetup()} disabled={setupBusy}>
+          <label className="doctor-host-select">
+            <span id="doctor-host-select-label">MCP host</span>
+            <select
+              aria-labelledby="doctor-host-select-label"
+              value={selectedHost.id}
+              onChange={(event) => onReadinessHostChange?.(setupHostById(event.target.value))}
+              disabled={setupBusy}
+            >
+              {setupHostOptions.map((host) => (
+                <option value={host.id} key={host.id}>
+                  {host.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button className="doctor-setup-button" type="button" onClick={() => onRunSetup(selectedHost)} disabled={setupBusy}>
             {setupBusy ? <RefreshCw size={14} /> : <Settings size={14} />}
             {setupBusy ? "运行中" : "运行 setup"}
           </button>
-          <SetupHostButtons onRunSetup={onRunSetup} setupBusy={setupBusy} compact />
+          <SetupHostButtons onRunSetup={onRunSetup} setupBusy={setupBusy} selectedHost={selectedHost} compact />
         </div>
       ) : null}
       <div className={`doctor-summary ${report?.ok ? "ready" : "blocked"}`}>
         {report?.ok ? <Check size={16} /> : <AlertTriangle size={16} />}
         <div>
           <strong>{report?.ok ? "环境就绪" : "需要处理"}</strong>
-          <span>{report?.root ?? "正在读取 Patchbay doctor 结果"}</span>
+          <span>
+            {report?.root ?? "正在读取 Patchbay doctor 结果"} · {setupHostLabel(report?.host ?? selectedHost.id)}
+          </span>
         </div>
       </div>
       {doctorActions.length ? (
@@ -2087,6 +2139,8 @@ function DetailPanel({
   artifactText,
   config,
   doctor,
+  readinessHost,
+  onReadinessHostChange,
   onRunSetup,
   onApplyEconomy,
   onDoctorAction,
@@ -2105,6 +2159,8 @@ function DetailPanel({
   artifactText: string;
   config: unknown;
   doctor: DoctorReport | null;
+  readinessHost?: SetupHostOption;
+  onReadinessHostChange?: (host: SetupHostOption) => void;
   onRunSetup?: (host?: SetupHostOption) => void;
   onApplyEconomy?: () => void;
   onDoctorAction?: (action: AgentHealthAction) => void;
@@ -2173,6 +2229,8 @@ function DetailPanel({
     return (
       <DoctorPanel
         report={doctor}
+        readinessHost={readinessHost}
+        onReadinessHostChange={onReadinessHostChange}
         onRunSetup={onRunSetup}
         onApplyEconomy={onApplyEconomy}
         onDoctorAction={onDoctorAction}

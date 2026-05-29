@@ -117,20 +117,22 @@ def _mcp_check(root: Path, *, include_mcp: bool) -> dict[str, Any]:
 
 def _summarize(root: Path, checks: dict[str, Any], *, host: str) -> dict[str, Any]:
     required_sections = ("repo", "config", "cli", "mcp", "skill")
-    next_actions = _next_actions(checks)
+    normalized_host = _doctor_host(host)
+    next_actions = _next_actions(checks, host=normalized_host)
     recommendations = _recommendations(checks)
     ok = all(bool(checks.get(section, {}).get("ok")) for section in required_sections) and not next_actions
     return {
         "ok": ok,
         "root": str(root),
+        "host": normalized_host,
         "checks": checks,
         "next_actions": next_actions,
         "recommendations": recommendations,
-        "actions": _structured_actions(checks, next_actions, recommendations, host=host),
+        "actions": _structured_actions(checks, next_actions, recommendations, host=normalized_host),
     }
 
 
-def _next_actions(checks: dict[str, Any]) -> list[str]:
+def _next_actions(checks: dict[str, Any], *, host: str) -> list[str]:
     actions: list[str] = []
     repo = checks.get("repo", {})
     if not repo.get("git_repo"):
@@ -148,9 +150,9 @@ def _next_actions(checks: dict[str, Any]) -> list[str]:
     mcp = checks.get("mcp", {})
     if not mcp.get("ok"):
         if mcp.get("skipped"):
-            actions.append("Run `patchbay doctor` without --skip-mcp before registering a host.")
+            actions.append(f"Run `patchbay doctor --host {host}` without --skip-mcp before registering a host.")
         else:
-            actions.append("Run `patchbay mcp doctor --json`; then re-run `patchbay mcp install <host>` if tools are missing.")
+            actions.append(f"Run `patchbay mcp doctor --json`; then re-run `patchbay mcp install {host}` if tools are missing.")
     skill = checks.get("skill", {})
     if not skill.get("source_exists"):
         actions.append("Reinstall Patchbay; the bundled Codex Skill source is missing.")
@@ -190,7 +192,8 @@ def _structured_actions(
                 "id": "run_setup",
                 "label": "Run setup",
                 "kind": "local_agent",
-                "message": "patchbay setup",
+                "message": _setup_message(host),
+                "host": host,
                 "safe": True,
                 "reason": "Initialize Patchbay project files, local config, Skill installation, MCP guidance, and a doctor summary.",
             }
@@ -212,7 +215,8 @@ def _structured_actions(
                 "id": "probe_mcp",
                 "label": "Probe MCP",
                 "kind": "command",
-                "command": "patchbay mcp doctor --json",
+                "command": f"patchbay doctor --host {host} --json",
+                "host": host,
                 "safe": True,
                 "reason": "Run the stdio MCP probe when the host needs full tool registration evidence.",
             }
@@ -224,6 +228,7 @@ def _structured_actions(
                 "label": "Register MCP",
                 "kind": "command",
                 "command": f"patchbay mcp install {_doctor_host(host)}",
+                "host": _doctor_host(host),
                 "safe": True,
                 "reason": "Register the Patchbay MCP server with the target host after inspecting the doctor output.",
             }
@@ -257,11 +262,17 @@ def _structured_actions(
                 "label": "Refresh readiness",
                 "kind": "local_agent",
                 "message": "readiness",
+                "host": host,
                 "safe": True,
                 "reason": "Re-run read-only readiness checks after applying setup or routing changes.",
             }
         )
     return _dedupe_actions(actions)
+
+
+def _setup_message(host: str) -> str:
+    normalized = _doctor_host(host)
+    return "patchbay setup" if normalized == "codex" else f"patchbay setup for {normalized}"
 
 
 def _doctor_host(host: str) -> str:

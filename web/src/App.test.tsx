@@ -368,7 +368,7 @@ describe("Workbench", () => {
     expect(await screen.findByText("需要处理")).toBeVisible();
     expect(screen.getAllByText(/patchbay skill install codex/)[0]).toBeVisible();
     expect(screen.getByRole("button", { name: "Refresh readiness" })).toBeVisible();
-    expect(client.getDoctor).toHaveBeenCalledWith({ include_mcp: false });
+    expect(client.getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "codex" });
   });
 
   it("surfaces token totals and retry phases in efficiency metrics", async () => {
@@ -1115,6 +1115,82 @@ describe("Workbench", () => {
     await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("install patchbay for gemini"));
     expect(await screen.findByText("环境就绪")).toBeVisible();
     expect(client.getStatus).not.toHaveBeenCalled();
+  });
+
+  it("refreshes readiness for the selected MCP host and keeps setup host-aware", async () => {
+    const getDoctor = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        host: "codex",
+        root: "C:/repo",
+        checks: { repo: { ok: true }, mcp: { ok: true, skipped: true } },
+        next_actions: []
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        host: "claude-desktop",
+        root: "C:/repo",
+        checks: { repo: { ok: true }, mcp: { ok: false } },
+        next_actions: ["Run `patchbay mcp doctor --json`; then re-run `patchbay mcp install claude-desktop` if tools are missing."],
+        actions: [
+          {
+            id: "install_mcp",
+            label: "Register MCP",
+            kind: "command",
+            command: "patchbay mcp install claude-desktop",
+            host: "claude-desktop",
+            safe: true,
+            reason: "Register the target host."
+          },
+          {
+            id: "run_setup",
+            label: "Run setup",
+            kind: "local_agent",
+            message: "patchbay setup for claude-desktop",
+            host: "claude-desktop",
+            safe: true,
+            reason: "Run host setup."
+          }
+        ]
+      });
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "setup",
+      ok: true,
+      reply: "Patchbay setup completed.",
+      setup_host: "claude-desktop",
+      setup: {
+        doctor: {
+          ok: true,
+          host: "claude-desktop",
+          root: "C:/repo",
+          checks: { repo: { ok: true }, mcp: { ok: true } },
+          next_actions: []
+        }
+      }
+    });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      getDoctor,
+      agentMessage
+    });
+
+    render(<Workbench client={client} />);
+
+    await waitFor(() => expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "codex" }));
+    await userEvent.click(screen.getByRole("button", { expanded: false }));
+    await userEvent.click(screen.getAllByRole("tab")[1]);
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    await userEvent.selectOptions(within(details).getByLabelText("MCP host"), "claude-desktop");
+
+    await waitFor(() => expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "claude-desktop" }));
+    expect(await within(details).findByText("patchbay mcp install claude-desktop")).toBeVisible();
+    await userEvent.click(within(details).getByRole("button", { name: "Run setup" }));
+
+    await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("patchbay setup for claude-desktop"));
+    expect(within(details).getByText("环境就绪")).toBeVisible();
+    expect(within(details).getAllByText(/Claude Desktop/).length).toBeGreaterThan(0);
   });
 
   it("shows non-blocking doctor recommendations in readiness", async () => {

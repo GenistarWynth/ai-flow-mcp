@@ -167,6 +167,11 @@ textarea { resize: none; }
   font-weight: 800;
   white-space: nowrap;
 }
+.setup-host[aria-pressed="true"] {
+  color: #174ea6;
+  border-color: #9bbcf7;
+  background: #edf4ff;
+}
 .setup-host:disabled {
   cursor: default;
   opacity: 0.65;
@@ -505,7 +510,25 @@ button.danger { color: #b42318; border-color: #f0b6b2; background: #fff8f7; }
 .phase-strategy-node em { color: #92400e; font-style: normal; }
 .doctor-panel { display: grid; align-content: start; gap: 14px; padding: 14px; }
 .doctor-panel h2 { margin: 0 0 8px; font-size: 13px; color: #344255; }
-.doctor-toolbar { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.doctor-toolbar { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; }
+.doctor-host-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  color: #647083;
+  font-size: 12px;
+  font-weight: 800;
+}
+.doctor-host-select select {
+  min-height: 32px;
+  border: 1px solid #cfd7e3;
+  border-radius: 8px;
+  padding: 0 8px;
+  color: #172033;
+  background: #ffffff;
+  font: inherit;
+}
 .doctor-setup-button {
   display: inline-flex;
   align-items: center;

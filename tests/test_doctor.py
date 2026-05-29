@@ -31,6 +31,9 @@ class DoctorTest(unittest.TestCase):
         self.assertIn(".ai/patchbay.example.toml", result["checks"]["repo"]["missing_files"])
         self.assertTrue(result["checks"]["mcp"]["skipped"])
         self.assertTrue(any("patchbay init" in action for action in result["next_actions"]))
+        actions = {item["id"]: item for item in result["actions"]}
+        self.assertEqual(actions["probe_mcp"]["command"], "patchbay doctor --host codex --json")
+        self.assertEqual(actions["probe_mcp"]["host"], "codex")
 
     def test_doctor_structured_mcp_action_uses_target_host(self) -> None:
         from scripts.ai_flow import doctor
@@ -39,7 +42,11 @@ class DoctorTest(unittest.TestCase):
             result = doctor.run_doctor(self.tmp, include_mcp=True, host="claude-desktop")
 
         actions = {item["id"]: item for item in result["actions"]}
+        self.assertEqual(result["host"], "claude-desktop")
         self.assertEqual(actions["install_mcp"]["command"], "patchbay mcp install claude-desktop")
+        self.assertEqual(actions["install_mcp"]["host"], "claude-desktop")
+        self.assertTrue(any("patchbay mcp install claude-desktop" in action for action in result["next_actions"]))
+        self.assertFalse(any("<host>" in action for action in result["next_actions"]))
 
     def test_unified_doctor_accepts_initialized_project(self) -> None:
         from scripts.ai_flow import service

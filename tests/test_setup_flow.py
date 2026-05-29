@@ -193,7 +193,8 @@ model = "mock"
         self.assertIn("install_skill", actions)
         self.assertEqual(actions["install_skill"]["command"], "patchbay skill install codex")
         self.assertIn("probe_mcp", actions)
-        self.assertEqual(actions["probe_mcp"]["command"], "patchbay mcp doctor --json")
+        self.assertEqual(actions["probe_mcp"]["command"], "patchbay doctor --host codex --json")
+        self.assertEqual(actions["probe_mcp"]["host"], "codex")
 
     def test_setup_omits_manual_mcp_step_after_successful_registration(self) -> None:
         from scripts.ai_flow import setup_flow
@@ -285,6 +286,8 @@ model = "mock"
 
         actions = {item["id"]: item for item in result["actions"]}
         self.assertEqual(actions["install_mcp"]["command"], "patchbay mcp install claude-desktop")
+        self.assertEqual(actions["install_mcp"]["host"], "claude-desktop")
+        self.assertEqual(actions["refresh_readiness"]["host"], "claude-desktop")
 
     def test_mcp_skill_tools_install_and_verify_bundle(self) -> None:
         from scripts.ai_flow import mcp_server

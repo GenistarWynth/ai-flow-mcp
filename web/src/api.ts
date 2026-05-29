@@ -179,6 +179,7 @@ export type DoctorCheck = {
 export type DoctorReport = {
   ok?: boolean;
   root?: string;
+  host?: string;
   checks?: Record<string, DoctorCheck>;
   next_actions?: string[];
   recommendations?: string[];
@@ -290,6 +291,7 @@ export type AgentHealthAction = {
   kind?: "local_agent" | "diagnostic_tab" | "open_run" | "focus_composer" | string;
   message?: string;
   command?: string;
+  host?: string;
   tab?: RunReferenceView["tab"];
   run_id?: string;
   safe?: boolean;
