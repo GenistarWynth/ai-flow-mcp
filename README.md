@@ -46,7 +46,7 @@ Legacy `[models]`, `[commands]`, and `[writer].provider` keys remain supported a
 - File-backed run artifacts under `.ai/runs/<run_id>/`.
 - Human approval gate before implementation.
 - Patch safety checks, read-only reviewer verification, and a default apply gate that treats skipped tests as not passed unless `workflow.allow_apply_without_tests = true`.
-- **Cross-host visibility**: `patchbay context <run_id>` / `patchbay_context` is the preferred resume call. It returns the current gate state, next safe action, provider trail, artifacts, timeline, and `run_metrics` efficiency evidence in one handoff digest. `run_metrics.routing_evidence` shows whether write/fix are configured for the Reasonix/DeepSeek economy route and whether provider events have actually observed it. `patchbay events <run_id>` and `patchbay_status` remain available for focused inspection.
+- **Cross-host visibility**: `patchbay context <run_id>` / `patchbay_context` is the preferred resume call. It returns the current gate state, next safe action, provider trail, artifacts, timeline, and `run_metrics` efficiency evidence in one handoff digest. `run_metrics.routing_evidence` shows whether write/fix are configured for the Reasonix/DeepSeek economy route and whether provider events have actually observed it; `routing_evidence.economy_health` and `agent_activity.health_cards` expose the same signal as machine-readable healthy, pending-evidence, drift, or not-configured states for desktop and MCP clients. `patchbay events <run_id>` and `patchbay_status` remain available for focused inspection.
 - **Failure recovery**: failed runs expose `failure_recovery` through `status`, `context`, and the conversational Agent, including the failed stage, suggested next action, safe inspection actions, and the most relevant artifacts to inspect before retrying or starting a replacement run.
 
 ## Quick Start
@@ -108,7 +108,7 @@ python scripts/patchbay metrics <run_id>
 python scripts/patchbay apply <run_id>
 ```
 
-`metrics` includes phase duration/attempt counts, provider usage, token/cost availability, and `routing_evidence` for the write/fix economy route.
+`metrics` includes phase duration/attempt counts, provider usage, token/cost availability, and `routing_evidence` with `economy_health` for the write/fix economy route.
 
 Use `--background` for long conversational turns so the caller can return immediately and poll status/events:
 
@@ -120,7 +120,7 @@ python scripts/patchbay agent message continue --run-id <run_id> --background --
 
 Background agent turns write `JOB.json`, append `agent` events, and preserve the plan/apply confirmation gates. `apply` remains foreground-only and requires explicit confirmation after tests and review pass. Local prompts such as `patchbay setup`, `patchbay setup for claude-desktop`, `install patchbay for gemini`, `help`, `status`, `runs`, `readiness`, `diagnose`, `patchbay doctor`, `show economy profile`, or `apply economy profile` return setup results, guidance, recent runs, readiness, or routing changes directly without creating a model run. Run-bound prompts such as `continue`, `approve`, `apply`, `diff`, or `artifact` without a `run_id` also stay local; when a recent run exists, the response includes a latest-run handoff that desktop/MCP clients can open before any gated action is chosen. View prompts such as `diff`, `events`, `logs`, or `artifact` also include `requested_view` so clients can open the matching diagnostics tab without running a phase.
 
-The web workbench exposes the same conversational flow and has a diagnostics drawer. Its Readiness tab calls the unified doctor checks without MCP stdio probing, so setup gaps are visible from the desktop UI without starting extra child processes. It also shows the active write/fix routing profile and lets non-blocking recommendations such as economy routing be applied from the same panel through the local Agent path.
+The web workbench exposes the same conversational flow and has a diagnostics drawer. Its Readiness tab calls the unified doctor checks without MCP stdio probing, so setup gaps are visible from the desktop UI without starting extra child processes. It also shows the active write/fix routing profile and lets non-blocking recommendations such as economy routing be applied from the same panel through the local Agent path. The Overview tab surfaces economy routing health cards from `agent_activity.health_cards`, so drift from the intended cheaper write/fix route is visible without parsing logs.
 
 After starting `patchbay web --port 8765`, open `http://127.0.0.1:8765`.
 
