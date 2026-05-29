@@ -27,8 +27,8 @@ The conversational agent entry point accepts the same explicit local setup inten
 
 ```bash
 python scripts/patchbay agent message "patchbay setup" --json
-python scripts/patchbay agent message "patchbay setup for claude-desktop" --json
-python scripts/patchbay agent message "install patchbay for gemini" --json
+python scripts/patchbay agent message "patchbay setup for Claude Desktop" --json
+python scripts/patchbay agent message "install patchbay for Gemini CLI" --json
 ```
 
 ## MCP
