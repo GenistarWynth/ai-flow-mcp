@@ -156,6 +156,42 @@ class ConfigWizardTest(unittest.TestCase):
         self.assertTrue(strategy["write"]["economy_route"])
         self.assertTrue(strategy["fix"]["economy_route"])
         self.assertEqual(strategy["write"]["model"], "deepseek-v4-pro")
+        actions = {item["id"]: item for item in result["actions"]}
+        self.assertEqual(actions["open_readiness"]["message"], "readiness")
+        self.assertEqual(actions["start_new_task"]["kind"], "focus_composer")
+        self.assertEqual(actions["validate_config"]["command"], "patchbay config --doctor --json")
+
+        shown = run_config_wizard(self.tmp, show_profile=True)
+        shown_actions = {item["id"]: item for item in shown["actions"]}
+        self.assertEqual(shown["next_actions"], ["readiness", "start"])
+        self.assertEqual(shown_actions["start_new_task"]["label"], "Start new task")
+
+    def test_custom_profile_show_exposes_structured_economy_action(self) -> None:
+        from scripts.ai_flow.config_wizard import run_config_wizard
+        self._make_git_repo()
+        config_path = self.tmp / ".ai" / "patchbay.toml"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            """
+[phases.write]
+provider = "mock"
+model = "mock"
+
+[phases.fix]
+provider = "mock"
+model = "mock"
+""".lstrip(),
+            encoding="utf-8",
+        )
+
+        result = run_config_wizard(self.tmp, show_profile=True)
+
+        self.assertEqual(result["profile"], "custom")
+        self.assertEqual(result["next_actions"], ["apply economy profile", "readiness"])
+        actions = {item["id"]: item for item in result["actions"]}
+        self.assertEqual(actions["apply_economy_profile"]["kind"], "local_agent")
+        self.assertEqual(actions["apply_economy_profile"]["message"], "apply economy profile")
+        self.assertTrue(actions["apply_economy_profile"]["safe"])
 
 
 if __name__ == "__main__":

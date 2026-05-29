@@ -1121,7 +1121,24 @@ describe("Workbench", () => {
           review: { provider: "codex_cli", model: "gpt-5", tier: "supervision", reason: "Use a stronger reviewer." }
         }
       },
-      next_actions: ["readiness", "start"]
+      next_actions: ["readiness", "start"],
+      actions: [
+        {
+          id: "open_readiness",
+          label: "Open readiness",
+          kind: "local_agent",
+          message: "readiness",
+          safe: true,
+          reason: "Inspect setup and resolved write/fix routing."
+        },
+        {
+          id: "start_new_task",
+          label: "Start new task",
+          kind: "focus_composer",
+          safe: true,
+          reason: "Start a new task."
+        }
+      ]
     });
     const getDoctor = vi
       .fn()
@@ -1169,6 +1186,8 @@ describe("Workbench", () => {
 
     await waitFor(() => expect(applyConfigProfile).toHaveBeenCalledWith("economy"));
     expect(await screen.findByText("Economy routing profile applied.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Open readiness" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Start new task" })).toBeVisible();
     const routingResult = await screen.findByLabelText("Routing result");
     expect(within(routingResult).getByText("经济路由已启用")).toBeVisible();
     expect(within(routingResult).getAllByText("reasonix_cli / deepseek-v4-pro")).toHaveLength(2);

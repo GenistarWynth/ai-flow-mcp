@@ -199,6 +199,7 @@ export type ConfigProfileStatus = {
   summary?: string;
   updated?: Record<string, unknown>;
   next_actions?: string[];
+  actions?: AgentHealthAction[];
 };
 
 export type SetupResult = {

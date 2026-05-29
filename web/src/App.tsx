@@ -1045,7 +1045,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         reply: "Economy routing profile applied.",
         profile,
         routing,
-        next_actions: profile.next_actions ?? ["readiness", "start"]
+        next_actions: profile.next_actions ?? ["readiness", "start"],
+        actions: profile.actions ?? []
       };
       if (!selectedRun) setNewTaskReply(response);
       const [nextDoctor, nextConfig] = await Promise.all([client.getDoctor({ include_mcp: false }), client.getConfig()]);

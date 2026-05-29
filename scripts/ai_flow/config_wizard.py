@@ -153,7 +153,13 @@ def run_config_wizard(
         return {"config": str(cfg_path), "resolved": _public_config(cfg)}
 
     if show_profile:
-        return {"config": str(cfg_path), **_profile_status(cfg)}
+        status = _profile_status(cfg)
+        return {
+            "config": str(cfg_path),
+            **status,
+            "next_actions": _profile_next_actions(status),
+            "actions": _profile_actions(status),
+        }
 
     if profile:
         return _apply_profile(cfg_path, cfg, profile)
@@ -281,7 +287,82 @@ def _apply_profile(cfg_path: Path, cfg: dict[str, Any], profile: str) -> dict[st
             "Set `commands.reasonix` if Reasonix is not on PATH.",
             "Run `patchbay config --doctor --json` to validate the resolved routing.",
         ],
+        "actions": _profile_actions(status, include_validate=True),
     }
+
+
+def _profile_next_actions(status: dict[str, Any]) -> list[str]:
+    profile = status.get("profile")
+    if profile == "economy":
+        return ["readiness", "start"]
+    if profile == "custom":
+        return ["apply economy profile", "readiness"]
+    return ["readiness"]
+
+
+def _profile_actions(status: dict[str, Any], *, include_validate: bool = False) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]]
+    profile = status.get("profile")
+    if profile == "economy":
+        actions = [
+            {
+                "id": "open_readiness",
+                "label": "Open readiness",
+                "kind": "local_agent",
+                "message": "readiness",
+                "safe": True,
+                "reason": "Inspect setup and resolved write/fix routing.",
+            },
+            {
+                "id": "start_new_task",
+                "label": "Start new task",
+                "kind": "focus_composer",
+                "safe": True,
+                "reason": "Start a new Patchbay plan using the active economy routing profile.",
+            },
+        ]
+    elif profile == "custom":
+        actions = [
+            {
+                "id": "apply_economy_profile",
+                "label": "Apply economy profile",
+                "kind": "local_agent",
+                "message": "apply economy profile",
+                "safe": True,
+                "reason": "Route high-volume write/fix work to the Reasonix/DeepSeek economy profile.",
+            },
+            {
+                "id": "open_readiness",
+                "label": "Open readiness",
+                "kind": "local_agent",
+                "message": "readiness",
+                "safe": True,
+                "reason": "Inspect setup and current routing before changing the profile.",
+            },
+        ]
+    else:
+        actions = [
+            {
+                "id": "open_readiness",
+                "label": "Open readiness",
+                "kind": "local_agent",
+                "message": "readiness",
+                "safe": True,
+                "reason": "Inspect setup and phase configuration errors before changing routing.",
+            }
+        ]
+    if include_validate:
+        actions.append(
+            {
+                "id": "validate_config",
+                "label": "Validate config",
+                "kind": "command",
+                "command": "patchbay config --doctor --json",
+                "safe": True,
+                "reason": "Validate resolved phase routing after applying the profile.",
+            }
+        )
+    return actions
 
 
 def _set_nested(cfg: dict[str, Any], parts: tuple[str, ...], value: Any) -> None:

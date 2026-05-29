@@ -144,6 +144,10 @@ class SetupFlowTest(unittest.TestCase):
         result = json.loads(completed.stdout)
         self.assertEqual(result["profile"], "economy")
         self.assertEqual(result["status"]["profile"], "economy")
+        actions = {item["id"]: item for item in result["actions"]}
+        self.assertEqual(actions["open_readiness"]["message"], "readiness")
+        self.assertEqual(actions["start_new_task"]["kind"], "focus_composer")
+        self.assertEqual(actions["validate_config"]["kind"], "command")
         cfg = load_config(self.repo)
         write = resolve_phase(cfg, "write")
         fix = resolve_phase(cfg, "fix")
@@ -337,6 +341,9 @@ model = "mock"
 
         payload = json.loads(response["result"]["content"][0]["text"])
         self.assertEqual(payload["profile"], "economy")
+        actions = {item["id"]: item for item in payload["actions"]}
+        self.assertEqual(actions["open_readiness"]["message"], "readiness")
+        self.assertEqual(actions["start_new_task"]["kind"], "focus_composer")
         cfg = load_config(self.repo)
         self.assertEqual(resolve_phase(cfg, "write")["model"], "deepseek-v4-pro")
         self.assertEqual(resolve_phase(cfg, "fix")["provider"], "reasonix_cli")
