@@ -74,12 +74,26 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertTrue(callable(getattr(module, "main", None)))
 
     def test_mcp_install_parser_accepts_root_and_claude_code(self) -> None:
+        import contextlib
+        import io
+
         from scripts.ai_flow.cli import build_parser
 
         parser = build_parser()
         args = parser.parse_args(["mcp", "install", "claude-code", "--root", "C:/tmp/repo", "--dry-run"])
         self.assertEqual(args.host, "claude-code")
         self.assertEqual(args.root, "C:/tmp/repo")
+
+        alias_args = parser.parse_args(["mcp", "install", "Claude Desktop", "--dry-run"])
+        self.assertEqual(alias_args.host, "Claude Desktop")
+        self.assertTrue(alias_args.dry_run)
+
+        help_output = io.StringIO()
+        with self.assertRaises(SystemExit) as exit_info, contextlib.redirect_stdout(help_output):
+            parser.parse_args(["mcp", "install", "--help"])
+        self.assertEqual(exit_info.exception.code, 0)
+        self.assertIn("claude-code", help_output.getvalue())
+        self.assertIn("Claude Desktop", help_output.getvalue())
 
     def test_mcp_server_module_imports(self) -> None:
         """The MCP server module should be importable."""

@@ -299,7 +299,10 @@ def build_parser() -> argparse.ArgumentParser:
     mcp_sub = mcp.add_subparsers(dest="mcp_command")
 
     mcp_install = mcp_sub.add_parser("install", help="Register Patchbay MCP server for a host.")
-    mcp_install.add_argument("host", help="Host name: codex, claude, claude-desktop, gemini.")
+    mcp_install.add_argument(
+        "host",
+        help="Host name or alias: codex, claude, claude-code, claude-desktop, gemini (for example Claude Desktop or Gemini CLI).",
+    )
     mcp_install.add_argument("--root", default="", help="Repository root to register.")
     mcp_install.add_argument("--dry-run", action="store_true", help="Print the command without running it.")
     _add_json(mcp_install)
