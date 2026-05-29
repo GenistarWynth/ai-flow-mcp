@@ -157,9 +157,10 @@ class CliEntrypointTest(unittest.TestCase):
         from scripts.ai_flow.cli import build_parser
 
         parser = build_parser()
-        doctor = parser.parse_args(["doctor", "--root", "C:/tmp/repo", "--skip-mcp", "--json"])
+        doctor = parser.parse_args(["doctor", "--root", "C:/tmp/repo", "--host", "claude-desktop", "--skip-mcp", "--json"])
         self.assertEqual(doctor.command, "doctor")
         self.assertEqual(doctor.root, "C:/tmp/repo")
+        self.assertEqual(doctor.host, "claude-desktop")
         self.assertTrue(doctor.skip_mcp)
 
         setup = parser.parse_args(["setup", "--host", "codex", "--skill-path", "C:/tmp/skills", "--skip-mcp", "--json"])

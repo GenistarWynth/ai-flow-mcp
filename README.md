@@ -147,7 +147,7 @@ patchbay mcp install gemini         # Gemini CLI
 codex mcp add patchbay -- python scripts/patchbay_mcp_server.py
 ```
 
-Use the equivalent MCP server registration command for other MCP hosts. Run `patchbay doctor` for full readiness checks or `patchbay mcp doctor` to focus only on server reachability.
+Use the equivalent MCP server registration command for other MCP hosts. Run `patchbay doctor --host <host>` for full readiness checks with concrete structured registration actions for that host, or `patchbay mcp doctor` to focus only on server reachability.
 
 `patchbay doctor` is read-only and reports project initialization, phase config validity, CLI shim/installed command availability, MCP reachability/tools, bundled Skill source, and whether the Codex Skill is installed. It returns prose `next_actions`/`recommendations` plus structured `actions[]` for desktop/MCP clients. `patchbay mcp doctor` starts the stdio MCP server, sends `initialize` and `tools/list`, and verifies required tools including `patchbay_agent`, `patchbay_plan`, `patchbay_context`, `patchbay_metrics`, `patchbay_doctor`, `patchbay_install`, `patchbay_skill_install`, and `patchbay_skill_doctor`. For Codex, Claude Code, and Gemini, `mcp install` now tries to register automatically and falls back to the command text if the host CLI is unavailable; Claude Desktop writes its JSON config in place.
 

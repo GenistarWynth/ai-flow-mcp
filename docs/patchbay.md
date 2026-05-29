@@ -165,7 +165,7 @@ patchbay mcp install gemini         # Gemini CLI
 patchbay mcp doctor                 # 实际启动 server 并验证 tools/list
 ```
 
-优先运行 `patchbay doctor --json` 获取完整只读诊断：项目初始化、配置解析、CLI 入口、MCP tools/list、Skill 源和 Codex Skill 安装状态都会汇总到一个结果里，并同时返回 `next_actions`、`recommendations` 和结构化 `actions[]`。需要聚焦 MCP 时再运行 `patchbay mcp doctor`。MCP 注册后如果 host 会缓存工具列表，请重启或 reload 该 host；随后运行 `patchbay mcp doctor --json`，或在 host 中确认 `patchbay_agent` 已可见。
+优先运行 `patchbay doctor --host <host> --json` 获取完整只读诊断：项目初始化、配置解析、CLI 入口、MCP tools/list、Skill 源和 Codex Skill 安装状态都会汇总到一个结果里，并同时返回 `next_actions`、`recommendations` 和面向该 host 的结构化 `actions[]`，例如具体的 MCP 注册命令。需要聚焦 MCP 时再运行 `patchbay mcp doctor`。MCP 注册后如果 host 会缓存工具列表，请重启或 reload 该 host；随后运行 `patchbay mcp doctor --json`，或在 host 中确认 `patchbay_agent` 已可见。
 
 Codex、Claude Code、Gemini 当前会打印注册命令；Claude Desktop 会直接写配置。
 
