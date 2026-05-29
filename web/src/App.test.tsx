@@ -249,7 +249,12 @@ function createClient(overrides: Partial<PatchbayClient> = {}): PatchbayClient {
         economy: {
           matches: true,
           write: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" },
-          fix: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" }
+          fix: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" },
+          command_ready: false,
+          command_status: {
+            write: { required: true, ready: false, status: "missing_config", command_key: "reasonix" },
+            fix: { required: true, ready: false, status: "missing_config", command_key: "reasonix" }
+          }
         },
         phase_strategy: {
           plan: { provider: "claude_cli", model: "opus", tier: "supervision", reason: "Use a stronger planner." },
@@ -685,6 +690,8 @@ describe("Workbench", () => {
     expect(screen.getByRole("button", { name: /Start new task/ })).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: /Apply economy profile/ }));
     await waitFor(() => expect(client.applyConfigProfile).toHaveBeenCalledWith("economy"));
+    const routingResult = await screen.findByLabelText("Routing result");
+    expect(within(routingResult).getAllByText("命令未配置")).toHaveLength(2);
     expect(client.getStatus).not.toHaveBeenCalled();
   });
 

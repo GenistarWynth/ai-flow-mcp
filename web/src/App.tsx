@@ -556,6 +556,11 @@ function phaseStrategyEntries(strategy?: Record<string, PhaseStrategy> | null, r
 function routeEvidenceLabel(phase: string, routing?: RoutingEvidence | null) {
   const item = routing?.phases?.[phase];
   if (!item) return "";
+  if (item.command_status?.required && item.command_status.ready === false) {
+    if (item.command_status.status === "missing_config") return "命令未配置";
+    if (item.command_status.status === "not_found") return "命令未找到";
+    return "命令未就绪";
+  }
   if (item.observed_economy) return "已观测";
   if (item.configured_economy) return "待观测";
   if (item.observed?.length) return "观测到自定义";
@@ -620,14 +625,24 @@ function profileStatusToRouting(result: ConfigProfileStatus): RoutingEvidence {
   const write = economy.write ?? {};
   const fix = economy.fix ?? {};
   const configuredEconomy = Boolean(economy.matches);
+  const commandStatus = economy.command_status ?? {};
   return {
     profile: status.profile ?? result.profile ?? (configuredEconomy ? "economy" : "custom"),
     target: { provider: "reasonix_cli", model: "deepseek-v4-pro" },
     economy_configured: configuredEconomy,
+    economy_command_ready: typeof economy.command_ready === "boolean" ? economy.command_ready : null,
     phase_strategy: status.phase_strategy ?? result.phase_strategy,
     phases: {
-      write: { configured: write, configured_economy: write.provider === "reasonix_cli" && write.model === "deepseek-v4-pro" },
-      fix: { configured: fix, configured_economy: fix.provider === "reasonix_cli" && fix.model === "deepseek-v4-pro" }
+      write: {
+        configured: write,
+        configured_economy: write.provider === "reasonix_cli" && write.model === "deepseek-v4-pro",
+        command_status: commandStatus.write
+      },
+      fix: {
+        configured: fix,
+        configured_economy: fix.provider === "reasonix_cli" && fix.model === "deepseek-v4-pro",
+        command_status: commandStatus.fix
+      }
     },
     summary: configuredEconomy
       ? `Economy routing profile is active: write ${routeSummary(write)}, fix ${routeSummary(fix)}.`

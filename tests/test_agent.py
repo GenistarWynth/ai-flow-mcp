@@ -185,7 +185,10 @@ test = []
         self.assertEqual(applied["profile"]["profile"], "economy")
         self.assertEqual(applied["profile"]["status"]["profile"], "economy")
         self.assertTrue(applied["routing"]["economy_configured"])
+        self.assertFalse(applied["routing"]["economy_command_ready"])
         self.assertEqual(applied["routing"]["phases"]["write"]["configured"]["model"], "deepseek-v4-pro")
+        self.assertEqual(applied["routing"]["phases"]["write"]["command_status"]["status"], "missing_config")
+        self.assertIn("commands.reasonix", applied["reply"])
         applied_actions = {item["id"]: item for item in applied["actions"]}
         self.assertEqual(applied_actions["open_readiness"]["message"], "readiness")
         self.assertEqual(applied_actions["configure_reasonix_command"]["kind"], "command")

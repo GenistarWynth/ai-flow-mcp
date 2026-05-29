@@ -29,10 +29,23 @@ export type PhaseProvider = {
   command_key?: string;
 };
 
+export type CommandStatus = {
+  required?: boolean;
+  ready?: boolean;
+  status?: "ready" | "missing_config" | "not_found" | string;
+  provider?: string;
+  command_key?: string;
+  command?: string;
+  executable?: string;
+  resolved?: string;
+  recommendation?: string;
+};
+
 export type PhaseStrategy = PhaseProvider & {
   tier?: "economy" | "supervision" | string;
   reason?: string;
   economy_route?: boolean;
+  command_status?: CommandStatus;
   error?: string;
 };
 
@@ -62,6 +75,7 @@ export type ProviderUsage = {
 
 export type RoutingEvidencePhase = {
   configured?: PhaseProvider;
+  command_status?: CommandStatus | null;
   observed?: ProviderUsage[];
   configured_economy?: boolean;
   observed_economy?: boolean;
@@ -100,6 +114,7 @@ export type RoutingEvidence = {
   profile?: string;
   target?: PhaseProvider;
   economy_configured?: boolean;
+  economy_command_ready?: boolean | null;
   configured_economy_phases?: string[];
   observed_phases?: string[];
   observed_economy_phases?: string[];
@@ -194,6 +209,8 @@ export type ConfigProfileStatus = {
     intent?: string;
     write?: PhaseProvider;
     fix?: PhaseProvider;
+    command_ready?: boolean;
+    command_status?: Record<string, CommandStatus>;
     error?: string;
   };
   phase_strategy?: Record<string, PhaseStrategy>;

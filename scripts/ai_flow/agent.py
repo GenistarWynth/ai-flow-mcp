@@ -1090,15 +1090,26 @@ def _profile_routing_digest(profile_result: dict[str, Any]) -> dict[str, Any]:
     write = _phase_route_snapshot(economy.get("write") if isinstance(economy.get("write"), dict) else {})
     fix = _phase_route_snapshot(economy.get("fix") if isinstance(economy.get("fix"), dict) else {})
     economy_active = bool(economy.get("matches"))
+    command_status = economy.get("command_status") if isinstance(economy.get("command_status"), dict) else {}
+    command_ready = economy.get("command_ready")
     recommendation = str(status.get("recommendation") or profile_result.get("recommendation") or "")
     return {
         "profile": status.get("profile") or profile_result.get("profile") or ("economy" if economy_active else "custom"),
         "target": {"provider": service.ECONOMY_PROVIDER, "model": service.ECONOMY_MODEL},
         "economy_configured": economy_active,
+        "economy_command_ready": bool(command_ready) if command_ready is not None else None,
         "phase_strategy": status.get("phase_strategy") or {},
         "phases": {
-            "write": {"configured": write, "configured_economy": _phase_is_economy(write)},
-            "fix": {"configured": fix, "configured_economy": _phase_is_economy(fix)},
+            "write": {
+                "configured": write,
+                "configured_economy": _phase_is_economy(write),
+                "command_status": command_status.get("write") if isinstance(command_status.get("write"), dict) else None,
+            },
+            "fix": {
+                "configured": fix,
+                "configured_economy": _phase_is_economy(fix),
+                "command_status": command_status.get("fix") if isinstance(command_status.get("fix"), dict) else None,
+            },
         },
         "summary": _profile_routing_summary(economy_active=economy_active, write=write, fix=fix),
         "recommendation": recommendation,
@@ -1141,6 +1152,8 @@ def _profile_apply_response(root: Path) -> dict[str, Any]:
     if fix:
         reply += f" Fix uses {fix.get('provider') or '-'} / {fix.get('model') or '-'}."
     reply += f" {routing['summary']}"
+    if routing.get("economy_command_ready") is False:
+        reply += " Configure `commands.reasonix` before starting write/fix work so the cheaper route can execute."
     return _stateless_response(
         action="profile_apply",
         reply=reply,
