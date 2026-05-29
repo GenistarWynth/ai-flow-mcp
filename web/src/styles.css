@@ -118,6 +118,12 @@ textarea { resize: none; }
 .empty-thread strong { font-size: 18px; }
 .empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 6px; }
 .local-agent-actions { justify-content: flex-start; padding-left: 42px; }
+.local-agent-command-actions {
+  display: grid;
+  gap: 7px;
+  width: min(780px, calc(100% - 42px));
+  margin-left: 42px;
+}
 .empty-action {
   display: inline-flex;
   align-items: center;

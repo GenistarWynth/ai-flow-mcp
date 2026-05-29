@@ -198,6 +198,19 @@ function localReplyActions(response: AgentResponse | null): LocalReplyAction[] {
   return result;
 }
 
+function localReplyCommandActions(response: AgentResponse | null): AgentHealthAction[] {
+  const seen = new Set<string>();
+  const result: AgentHealthAction[] = [];
+  for (const action of response?.actions ?? []) {
+    if (action.safe === false || action.kind !== "command" || !action.command) continue;
+    const key = action.id || action.command;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(action);
+  }
+  return result;
+}
+
 function mapStructuredLocalReplyAction(action: AgentHealthAction): LocalReplyAction | null {
   if (action.safe === false) return null;
   if (action.kind === "open_run" || action.id === "open_latest_run") {
@@ -861,6 +874,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const runKey = selectedRun || "__new__";
   const localRunMessages = localMessages[runKey] ?? [];
   const localReplySuggestions = localReplyActions(newTaskReply);
+  const localReplyCommands = localReplyCommandActions(newTaskReply);
   const composerPlaceholder = selectedRun
     ? conversationState?.composer_placeholder ?? "输入“继续”，或写下本地备注"
     : "描述一个新任务，Patchbay Agent 会先生成计划";
@@ -1269,6 +1283,13 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
               {newTaskReply ? <ChatBubble role="assistant" title="Patchbay Agent" body={newTaskReply.reply} tone={newTaskReply.ok === false ? "failed" : "ready"} /> : null}
               {newTaskReply?.setup ? <SetupResultCard response={newTaskReply} /> : null}
               {newTaskReply?.routing || newTaskReply?.metrics?.routing_evidence ? <RoutingResultCard response={newTaskReply} /> : null}
+              {localReplyCommands.length ? (
+                <div className="local-agent-command-actions" aria-label="Agent command actions">
+                  {localReplyCommands.map((action) => (
+                    <CommandActionRow key={action.id || action.command} command={action.command ?? ""} label={action.label} />
+                  ))}
+                </div>
+              ) : null}
               {localReplySuggestions.length ? (
                 <div className="empty-actions local-agent-actions" aria-label="Agent 建议动作">
                   {localReplySuggestions.map((action) => (

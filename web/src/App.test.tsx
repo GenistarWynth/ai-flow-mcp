@@ -921,7 +921,17 @@ describe("Workbench", () => {
           next_actions: []
         },
         next_actions: ["Register the MCP server with: claude mcp add patchbay -- python scripts/patchbay_mcp_server.py"]
-      }
+      },
+      actions: [
+        {
+          id: "register_mcp",
+          label: "Register MCP",
+          kind: "command",
+          command: "claude mcp add patchbay -- python scripts/patchbay_mcp_server.py",
+          safe: true,
+          reason: "Copy the MCP registration command for Claude Desktop."
+        }
+      ]
     });
     const client = createClient({
       listRuns: vi.fn().mockResolvedValue({ runs: [] }),
@@ -941,6 +951,10 @@ describe("Workbench", () => {
     await userEvent.click(within(setupResult).getByRole("button", { name: "Copy command MCP registration" }));
     expect(writeText).toHaveBeenCalledWith("claude mcp add patchbay -- python scripts/patchbay_mcp_server.py");
     expect(within(setupResult).getByRole("button", { name: "Copy command MCP registration" })).toHaveTextContent("Copied");
+    const commandActions = screen.getByLabelText("Agent command actions");
+    await userEvent.click(within(commandActions).getByRole("button", { name: "Copy command Register MCP" }));
+    expect(writeText).toHaveBeenCalledWith("claude mcp add patchbay -- python scripts/patchbay_mcp_server.py");
+    expect(within(commandActions).getByRole("button", { name: "Copy command Register MCP" })).toHaveTextContent("Copied");
   });
 
   it("runs local setup from the readiness panel without creating a run", async () => {
