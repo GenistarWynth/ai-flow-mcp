@@ -424,9 +424,42 @@ def _health_cards(status_data: dict[str, Any]) -> list[dict[str, Any]]:
             "detail": str(health.get("summary") or routing.get("summary") or ""),
             "recommendation": str(health.get("recommendation") or ""),
             "next_action": str(health.get("next_action") or ""),
+            "action": _health_action(health),
             "coverage_percent": percent if isinstance(percent, (int, float)) else None,
         }
     ]
+
+
+def _health_action(health: dict[str, Any]) -> dict[str, Any] | None:
+    next_action = str(health.get("next_action") or "")
+    if next_action == "apply_economy_profile":
+        return {
+            "id": "apply_economy_profile",
+            "label": "Apply economy profile",
+            "kind": "local_agent",
+            "message": "apply economy profile",
+            "safe": True,
+            "reason": "Routes write/fix to the configured Reasonix/DeepSeek economy profile.",
+        }
+    if next_action == "inspect_routing_events":
+        return {
+            "id": "inspect_routing_events",
+            "label": "Inspect routing events",
+            "kind": "diagnostic_tab",
+            "tab": "Trace",
+            "safe": True,
+            "reason": "Open provider events to inspect the non-economy write/fix provider evidence.",
+        }
+    if next_action == "wait_for_routing_evidence":
+        return {
+            "id": "wait_for_routing_evidence",
+            "label": "Watch provider events",
+            "kind": "diagnostic_tab",
+            "tab": "Trace",
+            "safe": True,
+            "reason": "Open events while write/fix phases produce provider evidence.",
+        }
+    return None
 
 
 def _health_tone(status: str, severity: str) -> str:

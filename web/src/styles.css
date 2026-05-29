@@ -475,6 +475,9 @@ button.danger { color: #b42318; border-color: #f0b6b2; background: #fff8f7; }
 .health-card p, .health-card small, .health-card em { margin: 0; color: #344255; font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
 .health-card small { color: #647083; font-weight: 800; }
 .health-card em { color: #92400e; font-style: normal; }
+.health-card-action { justify-self: start; display: inline-flex; align-items: center; gap: 5px; border: 1px solid #cfd7e3; border-radius: 8px; padding: 5px 8px; color: #172033; background: #ffffff; font-size: 12px; font-weight: 800; }
+.health-card-action:hover { border-color: #9fb0c4; background: #f8fafc; }
+.health-card-action:disabled { color: #8b96a7; background: #eef2f7; cursor: not-allowed; }
 .phase-strategy-map { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 7px; }
 .phase-strategy-node { display: grid; gap: 6px; border: 1px solid #d9dee6; border-radius: 8px; padding: 8px; background: #ffffff; min-width: 0; }
 .phase-strategy-node.economy { border-color: #b7e4c7; background: #f1fbf6; }

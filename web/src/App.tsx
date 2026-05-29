@@ -21,6 +21,7 @@ import {
   AgentResponse,
   AgentActivity,
   AgentAction,
+  AgentHealthAction,
   AgentHealthCard,
   AgentMessage,
   ConfigProfileStatus,
@@ -503,6 +504,40 @@ function economyHealthLabel(routing?: RoutingEvidence | null) {
   return healthStatusLabel(health.status);
 }
 
+function healthActionFromNext(nextAction?: string): AgentHealthAction | null {
+  if (nextAction === "apply_economy_profile") {
+    return {
+      id: "apply_economy_profile",
+      label: "Apply economy profile",
+      kind: "local_agent",
+      message: "apply economy profile",
+      safe: true,
+      reason: "Routes write/fix to the Reasonix/DeepSeek economy profile."
+    };
+  }
+  if (nextAction === "inspect_routing_events") {
+    return {
+      id: "inspect_routing_events",
+      label: "Inspect routing events",
+      kind: "diagnostic_tab",
+      tab: "Trace",
+      safe: true,
+      reason: "Open provider events to inspect write/fix routing drift."
+    };
+  }
+  if (nextAction === "wait_for_routing_evidence") {
+    return {
+      id: "wait_for_routing_evidence",
+      label: "Watch provider events",
+      kind: "diagnostic_tab",
+      tab: "Trace",
+      safe: true,
+      reason: "Open events while write/fix provider evidence arrives."
+    };
+  }
+  return null;
+}
+
 function profileStatusToRouting(result: ConfigProfileStatus): RoutingEvidence {
   const status = result.status ?? result;
   const economy = status.economy ?? {};
@@ -538,6 +573,7 @@ function economyHealthCard(status: RunStatus | null) {
       detail: health.summary ?? routing?.summary ?? "",
       recommendation: health.recommendation,
       next_action: health.next_action,
+      action: healthActionFromNext(health.next_action),
       coverage_percent: routing?.coverage?.observed_economy_percent ?? null
     }
   ];
@@ -975,6 +1011,18 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }
   };
 
+  const runHealthAction = async (action: AgentHealthAction) => {
+    if (action.safe === false) return;
+    if (action.kind === "local_agent" && (action.id === "apply_economy_profile" || action.message === "apply economy profile")) {
+      await applyEconomyProfileAction();
+      return;
+    }
+    if (action.kind === "diagnostic_tab" && action.tab && diagnosticTabs.has(action.tab as TabName)) {
+      setDiagnosticsOpen(true);
+      setActiveTab(action.tab as TabName);
+    }
+  };
+
   const runLocalReplyAction = async (action: LocalReplyAction) => {
     if (action.id.startsWith("setup")) {
       await runSetupAction(setupMessageToHost(action.message));
@@ -1280,6 +1328,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
               doctor={doctor}
               onRunSetup={runSetupAction}
               onApplyEconomy={applyEconomyProfileAction}
+              onHealthAction={(action) => void runHealthAction(action)}
               setupBusy={setupInFlight}
               profileBusy={profileInFlight}
               status={activeStatus}
@@ -1576,22 +1625,44 @@ function SetupHostButtons({
   );
 }
 
-function HealthCardGrid({ cards }: { cards?: AgentHealthCard[] | null }) {
+function HealthCardGrid({
+  cards,
+  onAction,
+  actionBusy
+}: {
+  cards?: AgentHealthCard[] | null;
+  onAction?: (action: AgentHealthAction) => void;
+  actionBusy?: boolean;
+}) {
   const visible = (cards ?? []).filter((card) => card.key || card.label || card.detail);
   if (!visible.length) return null;
   return (
     <div className="health-card-grid">
-      {visible.map((card) => (
-        <div className={`health-card tone-${card.tone ?? "idle"}`} key={card.key || card.label}>
-          <div className="health-card-head">
-            <span>{card.label || card.key}</span>
-            <strong>{healthStatusLabel(card.status)}</strong>
+      {visible.map((card) => {
+        const action = card.action?.safe === false ? null : card.action;
+        return (
+          <div className={`health-card tone-${card.tone ?? "idle"}`} key={card.key || card.label}>
+            <div className="health-card-head">
+              <span>{card.label || card.key}</span>
+              <strong>{healthStatusLabel(card.status)}</strong>
+            </div>
+            {typeof card.coverage_percent === "number" ? <small>{card.coverage_percent}% economy observed</small> : null}
+            {card.detail ? <p>{card.detail}</p> : null}
+            {card.recommendation ? <em>{card.recommendation}</em> : null}
+            {action ? (
+              <button
+                className="health-card-action"
+                type="button"
+                onClick={() => onAction?.(action)}
+                disabled={!onAction || (action.kind !== "diagnostic_tab" && actionBusy)}
+              >
+                {action.kind === "diagnostic_tab" ? <Search size={13} /> : <Settings size={13} />}
+                {action.label}
+              </button>
+            ) : null}
           </div>
-          {typeof card.coverage_percent === "number" ? <small>{card.coverage_percent}% economy observed</small> : null}
-          {card.detail ? <p>{card.detail}</p> : null}
-          {card.recommendation ? <em>{card.recommendation}</em> : null}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -1829,6 +1900,7 @@ function DetailPanel({
   doctor,
   onRunSetup,
   onApplyEconomy,
+  onHealthAction,
   setupBusy,
   profileBusy,
   status,
@@ -1845,6 +1917,7 @@ function DetailPanel({
   doctor: DoctorReport | null;
   onRunSetup?: (host?: SetupHostOption) => void;
   onApplyEconomy?: () => void;
+  onHealthAction?: (action: AgentHealthAction) => void;
   setupBusy?: boolean;
   profileBusy?: boolean;
   status: RunStatus | null;
@@ -1873,7 +1946,7 @@ function DetailPanel({
         {(activity.health_cards ?? []).length ? (
           <section>
             <h2>健康</h2>
-            <HealthCardGrid cards={activity.health_cards} />
+            <HealthCardGrid cards={activity.health_cards} onAction={onHealthAction} actionBusy={profileBusy} />
           </section>
         ) : null}
         <section>

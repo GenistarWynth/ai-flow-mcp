@@ -279,9 +279,20 @@ export type AgentGateCard = {
   detail?: string;
 };
 
+export type AgentHealthAction = {
+  id: string;
+  label: string;
+  kind?: "local_agent" | "diagnostic_tab" | string;
+  message?: string;
+  tab?: RunReferenceView["tab"];
+  safe?: boolean;
+  reason?: string;
+};
+
 export type AgentHealthCard = AgentGateCard & {
   recommendation?: string;
   next_action?: string;
+  action?: AgentHealthAction | null;
   coverage_percent?: number | null;
 };
 

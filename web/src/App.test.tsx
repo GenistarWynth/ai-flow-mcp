@@ -413,6 +413,103 @@ describe("Workbench", () => {
     expect(screen.getByText("审查 2x")).toBeVisible();
   });
 
+  it("runs structured health-card actions without advancing run gates", async () => {
+    const healthActionContext: HandoffContext = {
+      ...readyContext,
+      agent_activity: {
+        ...readyContext.agent_activity!,
+        health_cards: [
+          {
+            key: "economy_route",
+            label: "Economy route",
+            status: "not_configured",
+            tone: "blocked",
+            detail: "Economy route is missing for write/fix; high-volume work may use higher-cost providers.",
+            recommendation: "Run `patchbay config profile apply economy` before write/fix.",
+            next_action: "apply_economy_profile",
+            action: {
+              id: "apply_economy_profile",
+              label: "Apply economy profile",
+              kind: "local_agent",
+              message: "apply economy profile",
+              safe: true,
+              reason: "Routes write/fix to the configured Reasonix/DeepSeek economy profile."
+            },
+            coverage_percent: 0
+          }
+        ]
+      }
+    };
+    const client = createClient({
+      getContext: vi.fn().mockResolvedValue(healthActionContext),
+      getStatus: vi.fn().mockResolvedValue({
+        run_id: "run-ready",
+        task: "Ship dashboard",
+        status: "REVIEWED_PASS",
+        current_phase: "apply",
+        gate_state: { approved: true, tests_passed: true, review_result: "PASS", ready_to_apply: true },
+        run_metrics: readyContext.run_metrics,
+        artifacts: [],
+        effective_phase_providers: {}
+      })
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    const healthSection = screen.getByRole("heading", { name: "健康" }).closest("section")!;
+    await userEvent.click(within(healthSection).getByRole("button", { name: "Apply economy profile" }));
+
+    await waitFor(() => expect(client.applyConfigProfile).toHaveBeenCalledWith("economy"));
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+    expect(client.agentMessage).not.toHaveBeenCalledWith("continue", expect.anything());
+  });
+
+  it("opens diagnostics for structured routing inspection health actions", async () => {
+    const inspectContext: HandoffContext = {
+      ...readyContext,
+      agent_activity: {
+        ...readyContext.agent_activity!,
+        health_cards: [
+          {
+            key: "economy_route",
+            label: "Economy route",
+            status: "drift",
+            tone: "blocked",
+            detail: "Economy route is configured, but write observed non-economy provider events.",
+            recommendation: "Inspect provider events and command routing before continuing.",
+            next_action: "inspect_routing_events",
+            action: {
+              id: "inspect_routing_events",
+              label: "Inspect routing events",
+              kind: "diagnostic_tab",
+              tab: "Trace",
+              safe: true,
+              reason: "Open provider events to inspect the non-economy write/fix provider evidence."
+            },
+            coverage_percent: 50
+          }
+        ]
+      }
+    };
+    const client = createClient({
+      getContext: vi.fn().mockResolvedValue(inspectContext)
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    const healthSection = screen.getByRole("heading", { name: "健康" }).closest("section")!;
+    await userEvent.click(within(healthSection).getByRole("button", { name: "Inspect routing events" }));
+
+    expect(screen.getByRole("tab", { name: "活动" })).toHaveAttribute("aria-selected", "true");
+    expect(client.applyConfigProfile).not.toHaveBeenCalled();
+    expect(client.runAction).not.toHaveBeenCalled();
+  });
+
   it("filters the run list by search and status", async () => {
     const client = createClient();
 

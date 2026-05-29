@@ -96,6 +96,9 @@ class HandoffContextTest(unittest.TestCase):
         self.assertEqual(activity["health_cards"][0]["status"], "pending_evidence")
         self.assertEqual(activity["health_cards"][0]["tone"], "ready")
         self.assertEqual(activity["health_cards"][0]["coverage_percent"], 0)
+        self.assertEqual(activity["health_cards"][0]["action"]["id"], "wait_for_routing_evidence")
+        self.assertEqual(activity["health_cards"][0]["action"]["kind"], "diagnostic_tab")
+        self.assertEqual(activity["health_cards"][0]["action"]["tab"], "Trace")
         self.assertNotIn("provider", activity["headline"].lower())
         self.assertEqual(activity["messages"][0]["kind"], "event")
         artifact = {item["name"]: item for item in context["artifacts"]}
@@ -220,6 +223,14 @@ class HandoffContextTest(unittest.TestCase):
         self.assertEqual(canonical_payload["run_id"], planned["run_id"])
         self.assertEqual(legacy_payload["run_id"], planned["run_id"])
         self.assertEqual(canonical_payload["next_actions"], legacy_payload["next_actions"])
+        self.assertEqual(
+            canonical_payload["agent_activity"]["health_cards"][0]["action"],
+            legacy_payload["agent_activity"]["health_cards"][0]["action"],
+        )
+        self.assertEqual(
+            canonical_payload["agent_activity"]["health_cards"][0]["action"]["id"],
+            "wait_for_routing_evidence",
+        )
 
     def test_metrics_command_and_mcp_tool_expose_efficiency_digest(self) -> None:
         planned = self.cli_json("plan", "--task", "metrics digest", "--mock")
@@ -289,6 +300,12 @@ class HandoffContextTest(unittest.TestCase):
         self.assertEqual(health["severity"], "warning")
         self.assertEqual(health["missing_config_phases"], ["write", "fix"])
         self.assertEqual(health["next_action"], "apply_economy_profile")
+        context = self.cli_json("context", planned["run_id"])
+        card = context["agent_activity"]["health_cards"][0]
+        self.assertEqual(card["status"], "not_configured")
+        self.assertEqual(card["action"]["id"], "apply_economy_profile")
+        self.assertEqual(card["action"]["kind"], "local_agent")
+        self.assertEqual(card["action"]["message"], "apply economy profile")
 
     def test_fix_loop_context_tracks_provider_trail_and_next_action(self) -> None:
         planned = self.cli_json("plan", "--task", "fix handoff", "--mock")
