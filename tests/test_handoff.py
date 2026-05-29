@@ -10,6 +10,7 @@ from unittest import mock
 
 from scripts.ai_flow import mcp_server, service
 from scripts.ai_flow.events import append_event
+from scripts.ai_flow.handoff import build_handoff_context
 from scripts.ai_flow.state import mark_failed
 from scripts.ai_flow.trace import append_trace
 
@@ -108,6 +109,42 @@ class HandoffContextTest(unittest.TestCase):
         self.assertEqual(context["timeline"][0]["index"], 0)
         self.assertEqual(context["cursors"]["event"], 2)
         self.assertEqual(context["cursors"]["trace"], 0)
+
+    def test_context_health_card_prefers_routing_evidence_actions(self) -> None:
+        status_data = {
+            "run_metrics": {
+                "routing_evidence": {
+                    "summary": "Economy route is configured; waiting for fix provider evidence.",
+                    "coverage": {"observed_economy_percent": 50},
+                    "economy_health": {
+                        "status": "pending_evidence",
+                        "severity": "info",
+                        "summary": "Economy route is configured; waiting for fix provider evidence.",
+                        "recommendation": "Watch provider events.",
+                        "next_action": "wait_for_routing_evidence",
+                    },
+                    "actions": [
+                        {
+                            "id": "custom_structured_action",
+                            "label": "Open routing evidence",
+                            "kind": "diagnostic_tab",
+                            "tab": "Trace",
+                            "safe": True,
+                            "reason": "Use the service-provided routing action.",
+                        }
+                    ],
+                }
+            }
+        }
+
+        run_path = self.repo / ".ai" / "runs" / "structured-action-run"
+        run_path.mkdir(parents=True)
+
+        activity = build_handoff_context(run_path=run_path, status_data=status_data)["agent_activity"]
+
+        card = activity["health_cards"][0]
+        self.assertEqual(card["action"]["id"], "custom_structured_action")
+        self.assertEqual(card["action"]["reason"], "Use the service-provided routing action.")
 
     def test_context_marks_apply_as_human_confirmed_technical_gate(self) -> None:
         planned = self.cli_json("plan", "--task", "ready for apply", "--mock")

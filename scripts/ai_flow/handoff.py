@@ -415,6 +415,8 @@ def _health_cards(status_data: dict[str, Any]) -> list[dict[str, Any]]:
     severity = str(health.get("severity") or "")
     coverage = routing.get("coverage") if isinstance(routing.get("coverage"), dict) else {}
     percent = coverage.get("observed_economy_percent")
+    actions = routing.get("actions") if isinstance(routing.get("actions"), list) else []
+    action = next((item for item in actions if isinstance(item, dict) and item.get("safe") is not False), None)
     return [
         {
             "key": "economy_route",
@@ -424,7 +426,7 @@ def _health_cards(status_data: dict[str, Any]) -> list[dict[str, Any]]:
             "detail": str(health.get("summary") or routing.get("summary") or ""),
             "recommendation": str(health.get("recommendation") or ""),
             "next_action": str(health.get("next_action") or ""),
-            "action": _health_action(health),
+            "action": action or _health_action(health),
             "coverage_percent": percent if isinstance(percent, (int, float)) else None,
         }
     ]
