@@ -97,6 +97,23 @@ provider = "mock"
         self.assertTrue(result["checks"]["mcp"]["skipped"])
         self.assertTrue(any("patchbay config profile apply economy" in item for item in result["recommendations"]))
 
+    def test_doctor_recommends_reasonix_command_for_economy_profile(self) -> None:
+        from scripts.ai_flow import service
+        from scripts.ai_flow.doctor import run_doctor
+
+        service.init_project(self.tmp)
+
+        result = run_doctor(self.tmp, include_mcp=False, skill_path=self.tmp / "skills")
+
+        profile = result["checks"]["config"]["profile"]
+        self.assertEqual(profile["profile"], "economy")
+        self.assertFalse(profile["economy"]["command_ready"])
+        self.assertTrue(any("commands.reasonix" in item for item in result["recommendations"]))
+        actions = {item["id"]: item for item in result["actions"]}
+        self.assertEqual(actions["configure_reasonix_command"]["kind"], "command")
+        self.assertIn("commands.reasonix", actions["configure_reasonix_command"]["command"])
+        self.assertNotIn("apply_economy_profile", actions)
+
 
 if __name__ == "__main__":
     unittest.main()

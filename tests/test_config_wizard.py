@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -156,15 +157,49 @@ class ConfigWizardTest(unittest.TestCase):
         self.assertTrue(strategy["write"]["economy_route"])
         self.assertTrue(strategy["fix"]["economy_route"])
         self.assertEqual(strategy["write"]["model"], "deepseek-v4-pro")
+        self.assertFalse(status["economy"]["command_ready"])
+        self.assertEqual(status["economy"]["command_status"]["write"]["status"], "missing_config")
         actions = {item["id"]: item for item in result["actions"]}
         self.assertEqual(actions["open_readiness"]["message"], "readiness")
-        self.assertEqual(actions["start_new_task"]["kind"], "focus_composer")
+        self.assertEqual(actions["configure_reasonix_command"]["kind"], "command")
+        self.assertIn("commands.reasonix", actions["configure_reasonix_command"]["command"])
         self.assertEqual(actions["validate_config"]["command"], "patchbay config --doctor --json")
 
         shown = run_config_wizard(self.tmp, show_profile=True)
         shown_actions = {item["id"]: item for item in shown["actions"]}
-        self.assertEqual(shown["next_actions"], ["readiness", "start"])
-        self.assertEqual(shown_actions["start_new_task"]["label"], "Start new task")
+        self.assertEqual(shown["next_actions"], ["configure reasonix command", "readiness"])
+        self.assertEqual(shown_actions["configure_reasonix_command"]["label"], "Configure Reasonix")
+
+    def test_economy_profile_allows_start_when_reasonix_command_is_resolved(self) -> None:
+        from scripts.ai_flow.config_wizard import run_config_wizard
+        self._make_git_repo()
+        config_path = self.tmp / ".ai" / "patchbay.toml"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            f"""
+[commands]
+reasonix = "{sys.executable.replace(chr(92), chr(92) + chr(92))}"
+
+[phases.write]
+provider = "reasonix_cli"
+model = "deepseek-v4-pro"
+command_key = "reasonix"
+
+[phases.fix]
+provider = "reasonix_cli"
+model = "deepseek-v4-pro"
+command_key = "reasonix"
+""".lstrip(),
+            encoding="utf-8",
+        )
+
+        shown = run_config_wizard(self.tmp, show_profile=True)
+
+        self.assertEqual(shown["profile"], "economy")
+        self.assertTrue(shown["economy"]["command_ready"])
+        actions = {item["id"]: item for item in shown["actions"]}
+        self.assertEqual(actions["start_new_task"]["kind"], "focus_composer")
+        self.assertNotIn("configure_reasonix_command", actions)
 
     def test_custom_profile_show_exposes_structured_economy_action(self) -> None:
         from scripts.ai_flow.config_wizard import run_config_wizard

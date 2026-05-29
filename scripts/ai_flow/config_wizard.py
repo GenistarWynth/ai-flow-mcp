@@ -8,6 +8,7 @@ resolved phase configuration.
 
 from __future__ import annotations
 
+import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -294,6 +295,9 @@ def _apply_profile(cfg_path: Path, cfg: dict[str, Any], profile: str) -> dict[st
 def _profile_next_actions(status: dict[str, Any]) -> list[str]:
     profile = status.get("profile")
     if profile == "economy":
+        economy = status.get("economy", {}) if isinstance(status.get("economy"), dict) else {}
+        if economy.get("command_ready") is False:
+            return ["configure reasonix command", "readiness"]
         return ["readiness", "start"]
     if profile == "custom":
         return ["apply economy profile", "readiness"]
@@ -313,14 +317,20 @@ def _profile_actions(status: dict[str, Any], *, include_validate: bool = False) 
                 "safe": True,
                 "reason": "Inspect setup and resolved write/fix routing.",
             },
-            {
-                "id": "start_new_task",
-                "label": "Start new task",
-                "kind": "focus_composer",
-                "safe": True,
-                "reason": "Start a new Patchbay plan using the active economy routing profile.",
-            },
         ]
+        economy = status.get("economy", {}) if isinstance(status.get("economy"), dict) else {}
+        if economy.get("command_ready") is False:
+            actions.append(_configure_reasonix_action())
+        else:
+            actions.append(
+                {
+                    "id": "start_new_task",
+                    "label": "Start new task",
+                    "kind": "focus_composer",
+                    "safe": True,
+                    "reason": "Start a new Patchbay plan using the active economy routing profile.",
+                }
+            )
     elif profile == "custom":
         actions = [
             {
@@ -365,6 +375,17 @@ def _profile_actions(status: dict[str, Any], *, include_validate: bool = False) 
     return actions
 
 
+def _configure_reasonix_action() -> dict[str, Any]:
+    return {
+        "id": "configure_reasonix_command",
+        "label": "Configure Reasonix",
+        "kind": "command",
+        "command": "patchbay config --set-key commands.reasonix --set-value reasonix",
+        "safe": True,
+        "reason": "Set the Reasonix executable so the Reasonix/DeepSeek write/fix economy route can actually run.",
+    }
+
+
 def _set_nested(cfg: dict[str, Any], parts: tuple[str, ...], value: Any) -> None:
     current: Any = cfg
     for part in parts[:-1]:
@@ -390,12 +411,21 @@ def _profile_status(cfg: dict[str, Any]) -> dict[str, Any]:
         and fix.get("provider") == "reasonix_cli"
         and fix.get("model") == "deepseek-v4-pro"
     )
+    command_status = {
+        "write": _phase_command_status(cfg, write),
+        "fix": _phase_command_status(cfg, fix),
+    }
+    command_ready = all(
+        item.get("ready") for item in command_status.values() if item.get("required")
+    )
     return {
         "profile": "economy" if economy_matches else "custom",
         "economy": {
             "matches": economy_matches,
             "write": write,
             "fix": fix,
+            "command_ready": command_ready,
+            "command_status": command_status,
             "intent": "High-volume write/fix work runs on the low-cost Reasonix/DeepSeek route.",
         },
         "phase_strategy": _phase_strategy(cfg),
@@ -426,9 +456,59 @@ def _phase_strategy(cfg: dict[str, Any]) -> dict[str, Any]:
                 "reason": reason,
                 "economy_route": provider == "reasonix_cli" and model == "deepseek-v4-pro",
             }
+            command_status = _phase_command_status(cfg, resolved)
+            if command_status.get("required"):
+                strategy[phase]["command_status"] = command_status
         except Exception as exc:
             strategy[phase] = {"tier": tier, "reason": reason, "error": str(exc)}
     return strategy
+
+
+def _phase_command_status(cfg: dict[str, Any], phase: dict[str, Any]) -> dict[str, Any]:
+    provider = str(phase.get("provider") or "")
+    command_key = str(phase.get("command_key") or "")
+    if provider != "reasonix_cli":
+        return {
+            "required": False,
+            "ready": True,
+            "provider": provider,
+            "command_key": command_key,
+        }
+
+    from .config import split_command
+
+    commands = cfg.get("commands", {})
+    if not isinstance(commands, dict):
+        commands = {}
+    command = str(commands.get(command_key, "") or "").strip()
+    parts = split_command(command)
+    executable = parts[0] if parts else ""
+    resolved = shutil.which(executable) if executable else None
+    if not command:
+        return {
+            "required": True,
+            "ready": False,
+            "status": "missing_config",
+            "provider": provider,
+            "command_key": command_key,
+            "command": command,
+            "executable": executable,
+            "resolved": "",
+            "recommendation": f"Set commands.{command_key} to your Reasonix executable, such as reasonix or reasonix.cmd.",
+        }
+    return {
+        "required": True,
+        "ready": bool(resolved),
+        "status": "ready" if resolved else "not_found",
+        "provider": provider,
+        "command_key": command_key,
+        "command": command,
+        "executable": executable,
+        "resolved": resolved or "",
+        "recommendation": ""
+        if resolved
+        else f"Install Reasonix or set commands.{command_key} to the full Reasonix executable path.",
+    }
 
 
 def _public_phase(phase: dict[str, Any]) -> dict[str, Any]:

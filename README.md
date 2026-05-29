@@ -33,7 +33,7 @@ commands = ["python -m unittest discover -s tests -v"]
 timeout = 900
 ```
 
-The default cost profile keeps expensive reasoning in plan/review and sends high-volume implementation and repair work to the lower-cost Reasonix/DeepSeek writer. Reapply that routing at any time with `patchbay config profile apply economy`.
+The default cost profile keeps expensive reasoning in plan/review and sends high-volume implementation and repair work to the lower-cost Reasonix/DeepSeek writer. If the Reasonix command is not configured yet, readiness will surface a `configure_reasonix_command` action before it offers `start_new_task`. Reapply that routing at any time with `patchbay config profile apply economy`.
 
 Legacy `[models]`, `[commands]`, and `[writer].provider` keys remain supported as defaults. Each CLI phase may use either `command_key` to reference `[commands]` or `command` for an inline command. `apply` has no model executor; it applies the reviewed `FINAL.diff` only after tests and review pass.
 

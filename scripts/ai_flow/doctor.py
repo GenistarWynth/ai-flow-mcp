@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import config_path, example_config_path, find_project_root, load_config
-from .config_wizard import _profile_status, _run_doctor as run_config_doctor
+from .config_wizard import _configure_reasonix_action, _profile_status, _run_doctor as run_config_doctor
 from .mcp_install import normalize_mcp_host, run_mcp_doctor
 from .skill_install import run_skill_doctor
 
@@ -169,6 +169,11 @@ def _recommendations(checks: dict[str, Any]) -> list[str]:
         recommendations.append(
             "Run `patchbay config profile apply economy` to route write/fix implementation work to Reasonix/DeepSeek."
         )
+    economy = profile.get("economy", {}) if isinstance(profile.get("economy"), dict) else {}
+    if config.get("ok") and economy.get("matches") and economy.get("command_ready") is False:
+        recommendations.append(
+            "Set `commands.reasonix` so the Reasonix/DeepSeek write/fix economy route can actually execute."
+        )
     return recommendations
 
 
@@ -244,7 +249,7 @@ def _structured_actions(
                 "reason": "Install or launch Patchbay from the published package path.",
             }
         )
-    if any("config profile apply economy" in item or "Reasonix/DeepSeek" in item for item in recommendations):
+    if any("config profile apply economy" in item for item in recommendations):
         actions.append(
             {
                 "id": "apply_economy_profile",
@@ -255,6 +260,8 @@ def _structured_actions(
                 "reason": "Route high-volume write/fix implementation work to Reasonix/DeepSeek.",
             }
         )
+    if any("commands.reasonix" in item for item in recommendations):
+        actions.append(_configure_reasonix_action())
     if next_actions or recommendations:
         actions.append(
             {

@@ -148,7 +148,9 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertEqual(applied["routing"]["phases"]["write"]["configured"]["model"], "deepseek-v4-pro")
         applied_actions = {item["id"]: item for item in applied["actions"]}
         self.assertEqual(applied_actions["open_readiness"]["message"], "readiness")
-        self.assertEqual(applied_actions["start_new_task"]["kind"], "focus_composer")
+        self.assertEqual(applied_actions["configure_reasonix_command"]["kind"], "command")
+        self.assertIn("commands.reasonix", applied_actions["configure_reasonix_command"]["command"])
+        self.assertNotIn("start_new_task", applied_actions)
         cfg = load_config(self.repo)
         self.assertEqual(resolve_phase(cfg, "write")["model"], "deepseek-v4-pro")
         self.assertEqual(resolve_phase(cfg, "fix")["provider"], "reasonix_cli")
