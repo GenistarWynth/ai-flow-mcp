@@ -297,6 +297,46 @@ function createClient(overrides: Partial<PatchbayClient> = {}): PatchbayClient {
 }
 
 describe("Workbench", () => {
+  it("copies structured readiness command actions from the diagnostics panel", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      getDoctor: vi.fn().mockResolvedValue({
+        ok: false,
+        root: "C:/repo",
+        checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: false } },
+        next_actions: ["Run `patchbay skill install codex` so Codex can discover the Patchbay Skill."],
+        actions: [
+          {
+            id: "install_skill",
+            label: "Install Codex Skill",
+            kind: "command",
+            command: "patchbay skill install codex",
+            safe: true,
+            reason: "Install the bundled Patchbay Skill."
+          }
+        ]
+      })
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    await userEvent.click(within(details).getByRole("button", { name: "Copy command Install Codex Skill" }));
+
+    expect(writeText).toHaveBeenCalledWith("patchbay skill install codex");
+    expect(await within(details).findByRole("button", { name: "Copy command Install Codex Skill" })).toHaveTextContent("Copied");
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.agentMessage).not.toHaveBeenCalled();
+  });
+
   it("renders a Codex-style thread and keeps orchestration details in the closed diagnostics drawer", async () => {
     const client = createClient();
 
@@ -707,6 +747,11 @@ describe("Workbench", () => {
   });
 
   it("runs host-aware setup from the empty state and shows MCP guidance", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: null,
       action: "setup",
@@ -745,6 +790,9 @@ describe("Workbench", () => {
     expect(within(setupResult).getByText("Claude Desktop")).toBeVisible();
     expect(within(setupResult).getByText("claude mcp add patchbay -- python scripts/patchbay_mcp_server.py")).toBeVisible();
     expect(within(setupResult).getByText("Register the MCP server with: claude mcp add patchbay -- python scripts/patchbay_mcp_server.py")).toBeVisible();
+    await userEvent.click(within(setupResult).getByRole("button", { name: "Copy command MCP registration" }));
+    expect(writeText).toHaveBeenCalledWith("claude mcp add patchbay -- python scripts/patchbay_mcp_server.py");
+    expect(within(setupResult).getByRole("button", { name: "Copy command MCP registration" })).toHaveTextContent("Copied");
   });
 
   it("runs local setup from the readiness panel without creating a run", async () => {

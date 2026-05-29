@@ -205,6 +205,9 @@ textarea { resize: none; }
   color: #172033;
   font-size: 12px;
 }
+.setup-result-row .command-action-row {
+  min-width: 0;
+}
 .setup-result-card p {
   margin: 0;
   color: #647083;
@@ -514,7 +517,12 @@ button.danger { color: #b42318; border-color: #f0b6b2; background: #fff8f7; }
 .doctor-action-buttons button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #cfd7e3; border-radius: 8px; padding: 6px 9px; color: #172033; background: #ffffff; font-size: 12px; font-weight: 800; }
 .doctor-action-buttons button:hover { border-color: #9fb0c4; background: #f8fafc; }
 .doctor-action-buttons button:disabled { color: #8b96a7; background: #eef2f7; cursor: not-allowed; }
-.doctor-action-buttons code { display: inline-flex; align-items: center; min-height: 28px; border: 1px solid #d9dee6; border-radius: 8px; padding: 4px 7px; color: #344255; background: #fbfcfe; font-size: 11px; overflow-wrap: anywhere; }
+.command-action-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; max-width: 100%; border: 1px solid #d9dee6; border-radius: 8px; padding: 4px 5px 4px 7px; color: #344255; background: #fbfcfe; }
+.command-action-row code { min-width: 0; color: #344255; background: transparent; font-size: 11px; overflow-wrap: anywhere; }
+.command-action-row button { display: inline-flex; align-items: center; gap: 4px; min-height: 24px; border: 1px solid #cfd7e3; border-radius: 7px; padding: 3px 6px; color: #172033; background: #ffffff; font-size: 11px; font-weight: 800; white-space: nowrap; }
+.command-action-row button:hover { border-color: #9fb0c4; background: #f8fafc; }
+.command-action-row.copied { border-color: #b7e4c7; background: #f1fbf6; }
+.command-action-row.failed { border-color: #fed7aa; background: #fff7ed; }
 .doctor-actions span, .doctor-check { border: 1px solid #d9dee6; border-radius: 8px; padding: 8px 10px; background: #ffffff; overflow-wrap: anywhere; }
 .doctor-actions span { color: #344255; font-size: 12px; font-weight: 700; }
 .doctor-recommendation { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; border: 1px solid #bfdbfe; border-radius: 8px; padding: 8px 10px; color: #174ea6; background: #eff6ff; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }

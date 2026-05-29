@@ -5,6 +5,7 @@ import {
   Check,
   ChevronRight,
   CircleDot,
+  Copy,
   FileText,
   GitPullRequest,
   MessageSquare,
@@ -274,6 +275,16 @@ function providerMetricLabel(item: ProviderUsage) {
 
 function timeLabel(timestamp?: string) {
   return timestamp ? timestamp.slice(11, 19) : "--:--:--";
+}
+
+async function copyTextToClipboard(text: string) {
+  try {
+    if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) return false;
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function dedupeMessages(messages: AgentMessage[]) {
@@ -1708,7 +1719,7 @@ function SetupResultCard({ response }: { response: AgentResponse }) {
       {command ? (
         <div className="setup-result-row">
           <span>MCP</span>
-          <code>{command}</code>
+          <CommandActionRow command={command} label="MCP registration" />
         </div>
       ) : null}
       {note ? <p>{note}</p> : null}
@@ -1755,6 +1766,24 @@ function RoutingEvidenceCard({ routing }: { routing: RoutingEvidence }) {
         </div>
       </div>
       {routing.recommendation ? <small>{routing.recommendation}</small> : null}
+    </div>
+  );
+}
+
+function CommandActionRow({ command, label }: { command: string; label: string }) {
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  if (!command) return null;
+  const copyCommand = async () => {
+    const copied = await copyTextToClipboard(command);
+    setCopyState(copied ? "copied" : "failed");
+  };
+  return (
+    <div className={`command-action-row ${copyState}`}>
+      <code>{command}</code>
+      <button type="button" aria-label={`Copy command ${label}`} onClick={() => void copyCommand()}>
+        {copyState === "copied" ? <Check size={13} /> : <Copy size={13} />}
+        {copyState === "copied" ? "Copied" : copyState === "failed" ? "Unavailable" : "Copy"}
+      </button>
     </div>
   );
 }
@@ -1808,7 +1837,7 @@ function DoctorActionButtons({
     <div className="doctor-action-buttons" aria-label="Readiness actions">
       {visible.map((action) =>
         action.kind === "command" ? (
-          <code key={action.id || action.label}>{action.command}</code>
+          <CommandActionRow key={action.id || action.label} command={action.command ?? ""} label={action.label} />
         ) : (
           <button
             type="button"
