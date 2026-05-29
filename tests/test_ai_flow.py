@@ -1309,6 +1309,8 @@ class McpSchemaTests(unittest.TestCase):
         self.assertIn("actions", tools["patchbay_context"])
         self.assertIn("patchbay_agent", tools)
         self.assertIn("actions[]", tools["patchbay_agent"])
+        self.assertIn("Claude Desktop", tools["patchbay_agent"])
+        self.assertIn("Gemini CLI", tools["patchbay_agent"])
         self.assertIn("patchbay_doctor", tools)
         self.assertIn("read-only readiness", tools["patchbay_doctor"].lower())
         self.assertIn("actions[]", tools["patchbay_doctor"])
@@ -1368,6 +1370,10 @@ class McpSchemaTests(unittest.TestCase):
         self.assertIn("host", schema["properties"])
         self.assertIn("registration actions", schema["properties"]["host"]["description"])
         self.assertEqual(schema["required"], [])
+
+        agent_schema = tools["patchbay_agent"]["inputSchema"]
+        self.assertIn("Claude Desktop", agent_schema["properties"]["message"]["description"])
+        self.assertIn("Gemini CLI", agent_schema["properties"]["message"]["description"])
 
     def test_config_profile_apply_schema(self) -> None:
         from scripts.ai_flow.mcp_server import handle
