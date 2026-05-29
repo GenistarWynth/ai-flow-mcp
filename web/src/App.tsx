@@ -257,7 +257,12 @@ function mapLocalReplyAction(raw: string): LocalReplyAction | null {
   if (text.includes("open latest") || text.includes("select latest")) {
     return { id: "open-latest-run", label: "打开最近运行", message: "open latest run", icon: "search" };
   }
-  if (text.includes("economy") || text.includes("deepseek") || text.includes("reasonix")) {
+  if (
+    text.includes("apply economy profile") ||
+    text.includes("config profile apply economy") ||
+    text.includes("use economy routing") ||
+    text.includes("use economy route")
+  ) {
     return { id: "apply-economy", label: "经济路由", message: "apply economy profile", icon: "play" };
   }
   if (text.includes("readiness") || text.includes("doctor") || text.includes("diagnose")) {
@@ -2065,7 +2070,7 @@ function DoctorPanel({
           <h2>建议</h2>
           <div className="doctor-recommendations">
             {report.recommendations.map((recommendation) => {
-              const canApplyEconomy = /config profile apply economy|economy/i.test(recommendation);
+              const canApplyEconomy = /config profile apply economy/i.test(recommendation);
               return (
                 <div className="doctor-recommendation" key={recommendation}>
                   <span>{recommendation}</span>

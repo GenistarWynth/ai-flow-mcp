@@ -1079,7 +1079,7 @@ def _doctor_response(root: Path) -> dict[str, Any]:
 
 def _doctor_suggested_actions(next_actions: list[str], recommendations: list[str]) -> list[str]:
     actions = list(next_actions)
-    if any("config profile apply economy" in item or "Reasonix/DeepSeek" in item for item in recommendations):
+    if any("config profile apply economy" in item for item in recommendations):
         actions.append("apply economy profile")
     return _dedupe_strings(actions)
 

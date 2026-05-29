@@ -1283,6 +1283,43 @@ describe("Workbench", () => {
     expect(client.getConfig).toHaveBeenCalled();
   });
 
+  it("shows Reasonix command readiness without offering economy reapply", async () => {
+    const applyConfigProfile = vi.fn();
+    const getDoctor = vi.fn().mockResolvedValue({
+      ok: true,
+      root: "C:/repo",
+      checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true } },
+      next_actions: [],
+      recommendations: ["Set `commands.reasonix` so the Reasonix/DeepSeek write/fix economy route can actually execute."],
+      actions: [
+        {
+          id: "configure_reasonix_command",
+          label: "Configure Reasonix",
+          kind: "command",
+          command: "patchbay config --set-key commands.reasonix --set-value reasonix",
+          safe: true,
+          reason: "Set the Reasonix executable."
+        }
+      ]
+    });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      getDoctor,
+      applyConfigProfile
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByText("Patchbay Agent");
+    await userEvent.click(screen.getByRole("button", { expanded: false }));
+    await userEvent.click(screen.getAllByRole("tab")[1]);
+
+    expect((await screen.findAllByText(/commands.reasonix/)).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Copy command Configure Reasonix" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Apply economy profile" })).not.toBeInTheDocument();
+    expect(applyConfigProfile).not.toHaveBeenCalled();
+  });
+
   it("shows active economy routing evidence in readiness", async () => {
     const client = createClient({
       listRuns: vi.fn().mockResolvedValue({ runs: [] }),

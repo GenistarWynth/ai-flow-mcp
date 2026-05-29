@@ -125,6 +125,46 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertTrue(any(action["id"] == "apply_economy_profile" for action in response["actions"]))
         self.assertIn("Recommendations:", response["reply"])
 
+    def test_agent_doctor_does_not_reapply_economy_when_reasonix_command_is_missing(self) -> None:
+        config_path = self.repo / ".ai" / "patchbay.toml"
+        config_path.write_text(
+            """[commands]
+reasonix = ""
+
+[phases.plan]
+provider = "mock"
+
+[phases.write]
+provider = "reasonix_cli"
+model = "deepseek-v4-pro"
+command_key = "reasonix"
+
+[phases.review]
+provider = "mock"
+
+[phases.fix]
+provider = "reasonix_cli"
+model = "deepseek-v4-pro"
+command_key = "reasonix"
+
+[workflow]
+allow_apply_without_tests = true
+
+[commands_allowlist]
+test = []
+""",
+            encoding="utf-8",
+        )
+
+        response = agent_message(self.repo, "readiness")
+
+        self.assertEqual(response["action"], "doctor")
+        self.assertTrue(any("commands.reasonix" in item for item in response["recommendations"]))
+        self.assertNotIn("apply economy profile", response["next_actions"])
+        actions = {item["id"]: item for item in response["actions"]}
+        self.assertEqual(actions["configure_reasonix_command"]["kind"], "command")
+        self.assertNotIn("apply_economy_profile", actions)
+
     def test_agent_can_show_and_apply_economy_profile_without_starting_run(self) -> None:
         from scripts.ai_flow.config import load_config, resolve_phase
 
