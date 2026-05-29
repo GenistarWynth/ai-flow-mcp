@@ -62,9 +62,10 @@ def normalize_mcp_host(host: str | None, *, default: str = "codex", strict: bool
         from .errors import AiFlowError
 
         raise AiFlowError(
-            f"Unknown MCP host: {raw or host}. Supported: {', '.join(CANONICAL_HOSTS)}.",
+            f"Unknown MCP host: {raw or host}. Supported: {', '.join(CANONICAL_HOSTS)}. "
+            "Common aliases such as Claude Desktop, Claude Code, and Gemini CLI are also accepted.",
             stage="config",
-            suggested_next_action="Run `patchbay mcp install codex` or one of the supported hosts.",
+            suggested_next_action="Run `patchbay mcp install codex`, `patchbay mcp install \"Claude Desktop\"`, or one of the supported hosts.",
         )
     return normalize_mcp_host(default, default="codex", strict=True)
 

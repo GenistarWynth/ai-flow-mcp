@@ -185,8 +185,12 @@ class McpInstallTest(unittest.TestCase):
     def test_unknown_host_raises(self) -> None:
         from scripts.ai_flow.mcp_install import run_mcp_install
         from scripts.ai_flow.errors import AiFlowError
-        with self.assertRaises(AiFlowError):
+
+        with self.assertRaises(AiFlowError) as error:
             run_mcp_install(self.tmp, "nonexistent")
+        self.assertIn("Claude Desktop", str(error.exception))
+        self.assertIn("Gemini CLI", str(error.exception))
+        self.assertIn("Claude Desktop", error.exception.suggested_next_action or "")
 
     def test_mcp_doctor(self) -> None:
         from scripts.ai_flow.mcp_install import run_mcp_doctor
