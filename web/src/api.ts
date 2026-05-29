@@ -67,13 +67,29 @@ export type RoutingEvidencePhase = {
   status?: string;
 };
 
+export type RoutingCoverage = {
+  required_phases?: string[];
+  required_total?: number;
+  configured_economy_total?: number;
+  observed_total?: number;
+  observed_economy_total?: number;
+  observed_other_total?: number;
+  observed_economy_ratio?: number;
+  observed_economy_percent?: number;
+  complete?: boolean;
+  label?: string;
+};
+
 export type RoutingEvidence = {
   profile?: string;
   target?: PhaseProvider;
   economy_configured?: boolean;
   configured_economy_phases?: string[];
+  observed_phases?: string[];
   observed_economy_phases?: string[];
+  observed_non_economy_phases?: string[];
   missing_evidence?: string[];
+  coverage?: RoutingCoverage;
   phases?: Record<string, RoutingEvidencePhase>;
   phase_strategy?: Record<string, PhaseStrategy>;
   summary?: string;

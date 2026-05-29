@@ -4,7 +4,7 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   build: {
-    outDir: "../scripts/ai_flow/web_static",
+    outDir: "dist",
     emptyOutDir: true
   },
   server: {

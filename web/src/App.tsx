@@ -475,6 +475,16 @@ function routeEvidenceLabel(phase: string, routing?: RoutingEvidence | null) {
   return "未观测";
 }
 
+function routingCoverageLabel(routing?: RoutingEvidence | null) {
+  const coverage = routing?.coverage;
+  if (!coverage) return "";
+  const required = coverage.required_total ?? 2;
+  const observed = coverage.observed_economy_total ?? routing?.observed_economy_phases?.length ?? 0;
+  const percent = coverage.observed_economy_percent;
+  if (typeof percent === "number") return `${percent}% · ${observed}/${required}`;
+  return coverage.label || `${observed}/${required}`;
+}
+
 function profileStatusToRouting(result: ConfigProfileStatus): RoutingEvidence {
   const status = result.status ?? result;
   const economy = status.economy ?? {};
@@ -1404,6 +1414,7 @@ function MetricsGrid({ metrics }: { metrics?: RunMetrics | null }) {
   const providerMetrics = providerMetricEntries(metrics);
   const providerCount = metrics?.provider_usage?.filter((item) => item.provider || item.model).length ?? 0;
   const routing = metrics?.routing_evidence;
+  const routingCoverage = routingCoverageLabel(routing);
   return (
     <div className="metrics-panel">
       <div className="metric-row">
@@ -1432,6 +1443,12 @@ function MetricsGrid({ metrics }: { metrics?: RunMetrics | null }) {
         <div className={`metric-routing ${routing.economy_configured ? "ready" : "custom"}`} aria-label="路由证据">
           <span>路由证据</span>
           <strong>{routing.summary}</strong>
+        </div>
+      ) : null}
+      {routingCoverage ? (
+        <div className="metric-row">
+          <span>经济覆盖</span>
+          <strong>{routingCoverage}</strong>
         </div>
       ) : null}
       <div className="metric-row">

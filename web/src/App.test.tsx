@@ -335,7 +335,19 @@ describe("Workbench", () => {
             fix: { configured: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" }, configured_economy: true }
           },
           observed_economy_phases: ["write"],
-          missing_evidence: ["fix"]
+          missing_evidence: ["fix"],
+          coverage: {
+            required_phases: ["write", "fix"],
+            required_total: 2,
+            configured_economy_total: 2,
+            observed_total: 1,
+            observed_economy_total: 1,
+            observed_other_total: 0,
+            observed_economy_ratio: 0.5,
+            observed_economy_percent: 50,
+            complete: false,
+            label: "1/2 economy phases observed"
+          }
         }
       }
     };
@@ -364,6 +376,8 @@ describe("Workbench", () => {
     expect(screen.getByText("审查 USD 0.12")).toBeVisible();
     expect(screen.getByText("审查 / codex_cli 4.0k tok | USD 0.12")).toBeVisible();
     expect(screen.getByText("Economy route configured; observed write, fix not observed yet.")).toBeVisible();
+    expect(screen.getByText("经济覆盖")).toBeVisible();
+    expect(screen.getByText("50% · 1/2")).toBeVisible();
     expect(screen.getByText("6")).toBeVisible();
     expect(screen.getByText("审查 2x")).toBeVisible();
   });
