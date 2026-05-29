@@ -485,6 +485,16 @@ function routingCoverageLabel(routing?: RoutingEvidence | null) {
   return coverage.label || `${observed}/${required}`;
 }
 
+function economyHealthLabel(routing?: RoutingEvidence | null) {
+  const health = routing?.economy_health;
+  if (!health?.status) return "";
+  if (health.status === "healthy") return "健康";
+  if (health.status === "pending_evidence") return "待观测";
+  if (health.status === "drift") return `漂移 · ${(health.drift_phases ?? []).join("/") || "write/fix"}`;
+  if (health.status === "not_configured") return `未配置 · ${(health.missing_config_phases ?? []).join("/") || "write/fix"}`;
+  return health.status;
+}
+
 function profileStatusToRouting(result: ConfigProfileStatus): RoutingEvidence {
   const status = result.status ?? result;
   const economy = status.economy ?? {};
@@ -1415,6 +1425,7 @@ function MetricsGrid({ metrics }: { metrics?: RunMetrics | null }) {
   const providerCount = metrics?.provider_usage?.filter((item) => item.provider || item.model).length ?? 0;
   const routing = metrics?.routing_evidence;
   const routingCoverage = routingCoverageLabel(routing);
+  const economyHealth = economyHealthLabel(routing);
   return (
     <div className="metrics-panel">
       <div className="metric-row">
@@ -1449,6 +1460,12 @@ function MetricsGrid({ metrics }: { metrics?: RunMetrics | null }) {
         <div className="metric-row">
           <span>经济覆盖</span>
           <strong>{routingCoverage}</strong>
+        </div>
+      ) : null}
+      {economyHealth ? (
+        <div className="metric-row">
+          <span>经济健康</span>
+          <strong>{economyHealth}</strong>
         </div>
       ) : null}
       <div className="metric-row">

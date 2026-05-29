@@ -893,6 +893,9 @@ def _metrics_response(root: Path, run_id: str) -> dict[str, Any]:
         "tokens known" if token_usage.get("known") else "tokens not reported",
     ]
     if isinstance(routing, dict) and routing.get("summary"):
+        health = routing.get("economy_health") if isinstance(routing.get("economy_health"), dict) else {}
+        if health.get("status"):
+            signals.append(f"economy health {health['status']}")
         signals.append(str(routing["summary"]))
     metrics_payload = dict(result)
     if routing:

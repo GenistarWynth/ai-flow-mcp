@@ -80,6 +80,21 @@ export type RoutingCoverage = {
   label?: string;
 };
 
+export type EconomyHealth = {
+  status?: "healthy" | "pending_evidence" | "drift" | "not_configured" | string;
+  severity?: "ok" | "info" | "warning" | string;
+  configured?: boolean;
+  target?: PhaseProvider;
+  required_phases?: string[];
+  missing_config_phases?: string[];
+  drift_phases?: string[];
+  missing_evidence?: string[];
+  observed_economy_phases?: string[];
+  summary?: string;
+  recommendation?: string;
+  next_action?: string;
+};
+
 export type RoutingEvidence = {
   profile?: string;
   target?: PhaseProvider;
@@ -90,6 +105,7 @@ export type RoutingEvidence = {
   observed_non_economy_phases?: string[];
   missing_evidence?: string[];
   coverage?: RoutingCoverage;
+  economy_health?: EconomyHealth;
   phases?: Record<string, RoutingEvidencePhase>;
   phase_strategy?: Record<string, PhaseStrategy>;
   summary?: string;

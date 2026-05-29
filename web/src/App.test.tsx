@@ -347,6 +347,20 @@ describe("Workbench", () => {
             observed_economy_percent: 50,
             complete: false,
             label: "1/2 economy phases observed"
+          },
+          economy_health: {
+            status: "pending_evidence",
+            severity: "info",
+            configured: true,
+            target: { provider: "reasonix_cli", model: "deepseek-v4-pro" },
+            required_phases: ["write", "fix"],
+            missing_config_phases: [],
+            drift_phases: [],
+            missing_evidence: ["fix"],
+            observed_economy_phases: ["write"],
+            summary: "Economy route is configured; waiting for fix provider evidence.",
+            recommendation: "Run or poll write/fix phases to confirm high-volume work is actually using the economy route.",
+            next_action: "wait_for_routing_evidence"
           }
         }
       }
@@ -378,6 +392,8 @@ describe("Workbench", () => {
     expect(screen.getByText("Economy route configured; observed write, fix not observed yet.")).toBeVisible();
     expect(screen.getByText("经济覆盖")).toBeVisible();
     expect(screen.getByText("50% · 1/2")).toBeVisible();
+    expect(screen.getByText("经济健康")).toBeVisible();
+    expect(screen.getAllByText("待观测").length).toBeGreaterThan(0);
     expect(screen.getByText("6")).toBeVisible();
     expect(screen.getByText("审查 2x")).toBeVisible();
   });

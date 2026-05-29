@@ -269,6 +269,23 @@ class HandoffContextTest(unittest.TestCase):
         payload = json.loads(response["result"]["content"][0]["text"])
         self.assertEqual(payload["run_metrics"]["event_count"], cli_metrics["run_metrics"]["event_count"])
 
+    def test_metrics_exposes_not_configured_economy_health(self) -> None:
+        (self.repo / ".ai" / "patchbay.toml").write_text(
+            "[workflow]\nallow_apply_without_tests = true\n\n"
+            "[phases.write]\nprovider = \"mock\"\nmodel = \"mock-model\"\n\n"
+            "[phases.fix]\nprovider = \"mock\"\nmodel = \"mock-model\"\n",
+            encoding="utf-8",
+        )
+        planned = self.cli_json("plan", "--task", "custom route health", "--mock")
+
+        cli_metrics = self.cli_json("metrics", planned["run_id"])
+
+        health = cli_metrics["routing_evidence"]["economy_health"]
+        self.assertEqual(health["status"], "not_configured")
+        self.assertEqual(health["severity"], "warning")
+        self.assertEqual(health["missing_config_phases"], ["write", "fix"])
+        self.assertEqual(health["next_action"], "apply_economy_profile")
+
     def test_fix_loop_context_tracks_provider_trail_and_next_action(self) -> None:
         planned = self.cli_json("plan", "--task", "fix handoff", "--mock")
         run_id = planned["run_id"]

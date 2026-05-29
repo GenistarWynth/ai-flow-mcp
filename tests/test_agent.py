@@ -607,9 +607,13 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertEqual(routing["coverage"]["observed_economy_total"], 1)
         self.assertEqual(routing["coverage"]["observed_economy_percent"], 50)
         self.assertEqual(routing["coverage"]["label"], "1/2 economy phases observed")
+        self.assertEqual(routing["economy_health"]["status"], "pending_evidence")
+        self.assertEqual(routing["economy_health"]["severity"], "info")
+        self.assertEqual(routing["economy_health"]["missing_evidence"], ["fix"])
         self.assertIn("fix", routing["missing_evidence"])
         self.assertEqual(routing["phases"]["write"]["observed"][0]["provider"], "reasonix_cli")
         self.assertIn("1/2 economy phases observed", routing["summary"])
+        self.assertIn("economy health pending_evidence", response["reply"])
         self.assertIn("observed write", response["reply"])
 
     def test_agent_metrics_flags_non_economy_provider_observed_on_economy_route(self) -> None:
@@ -636,7 +640,46 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertEqual(routing["observed_non_economy_phases"], ["write"])
         self.assertEqual(routing["coverage"]["observed_other_total"], 1)
         self.assertEqual(routing["coverage"]["observed_economy_percent"], 0)
+        self.assertEqual(routing["economy_health"]["status"], "drift")
+        self.assertEqual(routing["economy_health"]["drift_phases"], ["write"])
         self.assertIn("write observed a non-economy provider", routing["summary"])
+
+    def test_agent_metrics_flags_mixed_provider_drift_on_economy_route(self) -> None:
+        from scripts.ai_flow.events import append_event
+
+        agent_message(self.repo, "apply economy profile")
+        planned = agent_message(self.repo, "mixed routing drift target")
+        run_path = self.repo / ".ai" / "runs" / planned["run_id"]
+        append_event(
+            run_path,
+            phase="write",
+            provider="reasonix_cli",
+            model="deepseek-v4-pro",
+            action="success",
+            status="IMPLEMENTED",
+            detail="synthetic economy writer event",
+            duration_ms=1200,
+        )
+        append_event(
+            run_path,
+            phase="write",
+            provider="codex_cli",
+            model="gpt-5.5",
+            action="retry",
+            status="IMPLEMENTED",
+            detail="synthetic higher-cost writer retry",
+            duration_ms=800,
+        )
+
+        response = agent_message(self.repo, "cost", run_id=planned["run_id"])
+
+        routing = response["metrics"]["routing_evidence"]
+        self.assertEqual(routing["phases"]["write"]["status"], "observed_mixed")
+        self.assertEqual(routing["observed_economy_phases"], ["write"])
+        self.assertEqual(routing["observed_non_economy_phases"], ["write"])
+        self.assertEqual(routing["economy_health"]["status"], "drift")
+        self.assertEqual(routing["coverage"]["observed_economy_percent"], 50)
+        self.assertIn("non-economy provider", routing["summary"])
 
     def test_mcp_patchbay_agent_continue_without_run_returns_guidance(self) -> None:
         from scripts.ai_flow import mcp_server

@@ -1462,13 +1462,14 @@ def _run_routing_evidence(run_metrics: dict[str, Any], effective: dict[str, Any]
         ]
         configured_economy = _is_economy_route(configured)
         observed_economy = any(_is_economy_route(entry) for entry in observed)
+        observed_other = any(not _is_economy_route(entry) for entry in observed)
         if configured_economy:
             configured_economy_phases.append(phase)
         if observed:
             observed_phases.append(phase)
         if observed_economy:
             observed_economy_phases.append(phase)
-        elif observed:
+        if observed_other:
             observed_non_economy_phases.append(phase)
         if not observed:
             missing_evidence.append(phase)
@@ -1477,7 +1478,15 @@ def _run_routing_evidence(run_metrics: dict[str, Any], effective: dict[str, Any]
             "observed": observed,
             "configured_economy": configured_economy,
             "observed_economy": observed_economy,
-            "status": "observed_economy" if observed_economy else "observed_other" if observed else "not_observed",
+            "status": (
+                "observed_mixed"
+                if observed_economy and observed_other
+                else "observed_economy"
+                if observed_economy
+                else "observed_other"
+                if observed
+                else "not_observed"
+            ),
         }
     economy_configured = configured_economy_phases == ["write", "fix"]
     coverage = _routing_coverage(
@@ -1485,6 +1494,14 @@ def _run_routing_evidence(run_metrics: dict[str, Any], effective: dict[str, Any]
         observed_phases=observed_phases,
         observed_economy_phases=observed_economy_phases,
         observed_non_economy_phases=observed_non_economy_phases,
+    )
+    economy_health = _economy_health(
+        economy_configured=economy_configured,
+        configured_economy_phases=configured_economy_phases,
+        observed_economy_phases=observed_economy_phases,
+        observed_non_economy_phases=observed_non_economy_phases,
+        missing_evidence=missing_evidence,
+        coverage=coverage,
     )
     return {
         "target": {"provider": ECONOMY_PROVIDER, "model": ECONOMY_MODEL},
@@ -1495,6 +1512,7 @@ def _run_routing_evidence(run_metrics: dict[str, Any], effective: dict[str, Any]
         "observed_non_economy_phases": observed_non_economy_phases,
         "missing_evidence": missing_evidence,
         "coverage": coverage,
+        "economy_health": economy_health,
         "phases": phases,
         "summary": _routing_evidence_summary(
             economy_configured=economy_configured,
@@ -1503,6 +1521,86 @@ def _run_routing_evidence(run_metrics: dict[str, Any], effective: dict[str, Any]
             missing_evidence=missing_evidence,
             coverage=coverage,
         ),
+    }
+
+
+def _economy_health(
+    *,
+    economy_configured: bool,
+    configured_economy_phases: list[str],
+    observed_economy_phases: list[str],
+    observed_non_economy_phases: list[str],
+    missing_evidence: list[str],
+    coverage: dict[str, Any],
+) -> dict[str, Any]:
+    required_phases = ["write", "fix"]
+    configured = set(configured_economy_phases)
+    missing_config = [phase for phase in required_phases if phase not in configured]
+    drift_phases = sorted(set(observed_non_economy_phases), key=required_phases.index)
+    missing_observation = [phase for phase in required_phases if phase in set(missing_evidence)]
+    target = {"provider": ECONOMY_PROVIDER, "model": ECONOMY_MODEL}
+
+    if missing_config:
+        summary = f"Economy route is missing for {'/'.join(missing_config)}; high-volume work may use higher-cost providers."
+        return {
+            "status": "not_configured",
+            "severity": "warning",
+            "configured": economy_configured,
+            "target": target,
+            "required_phases": required_phases,
+            "missing_config_phases": missing_config,
+            "drift_phases": drift_phases,
+            "missing_evidence": missing_observation,
+            "observed_economy_phases": observed_economy_phases,
+            "summary": summary,
+            "recommendation": "Run `patchbay config profile apply economy` before write/fix so simple implementation and repair work routes to Reasonix/DeepSeek.",
+            "next_action": "apply_economy_profile",
+        }
+    if drift_phases:
+        summary = f"Economy route is configured, but {'/'.join(drift_phases)} observed non-economy provider events."
+        return {
+            "status": "drift",
+            "severity": "warning",
+            "configured": True,
+            "target": target,
+            "required_phases": required_phases,
+            "missing_config_phases": [],
+            "drift_phases": drift_phases,
+            "missing_evidence": missing_observation,
+            "observed_economy_phases": observed_economy_phases,
+            "summary": summary,
+            "recommendation": "Inspect provider events and command routing before continuing high-volume write/fix work.",
+            "next_action": "inspect_routing_events",
+        }
+    if coverage.get("complete"):
+        return {
+            "status": "healthy",
+            "severity": "ok",
+            "configured": True,
+            "target": target,
+            "required_phases": required_phases,
+            "missing_config_phases": [],
+            "drift_phases": [],
+            "missing_evidence": [],
+            "observed_economy_phases": observed_economy_phases,
+            "summary": "Economy route is configured and observed for all high-volume write/fix phases.",
+            "recommendation": "",
+            "next_action": "none",
+        }
+    summary = f"Economy route is configured; waiting for {'/'.join(missing_observation) or 'write/fix'} provider evidence."
+    return {
+        "status": "pending_evidence",
+        "severity": "info",
+        "configured": True,
+        "target": target,
+        "required_phases": required_phases,
+        "missing_config_phases": [],
+        "drift_phases": [],
+        "missing_evidence": missing_observation,
+        "observed_economy_phases": observed_economy_phases,
+        "summary": summary,
+        "recommendation": "Run or poll write/fix phases to confirm high-volume work is actually using the economy route.",
+        "next_action": "wait_for_routing_evidence",
     }
 
 
@@ -1559,11 +1657,11 @@ def _routing_evidence_summary(
     coverage: dict[str, Any],
 ) -> str:
     coverage_label = str(coverage.get("label") or "").strip()
-    if economy_configured and set(observed_economy_phases) == {"write", "fix"}:
-        return "Economy route configured and observed for write/fix."
     if economy_configured and observed_non_economy_phases:
         observed_other = "/".join(observed_non_economy_phases)
         return f"Economy route configured, but {observed_other} observed a non-economy provider; {coverage_label}."
+    if economy_configured and set(observed_economy_phases) == {"write", "fix"}:
+        return "Economy route configured and observed for write/fix."
     if economy_configured and observed_economy_phases:
         missing = "/".join(missing_evidence) if missing_evidence else "remaining phases"
         observed = "/".join(observed_economy_phases)
