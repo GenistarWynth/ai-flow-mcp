@@ -223,15 +223,17 @@ class AgentWorkflowTests(AgentTestCase):
 
         with mock.patch.object(agent_module, "run_setup", side_effect=fake_setup):
             default = agent_message(self.repo, "patchbay setup")
-            desktop = agent_message(self.repo, "patchbay setup for claude-desktop")
-            gemini = agent_message(self.repo, "install patchbay for gemini")
-            claude_code = agent_message(self.repo, "patchbay setup --host=claude-code")
+            desktop = agent_message(self.repo, "patchbay setup for Claude Desktop")
+            gemini = agent_message(self.repo, "install patchbay for Gemini CLI")
+            claude_code = agent_message(self.repo, "patchbay setup --host=Claude Code")
+            codex_desktop = agent_message(self.repo, "patchbay setup to Codex Desktop")
 
-        self.assertEqual(calls, ["codex", "claude-desktop", "gemini", "claude-code"])
+        self.assertEqual(calls, ["codex", "claude-desktop", "gemini", "claude-code", "codex"])
         self.assertEqual(default["setup_host"], "codex")
         self.assertEqual(desktop["setup_host"], "claude-desktop")
         self.assertEqual(gemini["setup"]["mcp"]["host"], "gemini")
         self.assertEqual(claude_code["setup_host"], "claude-code")
+        self.assertEqual(codex_desktop["setup_host"], "codex")
         desktop_actions = {item["id"]: item for item in desktop["actions"]}
         self.assertEqual(desktop_actions["register_mcp"]["kind"], "command")
         self.assertEqual(desktop_actions["register_mcp"]["command"], "patchbay mcp install claude-desktop")
