@@ -860,6 +860,60 @@ describe("Workbench", () => {
     expect(client.apply).not.toHaveBeenCalled();
   });
 
+  it("uses self-contained structured open-run actions without fallback run references", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "runs",
+      ok: true,
+      reply: "Latest Patchbay run is available.",
+      next_actions: ["readiness"],
+      actions: [
+        {
+          id: "open_latest_run",
+          label: "Open latest run",
+          kind: "open_run",
+          run_id: "run-ready",
+          tab: "Diff",
+          safe: true,
+          reason: "Open the latest Patchbay run without advancing any gate."
+        }
+      ],
+      runs: { count: 1, runs: [{ run_id: "run-ready", task: "Approve a plan", status: "PLANNED" }] }
+    });
+    const client = createClient({
+      listRuns: vi
+        .fn()
+        .mockResolvedValueOnce({ runs: [] })
+        .mockResolvedValue({ runs: [{ run_id: "run-ready", task: "Approve a plan", status: "PLANNED" }] }),
+      agentMessage,
+      getStatus: vi.fn().mockResolvedValue({
+        run_id: "run-ready",
+        task: "Approve a plan",
+        status: "PLANNED",
+        current_phase: "plan",
+        gate_state: { approved: false, tests_passed: false, review_result: null, ready_to_apply: false },
+        next_commands: ["approve"],
+        artifacts: [],
+        effective_phase_providers: {}
+      }),
+      getContext: vi.fn().mockResolvedValue({ ...plannedContext, run_id: "run-ready" })
+    });
+
+    render(<Workbench client={client} />);
+
+    await waitFor(() => expect(client.listRuns).toHaveBeenCalled());
+    const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(composer, "status{enter}");
+
+    await userEvent.click(await screen.findByRole("button", { name: /open latest run/ }));
+
+    expect(await screen.findByRole("heading", { name: "Approve a plan" })).toBeInTheDocument();
+    await waitFor(() => expect(client.getContext).toHaveBeenCalledWith("run-ready"));
+    expect(screen.getByText("diff --git a/web b/web")).toBeVisible();
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
   it("runs local setup from the empty state and exposes readiness immediately", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: null,

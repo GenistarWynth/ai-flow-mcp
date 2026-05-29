@@ -36,6 +36,7 @@ import {
   ProviderUsage,
   RoutingEvidence,
   RunMetrics,
+  RunReferenceView,
   RunStatus,
   RunSummary,
   SuggestedAction,
@@ -62,6 +63,8 @@ type LocalReplyAction = {
   label: string;
   message: string;
   icon: "play" | "settings" | "shield" | "search";
+  runId?: string;
+  tab?: RunReferenceView["tab"];
 };
 type SetupHostOption = {
   id: string;
@@ -214,7 +217,14 @@ function localReplyCommandActions(response: AgentResponse | null): AgentHealthAc
 function mapStructuredLocalReplyAction(action: AgentHealthAction): LocalReplyAction | null {
   if (action.safe === false) return null;
   if (action.kind === "open_run" || action.id === "open_latest_run") {
-    return { id: "open-latest-run", label: action.label || "打开最近运行", message: "open latest run", icon: "search" };
+    return {
+      id: "open-latest-run",
+      label: action.label || "打开最近运行",
+      message: "open latest run",
+      icon: "search",
+      runId: action.run_id,
+      tab: action.tab
+    };
   }
   if (action.kind === "focus_composer" || action.id === "start_new_task") {
     return { id: "start", label: action.label || "开始任务", message: "start", icon: "play" };
@@ -1097,12 +1107,12 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       return;
     }
     if (action.id === "open-latest-run") {
-      const runId = newTaskReply?.run_reference?.run_id ?? newTaskReply?.recent_run?.run_id;
+      const runId = action.runId ?? newTaskReply?.run_reference?.run_id ?? newTaskReply?.recent_run?.run_id;
       if (!runId) {
         setError("No recent run was returned by Patchbay Agent.");
         return;
       }
-      const requestedTab = newTaskReply?.run_reference?.requested_view?.tab ?? newTaskReply?.requested_view?.tab;
+      const requestedTab = action.tab ?? newTaskReply?.run_reference?.requested_view?.tab ?? newTaskReply?.requested_view?.tab;
       setError("");
       setNewTaskMode(false);
       setNewTaskReply(null);
