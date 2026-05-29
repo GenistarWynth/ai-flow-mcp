@@ -47,7 +47,7 @@ Legacy `[models]`, `[commands]`, and `[writer].provider` keys remain supported a
 - Human approval gate before implementation.
 - Patch safety checks, read-only reviewer verification, and a default apply gate that treats skipped tests as not passed unless `workflow.allow_apply_without_tests = true`.
 - **Cross-host visibility**: `patchbay context <run_id>` / `patchbay_context` is the preferred resume call. It returns the current gate state, next safe action, provider trail, artifacts, timeline, and `run_metrics` efficiency evidence in one handoff digest. `run_metrics.routing_evidence` shows whether write/fix are configured for the Reasonix/DeepSeek economy route and whether provider events have actually observed it; `routing_evidence.economy_health` and `agent_activity.health_cards` expose the same signal as machine-readable healthy, pending-evidence, drift, or not-configured states for desktop and MCP clients. Readiness and setup responses also include `actions[]` entries so clients can render safe one-click follow-ups without parsing prose. `patchbay events <run_id>` and `patchbay_status` remain available for focused inspection.
-- **Failure recovery**: failed runs expose `failure_recovery` through `status`, `context`, and the conversational Agent, including the failed stage, suggested next action, safe inspection actions, and the most relevant artifacts to inspect before retrying or starting a replacement run.
+- **Failure recovery**: failed runs expose `failure_recovery` through `status`, `context`, and the conversational Agent, including the failed stage, suggested next action, priority artifacts, and structured `actions[]` for safe inspection or replacement-task follow-ups.
 
 ## Quick Start
 

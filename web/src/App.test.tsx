@@ -1601,6 +1601,31 @@ describe("Workbench", () => {
           error: "Planner JSON could not be parsed: Expecting value",
           suggested_next_action: guidance,
           safe_actions: ["status", "events", "artifact", "diff", "new_run"],
+          actions: [
+            {
+              id: "inspect_events",
+              label: "Inspect events",
+              kind: "diagnostic_tab",
+              tab: "Trace",
+              safe: true,
+              reason: "Open event timeline."
+            },
+            {
+              id: "inspect_artifacts",
+              label: "Inspect artifacts",
+              kind: "diagnostic_tab",
+              tab: "Artifacts",
+              safe: true,
+              reason: "Open failed artifacts."
+            },
+            {
+              id: "start_new_task",
+              label: "Start replacement task",
+              kind: "focus_composer",
+              safe: true,
+              reason: "Start over with a narrower task."
+            }
+          ],
           artifacts: ["PLAN.md", "plan.json", "events.jsonl"],
           summary: "Run failed in plan; inspect PLAN.md, plan.json, events.jsonl before taking another action."
         },
@@ -1623,10 +1648,20 @@ describe("Workbench", () => {
     expect(within(card).getByText(guidance)).toBeVisible();
     expect(within(card).getByText("PLAN.md")).toBeVisible();
     expect(within(card).getByText("events.jsonl")).toBeVisible();
+    expect(within(card).getByRole("button", { name: "Inspect events" })).toBeVisible();
+    expect(within(card).getByRole("button", { name: "Inspect artifacts" })).toBeVisible();
+    expect(within(card).getByRole("button", { name: "Start replacement task" })).toBeVisible();
     expect(within(card).queryByText("当前没有可执行动作。")).not.toBeInTheDocument();
 
     await userEvent.click(within(card).getByRole("button", { name: /查看诊断/ }));
 
+    expect(runAction).not.toHaveBeenCalled();
+
+    await userEvent.click(within(card).getByRole("button", { name: "Inspect artifacts" }));
+    expect(screen.getAllByRole("tab").some((tab) => tab.getAttribute("aria-selected") === "true")).toBe(true);
+
+    await userEvent.click(within(card).getByRole("button", { name: "Start replacement task" }));
+    expect(screen.queryByRole("heading", { name: "Bad planner output" })).not.toBeInTheDocument();
     expect(runAction).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "诊断" })).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("tab", { name: "活动" })).toHaveAttribute("aria-selected", "true");

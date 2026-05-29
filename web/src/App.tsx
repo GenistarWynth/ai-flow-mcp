@@ -1077,6 +1077,13 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       await applyEconomyProfileAction();
       return;
     }
+    if (action.kind === "focus_composer" || action.id === "start_new_task") {
+      setDiagnosticsOpen(true);
+      setActiveTab("Trace");
+      startNewTask();
+      composerRef.current?.focus();
+      return;
+    }
     if (action.kind === "diagnostic_tab" && action.tab && diagnosticTabs.has(action.tab as TabName)) {
       setDiagnosticsOpen(true);
       setActiveTab(action.tab as TabName);
@@ -1348,6 +1355,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                   setDiagnosticsOpen(true);
                   setActiveTab("Trace");
                 }}
+                onRecoveryAction={(action) => void runHealthAction(action)}
                 onAction={handleAction}
               />
             </>
@@ -1498,6 +1506,7 @@ function NextActionCard({
   failureGuidance,
   failureRecovery,
   onInspectDiagnostics,
+  onRecoveryAction,
   onAction
 }: {
   action: AgentAction | null | undefined;
@@ -1506,6 +1515,7 @@ function NextActionCard({
   failureGuidance?: string;
   failureRecovery?: FailureRecovery | null;
   onInspectDiagnostics?: () => void;
+  onRecoveryAction?: (action: AgentHealthAction) => void;
   onAction: (action: SuggestedAction | AgentAction | string) => void;
 }) {
   if (busy) {
@@ -1532,6 +1542,18 @@ function NextActionCard({
               {failureRecovery.artifacts.slice(0, 4).map((artifact) => (
                 <span key={artifact}>{artifact}</span>
               ))}
+            </div>
+          ) : null}
+          {failureRecovery?.actions?.length ? (
+            <div className="recovery-actions" aria-label="Failure recovery actions">
+              {failureRecovery.actions
+                .filter((item) => item.safe !== false)
+                .map((item) => (
+                  <button type="button" key={item.id || item.label} onClick={() => onRecoveryAction?.(item)}>
+                    {item.kind === "focus_composer" ? <Plus size={13} /> : <Search size={13} />}
+                    {item.label}
+                  </button>
+                ))}
             </div>
           ) : null}
         </div>

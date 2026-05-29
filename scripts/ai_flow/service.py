@@ -1311,9 +1311,55 @@ def _failure_recovery(status_data: dict[str, Any]) -> dict[str, Any]:
         "error": str(status_data.get("error") or "Run failed."),
         "suggested_next_action": suggested,
         "safe_actions": ["status", "events", "artifact", "diff", "new_run"],
+        "actions": _failure_recovery_actions(inspect),
         "artifacts": inspect,
         "summary": f"Run failed in {stage}; inspect {', '.join(inspect) if inspect else 'diagnostics'} before taking another action.",
     }
+
+
+def _failure_recovery_actions(artifacts: list[str]) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]] = [
+        {
+            "id": "inspect_events",
+            "label": "Inspect events",
+            "kind": "diagnostic_tab",
+            "tab": "Trace",
+            "safe": True,
+            "reason": "Open the event and trace timeline for the failed run.",
+        }
+    ]
+    if any(name == "FINAL.diff" or name.endswith(".diff") for name in artifacts):
+        actions.append(
+            {
+                "id": "inspect_diff",
+                "label": "Inspect diff",
+                "kind": "diagnostic_tab",
+                "tab": "Diff",
+                "safe": True,
+                "reason": "Open the current patch diff before deciding whether to retry or start over.",
+            }
+        )
+    if artifacts:
+        actions.append(
+            {
+                "id": "inspect_artifacts",
+                "label": "Inspect artifacts",
+                "kind": "diagnostic_tab",
+                "tab": "Artifacts",
+                "safe": True,
+                "reason": "Open the priority failure artifacts listed in the recovery summary.",
+            }
+        )
+    actions.append(
+        {
+            "id": "start_new_task",
+            "label": "Start replacement task",
+            "kind": "focus_composer",
+            "safe": True,
+            "reason": "Start a narrower replacement task instead of retrying the failed run blindly.",
+        }
+    )
+    return actions
 
 
 def _failure_artifacts_for_stage(stage: str, artifacts: list[str]) -> list[str]:

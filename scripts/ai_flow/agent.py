@@ -1429,6 +1429,31 @@ def _failure_recovery_summary(status_data: dict[str, Any]) -> dict[str, Any]:
         "error": str(status_data.get("error") or "Run failed."),
         "suggested_next_action": suggested,
         "safe_actions": ["status", "events", "artifact", "diff", "new_run"],
+        "actions": [
+            {
+                "id": "inspect_events",
+                "label": "Inspect events",
+                "kind": "diagnostic_tab",
+                "tab": "Trace",
+                "safe": True,
+                "reason": "Open the event and trace timeline for the failed run.",
+            },
+            {
+                "id": "inspect_artifacts",
+                "label": "Inspect artifacts",
+                "kind": "diagnostic_tab",
+                "tab": "Artifacts",
+                "safe": True,
+                "reason": "Open available run artifacts before retrying.",
+            },
+            {
+                "id": "start_new_task",
+                "label": "Start replacement task",
+                "kind": "focus_composer",
+                "safe": True,
+                "reason": "Start a narrower replacement task instead of retrying the failed run blindly.",
+            },
+        ],
         "artifacts": list(status_data.get("artifacts") or []),
         "summary": f"Run failed in {stage}.",
     }

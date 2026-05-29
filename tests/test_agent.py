@@ -334,6 +334,10 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertIn("recovery", response)
         self.assertEqual(response["recovery"]["stage"], "write")
         self.assertIn("writer.log", response["recovery"]["artifacts"])
+        recovery_actions = {item["id"]: item for item in response["recovery"]["actions"]}
+        self.assertEqual(recovery_actions["inspect_events"]["kind"], "diagnostic_tab")
+        self.assertEqual(recovery_actions["inspect_artifacts"]["tab"], "Artifacts")
+        self.assertEqual(recovery_actions["start_new_task"]["kind"], "focus_composer")
         self.assertIn("Inspect writer.log", response["reply"])
         self.assertEqual(response["next_actions"], ["status", "events", "artifact", "diff"])
 
