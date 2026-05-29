@@ -13,12 +13,14 @@ if __package__ in {None, ""}:
     from ai_flow.config_wizard import run_config_wizard
     from ai_flow.doctor import run_doctor
     from ai_flow.setup_flow import run_setup
+    from ai_flow.skill_install import run_skill_doctor, run_skill_install, run_skill_print
 else:
     from .agent import agent_message
     from . import service
     from .config_wizard import run_config_wizard
     from .doctor import run_doctor
     from .setup_flow import run_setup
+    from .skill_install import run_skill_doctor, run_skill_install, run_skill_print
 
 
 ROOT = Path(os.environ.get("PATCHBAY_ROOT") or Path.cwd())
@@ -108,6 +110,18 @@ def patchbay_setup(
         probe_mcp=probe_mcp,
         create_config=create_config,
     )
+
+
+def patchbay_skill_install(host: str = "codex", skill_path: str = "", dry_run: bool = False) -> dict[str, Any]:
+    return run_skill_install(ROOT, host=host, path=skill_path or None, dry_run=dry_run)
+
+
+def patchbay_skill_print(host: str = "codex") -> dict[str, Any]:
+    return run_skill_print(ROOT, host=host)
+
+
+def patchbay_skill_doctor(host: str = "codex", skill_path: str = "") -> dict[str, Any]:
+    return run_skill_doctor(ROOT, host=host, path=skill_path or None)
 
 
 def patchbay_events(run_id: str, since: int = 0, phase: str = "") -> dict[str, Any]:
@@ -215,6 +229,9 @@ CANONICAL_TOOLS: dict[str, Callable[..., Any]] = {
     "patchbay_doctor": patchbay_doctor,
     "patchbay_setup": patchbay_setup,
     "patchbay_install": patchbay_setup,
+    "patchbay_skill_install": patchbay_skill_install,
+    "patchbay_skill_print": patchbay_skill_print,
+    "patchbay_skill_doctor": patchbay_skill_doctor,
     "patchbay_events": patchbay_events,
     "patchbay_trace": patchbay_trace,
     "patchbay_runs": patchbay_runs,
@@ -244,6 +261,9 @@ LEGACY_TOOLS: dict[str, Callable[..., Any]] = {
     "ai_flow_doctor": patchbay_doctor,
     "ai_flow_setup": patchbay_setup,
     "ai_flow_install": patchbay_setup,
+    "ai_flow_skill_install": patchbay_skill_install,
+    "ai_flow_skill_print": patchbay_skill_print,
+    "ai_flow_skill_doctor": patchbay_skill_doctor,
     "ai_flow_events": patchbay_events,
     "ai_flow_trace": patchbay_trace,
     "ai_flow_runs": patchbay_runs,
@@ -298,6 +318,25 @@ def _tool_schema(name: str) -> dict[str, Any]:
     elif name.endswith("_metrics"):
         properties = {"run_id": {"type": "string"}}
         required = ["run_id"]
+    elif name.endswith("_skill_install"):
+        properties = {
+            "host": {"type": "string", "description": "Skill host: codex."},
+            "skill_path": {"type": "string", "description": "Optional Codex skills root to install into."},
+            "dry_run": {"type": "boolean", "description": "Preview Skill installation without copying files."},
+        }
+        required = []
+    elif name.endswith("_skill_print"):
+        properties = {"host": {"type": "string", "description": "Skill host: codex."}}
+        required = []
+    elif name.endswith("_skill_doctor"):
+        properties = {
+            "host": {"type": "string", "description": "Skill host: codex."},
+            "skill_path": {
+                "type": "string",
+                "description": "Optional Codex skills root to inspect.",
+            },
+        }
+        required = []
     elif name.endswith("_doctor"):
         properties = {
             "include_mcp": {
@@ -398,6 +437,9 @@ def _tool_schema(name: str) -> dict[str, Any]:
         "patchbay_doctor": "Run unified read-only readiness checks for CLI shims, config, MCP reachability/tools, bundled Skill source, and Skill installation state.",
         "patchbay_setup": "Initialize Patchbay project files, create local config, install the Codex Skill, return MCP registration guidance, and include a doctor summary.",
         "patchbay_install": "Alias for patchbay_setup: initialize Patchbay project files, create local config, install the Codex Skill, register MCP when possible, and include a doctor summary.",
+        "patchbay_skill_install": "Install only the bundled Patchbay Codex Skill into a selected skills root.",
+        "patchbay_skill_print": "Return the bundled Patchbay Skill files for inspection or external installation.",
+        "patchbay_skill_doctor": "Validate the bundled Patchbay Skill source and whether it is installed in the selected Codex skills root.",
         "patchbay_events": "Return the append-only event log (JSONL stream) for a run so any host can see what every phase/agent did.",
         "patchbay_trace": "Return the structured trace log (JSONL stream) for lower-level agent/tool activity with redacted raw payloads.",
         "patchbay_runs": "List recent Patchbay runs.",

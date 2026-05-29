@@ -40,7 +40,7 @@ Legacy `[models]`, `[commands]`, and `[writer].provider` keys remain supported a
 ## What It Provides
 
 - CLI workflow: `setup`/`install`, `doctor`, `agent message`, `web`, `plan`, `approve`, `write`, `test`, `review`, `fix`, `status`, `context`, `metrics`, `trace`, `diff`, `apply`, `cleanup`.
-- MCP tools: `patchbay_agent`, `patchbay_setup`, `patchbay_install`, `patchbay_plan`, `patchbay_approve`, `patchbay_write`, `patchbay_test`, `patchbay_review`, `patchbay_fix`, `patchbay_status`, `patchbay_context`, `patchbay_metrics`, `patchbay_doctor`, `patchbay_events`, `patchbay_trace`, `patchbay_runs`, `patchbay_artifact`, `patchbay_config_show`, `patchbay_config_phase_set`, `patchbay_config_command_set`, `patchbay_config_test_add`, `patchbay_config_profile_apply`, `patchbay_config_profile_show`, `patchbay_config_provider_add_cli`, `patchbay_diff`, `patchbay_apply`.
+- MCP tools: `patchbay_agent`, `patchbay_setup`, `patchbay_install`, `patchbay_plan`, `patchbay_approve`, `patchbay_write`, `patchbay_test`, `patchbay_review`, `patchbay_fix`, `patchbay_status`, `patchbay_context`, `patchbay_metrics`, `patchbay_doctor`, `patchbay_skill_install`, `patchbay_skill_print`, `patchbay_skill_doctor`, `patchbay_events`, `patchbay_trace`, `patchbay_runs`, `patchbay_artifact`, `patchbay_config_show`, `patchbay_config_phase_set`, `patchbay_config_command_set`, `patchbay_config_test_add`, `patchbay_config_profile_apply`, `patchbay_config_profile_show`, `patchbay_config_provider_add_cli`, `patchbay_diff`, `patchbay_apply`.
 - Legacy MCP aliases: `ai_flow_*`.
 - Isolated git worktrees by default.
 - File-backed run artifacts under `.ai/runs/<run_id>/`.
@@ -55,14 +55,21 @@ Legacy `[models]`, `[commands]`, and `[writer].provider` keys remain supported a
 
 ```bash
 uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay setup --host codex
-uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay-mcp --root /path/to/repo
+uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay doctor
+uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay web --port 8765
 ```
+
+Then open `http://127.0.0.1:8765`. Use `patchbay-mcp --root /path/to/repo` only when a host asks for a raw stdio server command.
 
 ### From a local checkout
 
 ```bash
 python scripts/patchbay setup --host codex
+python scripts/patchbay doctor
+python scripts/patchbay web --port 8765
 ```
+
+Then open `http://127.0.0.1:8765`.
 
 ### Interactive configuration
 
@@ -115,6 +122,8 @@ Background agent turns write `JOB.json`, append `agent` events, and preserve the
 
 The web workbench exposes the same conversational flow and has a diagnostics drawer. Its Readiness tab calls the unified doctor checks without MCP stdio probing, so setup gaps are visible from the desktop UI without starting extra child processes. It also shows the active write/fix routing profile and lets non-blocking recommendations such as economy routing be applied from the same panel through the local Agent path.
 
+After starting `patchbay web --port 8765`, open `http://127.0.0.1:8765`.
+
 Mock mode can validate the workflow without model credentials:
 
 ```bash
@@ -140,7 +149,9 @@ codex mcp add patchbay -- python scripts/patchbay_mcp_server.py
 
 Use the equivalent MCP server registration command for other MCP hosts. Run `patchbay doctor` for full readiness checks or `patchbay mcp doctor` to focus only on server reachability.
 
-`patchbay doctor` is read-only and reports project initialization, phase config validity, CLI shim/installed command availability, MCP reachability/tools, bundled Skill source, and whether the Codex Skill is installed. `patchbay mcp doctor` starts the stdio MCP server, sends `initialize` and `tools/list`, and verifies required tools including `patchbay_agent`, `patchbay_plan`, `patchbay_context`, `patchbay_metrics`, `patchbay_doctor`, and `patchbay_install`. For Codex, Claude Code, and Gemini, `mcp install` now tries to register automatically and falls back to the command text if the host CLI is unavailable; Claude Desktop writes its JSON config in place.
+`patchbay doctor` is read-only and reports project initialization, phase config validity, CLI shim/installed command availability, MCP reachability/tools, bundled Skill source, and whether the Codex Skill is installed. `patchbay mcp doctor` starts the stdio MCP server, sends `initialize` and `tools/list`, and verifies required tools including `patchbay_agent`, `patchbay_plan`, `patchbay_context`, `patchbay_metrics`, `patchbay_doctor`, `patchbay_install`, `patchbay_skill_install`, and `patchbay_skill_doctor`. For Codex, Claude Code, and Gemini, `mcp install` now tries to register automatically and falls back to the command text if the host CLI is unavailable; Claude Desktop writes its JSON config in place.
+
+After MCP registration, restart or reload the target host if it caches tool lists. Verify with `patchbay mcp doctor --json`, or from the host by checking that `patchbay_agent` is visible.
 
 ## Codex Skill Install
 
@@ -148,8 +159,11 @@ Patchbay also ships as a Codex Skill. The Skill teaches Codex when to invoke the
 
 ```bash
 patchbay skill install codex
+patchbay skill doctor codex
 patchbay skill print codex --json
 ```
+
+By default the Skill installs to `$CODEX_HOME/skills` or `~/.codex/skills`. It triggers on phrases such as "走多模型流程" and "multi-agent workflow"; MCP tools still need MCP registration.
 
 ## Configuration
 

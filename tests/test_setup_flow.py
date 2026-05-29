@@ -47,6 +47,7 @@ class SetupFlowTest(unittest.TestCase):
         result = run_setup(self.repo, skill_path=self.skills, skip_mcp=True)
 
         self.assertTrue(result["ok"])
+        self.assertTrue(result["applied"])
         self.assertTrue((self.repo / "AGENTS.md").exists())
         self.assertTrue((self.repo / ".ai" / "patchbay.example.toml").exists())
         self.assertTrue((self.repo / ".ai" / "patchbay.toml").exists())
@@ -63,11 +64,25 @@ class SetupFlowTest(unittest.TestCase):
 
         self.assertFalse(result["ok"])
         self.assertTrue(result["dry_run"])
+        self.assertFalse(result["applied"])
         self.assertTrue(result["config"]["would_create"])
         self.assertFalse((self.repo / "AGENTS.md").exists())
         self.assertFalse((self.repo / ".ai" / "patchbay.toml").exists())
         self.assertFalse((self.skills / "patchbay").exists())
         self.assertEqual(result["setup_host"], "codex")
+
+    def test_setup_dry_run_on_ready_repo_reports_preflight_ok_without_applying(self) -> None:
+        from scripts.ai_flow.setup_flow import run_setup
+
+        run_setup(self.repo, skill_path=self.skills, skip_mcp=True)
+
+        result = run_setup(self.repo, skill_path=self.skills, skip_mcp=True, dry_run=True)
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["dry_run"])
+        self.assertFalse(result["applied"])
+        self.assertTrue(result["doctor"]["ok"])
+        self.assertTrue((self.skills / "patchbay" / "SKILL.md").exists())
 
     def test_cli_setup_json(self) -> None:
         completed = run(
@@ -207,6 +222,57 @@ model = "mock"
                 self.assertTrue((skill_path / "patchbay" / "SKILL.md").exists())
         finally:
             mcp_server.ROOT = original_root
+
+    def test_mcp_skill_tools_install_and_verify_bundle(self) -> None:
+        from scripts.ai_flow import mcp_server
+
+        original_root = mcp_server.ROOT
+        skill_path = self.tmp / "mcp-skill-root"
+        try:
+            mcp_server.ROOT = self.repo
+            before_response = mcp_server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "patchbay_skill_doctor",
+                        "arguments": {"skill_path": str(skill_path)},
+                    },
+                }
+            )
+            install_response = mcp_server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "patchbay_skill_install",
+                        "arguments": {"skill_path": str(skill_path)},
+                    },
+                }
+            )
+            after_response = mcp_server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 3,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "patchbay_skill_doctor",
+                        "arguments": {"skill_path": str(skill_path)},
+                    },
+                }
+            )
+        finally:
+            mcp_server.ROOT = original_root
+
+        before = json.loads(before_response["result"]["content"][0]["text"])
+        installed = json.loads(install_response["result"]["content"][0]["text"])
+        after = json.loads(after_response["result"]["content"][0]["text"])
+        self.assertFalse(before["ready"])
+        self.assertTrue(installed["installed"])
+        self.assertTrue(after["ready"])
+        self.assertTrue((skill_path / "patchbay" / "SKILL.md").exists())
 
     def test_mcp_config_profile_apply_economy(self) -> None:
         from scripts.ai_flow import mcp_server

@@ -288,6 +288,8 @@ def _probe_mcp_server(root: Path) -> dict[str, Any]:
         "patchbay_metrics",
         "patchbay_setup",
         "patchbay_install",
+        "patchbay_skill_install",
+        "patchbay_skill_doctor",
         "patchbay_events",
         "patchbay_apply",
         "patchbay_doctor",

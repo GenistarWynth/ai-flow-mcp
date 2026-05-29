@@ -38,7 +38,7 @@ timeout = 900
 ## 功能概览
 
 - CLI 流程：`setup`/`install`、`doctor`、`agent message`、`web`、`plan`、`approve`、`write`、`test`、`review`、`fix`、`status`、`context`、`metrics`、`trace`、`diff`、`apply`、`cleanup`。
-- MCP 工具：`patchbay_agent`、`patchbay_setup`、`patchbay_install`、`patchbay_plan`、`patchbay_approve`、`patchbay_write`、`patchbay_test`、`patchbay_review`、`patchbay_fix`、`patchbay_status`、`patchbay_context`、`patchbay_metrics`、`patchbay_doctor`、`patchbay_events`、`patchbay_trace`、`patchbay_runs`、`patchbay_artifact`、`patchbay_config_show`、`patchbay_config_phase_set`、`patchbay_config_command_set`、`patchbay_config_test_add`、`patchbay_config_profile_apply`、`patchbay_config_profile_show`、`patchbay_config_provider_add_cli`、`patchbay_diff`、`patchbay_apply`。
+- MCP 工具：`patchbay_agent`、`patchbay_setup`、`patchbay_install`、`patchbay_plan`、`patchbay_approve`、`patchbay_write`、`patchbay_test`、`patchbay_review`、`patchbay_fix`、`patchbay_status`、`patchbay_context`、`patchbay_metrics`、`patchbay_doctor`、`patchbay_skill_install`、`patchbay_skill_print`、`patchbay_skill_doctor`、`patchbay_events`、`patchbay_trace`、`patchbay_runs`、`patchbay_artifact`、`patchbay_config_show`、`patchbay_config_phase_set`、`patchbay_config_command_set`、`patchbay_config_test_add`、`patchbay_config_profile_apply`、`patchbay_config_profile_show`、`patchbay_config_provider_add_cli`、`patchbay_diff`、`patchbay_apply`。
 - 兼容旧 MCP 工具名：`ai_flow_*`。
 - 默认使用隔离 git worktree，避免直接污染当前工作区。
 - 每次运行都会在 `.ai/runs/<run_id>/` 下落盘计划、diff、日志和状态。
@@ -52,14 +52,21 @@ timeout = 900
 
 ```bash
 uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay setup --host codex
-uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay-mcp --root /path/to/repo
+uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay doctor
+uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay web --port 8765
 ```
+
+然后打开 `http://127.0.0.1:8765`。只有当 MCP host 要求填写原始 stdio server 命令时，才使用 `patchbay-mcp --root /path/to/repo`。
 
 ### 本地检出
 
 ```bash
 python scripts/patchbay setup --host codex
+python scripts/patchbay doctor
+python scripts/patchbay web --port 8765
 ```
+
+然后打开 `http://127.0.0.1:8765`。
 
 Windows 也可以使用：
 
@@ -117,6 +124,8 @@ python scripts/patchbay agent message continue --run-id <run_id> --background --
 
 Web workbench 使用同一套对话式流程，并在诊断抽屉里提供“就绪”页。该页面调用统一 doctor 检查但默认不做 MCP stdio 探测，因此可以在桌面 UI 中看到安装与配置缺口，同时避免打开页面时额外启动子进程。该页面还会显示当前 write/fix 路由画像，经济路由这类非阻塞建议可以直接在同一面板里通过本地 Agent 操作应用。
 
+启动 `patchbay web --port 8765` 后，打开 `http://127.0.0.1:8765`。
+
 查看状态和 diff：
 
 ```bash
@@ -171,7 +180,9 @@ codex mcp add patchbay -- python scripts/patchbay_mcp_server.py
 
 Claude Desktop、Claude Code、Gemini CLI 或其他 MCP host 使用各自等价的 MCP server 注册方式即可。运行 `patchbay doctor` 做完整就绪检查，或运行 `patchbay mcp doctor` 只验证服务器是否可达。
 
-`patchbay doctor` 是只读检查，会汇总项目初始化、阶段配置、CLI shim/已安装命令、MCP 可达性和工具列表、内置 Skill 源、Codex Skill 安装状态。`patchbay mcp doctor` 会真正启动 stdio MCP server，发送 `initialize` 和 `tools/list`，并检查 `patchbay_agent`、`patchbay_plan`、`patchbay_context`、`patchbay_metrics`、`patchbay_doctor`、`patchbay_install` 等核心工具是否存在。Codex、Claude Code、Gemini 的 install 命令会先尝试自动注册，若 host CLI 不可用则回退为可复制的注册命令；Claude Desktop 会直接写入 JSON 配置。
+`patchbay doctor` 是只读检查，会汇总项目初始化、阶段配置、CLI shim/已安装命令、MCP 可达性和工具列表、内置 Skill 源、Codex Skill 安装状态。`patchbay mcp doctor` 会真正启动 stdio MCP server，发送 `initialize` 和 `tools/list`，并检查 `patchbay_agent`、`patchbay_plan`、`patchbay_context`、`patchbay_metrics`、`patchbay_doctor`、`patchbay_install`、`patchbay_skill_install`、`patchbay_skill_doctor` 等核心工具是否存在。Codex、Claude Code、Gemini 的 install 命令会先尝试自动注册，若 host CLI 不可用则回退为可复制的注册命令；Claude Desktop 会直接写入 JSON 配置。
+
+MCP 注册后，如果目标 host 会缓存工具列表，请重启或 reload 对应 host。可以运行 `patchbay mcp doctor --json` 验证 stdio server，也可以在 host 中确认 `patchbay_agent` 已可见。
 
 安装后可用的 MCP 工具包括：
 
@@ -208,8 +219,11 @@ Patchbay 同时提供 Codex Skill。Skill 负责让 Codex 在合适场景遵守 
 
 ```bash
 patchbay skill install codex
+patchbay skill doctor codex
 patchbay skill print codex --json
 ```
+
+默认安装位置是 `$CODEX_HOME/skills` 或 `~/.codex/skills`。触发语包括“走多模型流程”和“multi-agent workflow”；MCP 工具仍需要单独注册。
 
 MCP 只是调用 `scripts.ai_flow.service` 中的同一套业务逻辑，不复制另一份流程。
 

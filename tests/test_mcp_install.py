@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import tempfile
 import unittest
 import unittest.mock
 from pathlib import Path
 from textwrap import dedent
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 class McpInstallTest(unittest.TestCase):
@@ -27,6 +31,8 @@ class McpInstallTest(unittest.TestCase):
                     {"name": "patchbay_metrics"},
                     {"name": "patchbay_setup"},
                     {"name": "patchbay_install"},
+                    {"name": "patchbay_skill_install"},
+                    {"name": "patchbay_skill_doctor"},
                     {"name": "patchbay_doctor"},
                     {"name": "patchbay_events"},
                     {"name": "patchbay_apply"},
@@ -51,7 +57,6 @@ class McpInstallTest(unittest.TestCase):
             encoding="utf-8",
         )
 
-        import subprocess
         subprocess.run(["git", "init"], cwd=str(self.tmp), capture_output=True, check=True)
         subprocess.run(["git", "config", "user.email", "test@test"], cwd=str(self.tmp), capture_output=True, check=True)
         subprocess.run(["git", "config", "user.name", "test"], cwd=str(self.tmp), capture_output=True, check=True)
@@ -206,6 +211,34 @@ class McpInstallTest(unittest.TestCase):
         from scripts.ai_flow.mcp_install import run_mcp_doctor
         result = run_mcp_doctor(self.tmp)
         self.assertTrue(result["server_command"].endswith(f"--root {self.tmp}"))
+
+    def test_real_mcp_server_script_lists_install_and_skill_tools(self) -> None:
+        server = PROJECT_ROOT / "scripts" / "patchbay_mcp_server.py"
+        messages = [
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+        ]
+        completed = subprocess.run(
+            ["python", str(server), "--root", str(self.tmp)],
+            cwd=str(PROJECT_ROOT),
+            input="\n".join(json.dumps(message) for message in messages) + "\n",
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        responses = [json.loads(line) for line in completed.stdout.splitlines() if line.strip()]
+        tools_response = next(item for item in responses if item.get("id") == 2)
+        tool_names = {tool["name"] for tool in tools_response["result"]["tools"]}
+        self.assertIn("patchbay_agent", tool_names)
+        self.assertIn("patchbay_setup", tool_names)
+        self.assertIn("patchbay_skill_install", tool_names)
+        self.assertIn("patchbay_skill_doctor", tool_names)
 
 
 if __name__ == "__main__":

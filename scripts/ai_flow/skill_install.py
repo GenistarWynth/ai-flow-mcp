@@ -76,17 +76,28 @@ def run_skill_doctor(cwd: Path, host: str = "codex", *, path: str | Path | None 
         for file_name in ("SKILL.md", "agents/openai.yaml", "references/install.md")
         if file_name not in source_files
     ]
+    source_ok = bool(source) and not missing_source_files
+    installed = (destination / "SKILL.md").exists()
+    next_actions: list[str] = []
+    if not source_ok:
+        next_actions.append("Reinstall Patchbay; the bundled Codex Skill source is missing or incomplete.")
+    elif not installed:
+        next_actions.append("Run `patchbay skill install codex` so Codex can discover the Patchbay Skill.")
     return {
         "host": "codex",
-        "ok": bool(source) and not missing_source_files,
+        "ok": source_ok,
+        "ready": source_ok and installed,
+        "status": "installed" if source_ok and installed else "missing_source" if not source_ok else "not_installed",
         "source": str(source) if source else "",
         "source_exists": bool(source),
         "source_file_count": len(source_files),
         "missing_source_files": missing_source_files,
         "skills_root": str(skills_root),
         "destination": str(destination),
-        "installed": (destination / "SKILL.md").exists(),
+        "installed": installed,
         "install_command": "patchbay skill install codex",
+        "doctor_command": "patchbay skill doctor codex",
+        "next_actions": next_actions,
     }
 
 

@@ -14,7 +14,7 @@ from .doctor import run_doctor
 from .errors import AiFlowError
 from .mcp_install import run_mcp_install, run_mcp_doctor
 from .setup_flow import run_setup
-from .skill_install import run_skill_install, run_skill_print
+from .skill_install import run_skill_doctor, run_skill_install, run_skill_print
 from .web_server import serve as serve_web
 
 
@@ -80,8 +80,10 @@ def skill_dispatch(cwd: Path, args: argparse.Namespace) -> Any:
         return run_skill_install(cwd, host=args.host, path=getattr(args, "path", "") or None, dry_run=bool(getattr(args, "dry_run", False)))
     if skill_cmd == "print":
         return run_skill_print(cwd, host=args.host)
+    if skill_cmd == "doctor":
+        return run_skill_doctor(cwd, host=args.host, path=getattr(args, "path", "") or None)
     raise AiFlowError(
-        "Missing skill subcommand. Try: patchbay skill install codex",
+        "Missing skill subcommand. Try: patchbay skill install codex  or  patchbay skill doctor codex",
         stage="skill",
     )
 
@@ -301,7 +303,7 @@ def build_parser() -> argparse.ArgumentParser:
     mcp_doctor.add_argument("--root", default="", help="Repository root to inspect.")
     _add_json(mcp_doctor)
 
-    skill = sub.add_parser("skill", help="Install or print the Patchbay Codex Skill bundle.")
+    skill = sub.add_parser("skill", help="Install, inspect, or validate the Patchbay Codex Skill bundle.")
     skill_sub = skill.add_subparsers(dest="skill_command")
     skill_install = skill_sub.add_parser("install", help="Install Patchbay as a Codex Skill.")
     skill_install.add_argument("host", nargs="?", default="codex", help="Skill host: codex.")
@@ -311,6 +313,10 @@ def build_parser() -> argparse.ArgumentParser:
     skill_print = skill_sub.add_parser("print", help="Print the Patchbay Skill files for inspection.")
     skill_print.add_argument("host", nargs="?", default="codex", help="Skill host: codex.")
     _add_json(skill_print)
+    skill_doctor = skill_sub.add_parser("doctor", help="Validate bundled and installed Patchbay Skill state.")
+    skill_doctor.add_argument("host", nargs="?", default="codex", help="Skill host: codex.")
+    skill_doctor.add_argument("--path", default="", help="Destination skills root; defaults to $CODEX_HOME/skills or ~/.codex/skills.")
+    _add_json(skill_doctor)
 
     diff = sub.add_parser("diff", help="Print run final diff.")
     diff.add_argument("run_id")

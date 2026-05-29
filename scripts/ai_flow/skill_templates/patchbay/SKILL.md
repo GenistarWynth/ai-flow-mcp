@@ -56,6 +56,7 @@ If `patchbay_*` MCP tools are available, prefer them over shell commands:
 - On failed runs, inspect `failure_recovery` from `patchbay_context`, `patchbay_status`, or `patchbay_agent` before retrying; it lists the failed stage, safe inspection actions, suggested next action, and priority artifacts.
 - `patchbay_config_profile_apply` with `profile: "economy"` to route high-volume write/fix work to Reasonix/DeepSeek while leaving plan/review choices intact.
 - `patchbay_doctor` for read-only setup diagnostics across config, MCP tools, CLI entry points, and Skill installation.
+- `patchbay_skill_install`, `patchbay_skill_doctor`, and `patchbay_skill_print` for standalone Codex Skill installation, validation, and inspection.
 - `patchbay_events` and `patchbay_trace` for focused diagnostics.
 
 Legacy `ai_flow_*` aliases are compatible, but use `patchbay_*` names for new work.

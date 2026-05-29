@@ -7,7 +7,9 @@ Patchbay 是一个本地补丁编排器：任意支持 MCP 的客户端都可以
 ```bash
 # npx 风格（推荐）
 uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay setup --host codex
-uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay-mcp --root /path/to/repo
+uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay doctor
+uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay web --port 8765
+# 打开 http://127.0.0.1:8765
 
 # 一条命令初始化本地项目、配置、Skill，并尝试注册 MCP
 patchbay setup --host codex --json
@@ -30,9 +32,12 @@ patchbay mcp doctor                  # 只检查 stdio server 和核心工具
 
 # Codex Skill
 patchbay skill install codex
+patchbay skill doctor codex
+patchbay skill print codex --json
 
 # 本地对话式 workbench
 patchbay web --port 8765
+# 打开 http://127.0.0.1:8765
 patchbay agent message "..." --json
 ```
 
@@ -115,6 +120,7 @@ scripts/patchbay agent message readiness --json
 scripts/patchbay agent message "..." --background --json
 scripts/patchbay agent message continue --run-id <run_id> --background --json
 scripts/patchbay web --port 8765
+# 打开 http://127.0.0.1:8765
 scripts/patchbay approve <run_id>
 scripts/patchbay write <run_id>
 scripts/patchbay test <run_id>
@@ -130,7 +136,7 @@ scripts/patchbay cleanup <run_id>
 
 `--background` is intended for the conversational agent path: planning and approve/continue turns return a pollable `run_id`, write `JOB.json`, and surface progress through `patchbay_status`, `patchbay_context`, and `patchbay_events`. Destructive apply remains foreground-only and still requires explicit confirmation. Explicit local setup prompts such as `patchbay setup`, `patchbay setup for claude-desktop`, `install patchbay for gemini`, or `patchbay install` run the one-command setup flow without creating a model run. If the user sends `continue`, `approve`, `apply`, `diff`, or `artifact` without a `run_id`, Patchbay returns local guidance instead of starting a new run; when a recent run exists, the payload includes a latest-run reference that clients can open before showing any gated action. For view-only prompts such as `diff`, `events`, `logs`, or `artifact`, `requested_view` points desktop clients at the matching diagnostics tab.
 
-Web workbench 使用同一套对话式 Agent 流程。`patchbay_agent` 和 `scripts/patchbay agent message "patchbay setup" --json` / `status --json` / `readiness --json` / `"apply economy profile" --json` 可直接返回 setup 结果、最近运行、统一 doctor 报告或经济路由配置结果，不创建模型 run；`continue`、`approve`、`apply`、`diff`、`artifact` 这类没有 `run_id` 的消息会返回本地提示。诊断抽屉里的“就绪”页也会调用统一 doctor 检查项目初始化、配置、CLI 入口和 Skill 状态，展示当前 write/fix 路由，并能直接应用经济路由建议；“状态”页的效率指标会展示 `routing_evidence`，区分“已配置 economy”和“本次运行已实际观察到 economy provider 事件”。运行失败时，线程里的失败恢复卡片会读取 `failure_recovery`，展示建议动作和应优先检查的产物，但不会自动执行任何阶段动作。Web 默认跳过 MCP stdio 探测，避免打开页面时启动额外子进程，需要完整 MCP 检查时再运行 `patchbay doctor --json` 或 `patchbay mcp doctor`。
+Web workbench 使用同一套对话式 Agent 流程。`patchbay_agent` 和 `scripts/patchbay agent message "patchbay setup" --json` / `status --json` / `readiness --json` / `"apply economy profile" --json` 可直接返回 setup 结果、最近运行、统一 doctor 报告或经济路由配置结果，不创建模型 run；`continue`、`approve`、`apply`、`diff`、`artifact` 这类没有 `run_id` 的消息会返回本地提示。诊断抽屉里的“就绪”页也会调用统一 doctor 检查项目初始化、配置、CLI 入口和 Skill 状态，展示当前 write/fix 路由，并能直接应用经济路由建议；“状态”页的效率指标会展示 `routing_evidence`，区分“已配置 economy”和“本次运行已实际观察到 economy provider 事件”。运行失败时，线程里的失败恢复卡片会读取 `failure_recovery`，展示建议动作和应优先检查的产物，但不会自动执行任何阶段动作。Web 默认跳过 MCP stdio 探测，避免打开页面时启动额外子进程，需要完整 MCP 检查时再运行 `patchbay doctor --json` 或 `patchbay mcp doctor`。启动 `patchbay web --port 8765` 后打开 `http://127.0.0.1:8765`。
 
 mock 模式：
 
@@ -159,7 +165,7 @@ patchbay mcp install gemini         # Gemini CLI
 patchbay mcp doctor                 # 实际启动 server 并验证 tools/list
 ```
 
-优先运行 `patchbay doctor --json` 获取完整只读诊断：项目初始化、配置解析、CLI 入口、MCP tools/list、Skill 源和 Codex Skill 安装状态都会汇总到一个结果里。需要聚焦 MCP 时再运行 `patchbay mcp doctor`。
+优先运行 `patchbay doctor --json` 获取完整只读诊断：项目初始化、配置解析、CLI 入口、MCP tools/list、Skill 源和 Codex Skill 安装状态都会汇总到一个结果里。需要聚焦 MCP 时再运行 `patchbay mcp doctor`。MCP 注册后如果 host 会缓存工具列表，请重启或 reload 该 host；随后运行 `patchbay mcp doctor --json`，或在 host 中确认 `patchbay_agent` 已可见。
 
 Codex、Claude Code、Gemini 当前会打印注册命令；Claude Desktop 会直接写配置。
 
@@ -179,7 +185,7 @@ claude mcp add patchbay -- python scripts/patchbay_mcp_server.py
 # Gemini CLI: 使用对应的 MCP server 注册方式
 ```
 
-MCP 只调用已有服务函数，不复制业务逻辑。工具名使用 `patchbay_*`（包括 `patchbay_agent`、`patchbay_setup`、`patchbay_install`、`patchbay_context`、`patchbay_metrics`、`patchbay_doctor`、`patchbay_events`、`patchbay_runs`、`patchbay_artifact` 和 `patchbay_config_*` 配置工具），旧的 `ai_flow_*` 作为兼容别名保留。无论通过哪个 host 调用，流程和门禁保持一致。
+MCP 只调用已有服务函数，不复制业务逻辑。工具名使用 `patchbay_*`（包括 `patchbay_agent`、`patchbay_setup`、`patchbay_install`、`patchbay_skill_install`、`patchbay_skill_print`、`patchbay_skill_doctor`、`patchbay_context`、`patchbay_metrics`、`patchbay_doctor`、`patchbay_events`、`patchbay_runs`、`patchbay_artifact` 和 `patchbay_config_*` 配置工具），旧的 `ai_flow_*` 作为兼容别名保留。无论通过哪个 host 调用，流程和门禁保持一致。
 
 ## Codex Skill
 
@@ -187,10 +193,11 @@ Patchbay 同时提供 Codex Skill 分发形态：
 
 ```bash
 patchbay skill install codex
+patchbay skill doctor codex
 patchbay skill print codex --json
 ```
 
-Skill 负责让 Codex 在“走多模型流程”/“multi-agent workflow”等场景自动遵守 Patchbay 流程；MCP server 负责提供工具调用。
+Skill 默认安装到 `$CODEX_HOME/skills` 或 `~/.codex/skills`。它负责让 Codex 在“走多模型流程”/“multi-agent workflow”等场景自动遵守 Patchbay 流程；MCP server 负责提供工具调用，因此仍需要单独注册 MCP。
 
 ## 故障排查
 

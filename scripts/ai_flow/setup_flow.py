@@ -48,8 +48,9 @@ def run_setup(
         if note:
             next_actions.append(note)
     return {
-        "ok": bool(doctor.get("ok")) and not dry_run,
+        "ok": bool(doctor.get("ok")),
         "dry_run": dry_run,
+        "applied": not dry_run,
         "setup_host": host,
         "root": str(repo_root),
         "init": init,
