@@ -1000,10 +1000,10 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }
   };
 
-  const openReadinessAction = async () => {
+  const openReadinessAction = async (force = false) => {
     setDiagnosticsOpen(true);
     setActiveTab("Readiness");
-    if (doctor) return;
+    if (doctor && !force) return;
     try {
       setDoctor(await client.getDoctor({ include_mcp: false }));
     } catch (err) {
@@ -1020,6 +1020,21 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     if (action.kind === "diagnostic_tab" && action.tab && diagnosticTabs.has(action.tab as TabName)) {
       setDiagnosticsOpen(true);
       setActiveTab(action.tab as TabName);
+    }
+  };
+
+  const runDoctorAction = async (action: AgentHealthAction) => {
+    if (action.safe === false) return;
+    if (action.id === "run_setup" || action.message === "patchbay setup") {
+      await runSetupAction();
+      return;
+    }
+    if (action.id === "apply_economy_profile" || action.message === "apply economy profile") {
+      await applyEconomyProfileAction();
+      return;
+    }
+    if (action.id === "refresh_readiness" || action.message === "readiness") {
+      await openReadinessAction(true);
     }
   };
 
@@ -1328,6 +1343,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
               doctor={doctor}
               onRunSetup={runSetupAction}
               onApplyEconomy={applyEconomyProfileAction}
+              onDoctorAction={(action) => void runDoctorAction(action)}
               onHealthAction={(action) => void runHealthAction(action)}
               setupBusy={setupInFlight}
               profileBusy={profileInFlight}
@@ -1775,22 +1791,59 @@ function PhaseStrategyMap({
   );
 }
 
+function DoctorActionButtons({
+  actions,
+  onAction,
+  setupBusy,
+  profileBusy
+}: {
+  actions?: AgentHealthAction[] | null;
+  onAction?: (action: AgentHealthAction) => void;
+  setupBusy?: boolean;
+  profileBusy?: boolean;
+}) {
+  const visible = actions ?? [];
+  if (!visible.length) return null;
+  return (
+    <div className="doctor-action-buttons" aria-label="Readiness actions">
+      {visible.map((action) =>
+        action.kind === "command" ? (
+          <code key={action.id || action.label}>{action.command}</code>
+        ) : (
+          <button
+            type="button"
+            key={action.id || action.label}
+            onClick={() => onAction?.(action)}
+            disabled={!onAction || setupBusy || (action.id === "apply_economy_profile" && profileBusy)}
+          >
+            {action.id === "apply_economy_profile" ? <Play size={13} /> : action.id === "refresh_readiness" ? <ShieldCheck size={13} /> : <Settings size={13} />}
+            {action.label}
+          </button>
+        )
+      )}
+    </div>
+  );
+}
+
 function DoctorPanel({
   report,
   onRunSetup,
   onApplyEconomy,
+  onDoctorAction,
   setupBusy,
   profileBusy
 }: {
   report?: DoctorReport | null;
   onRunSetup?: (host?: SetupHostOption) => void;
   onApplyEconomy?: () => void;
+  onDoctorAction?: (action: AgentHealthAction) => void;
   setupBusy?: boolean;
   profileBusy?: boolean;
 }) {
   const checks = Object.entries(report?.checks ?? {});
   const profile = doctorProfileStatus(report);
   const economy = profile?.economy;
+  const doctorActions = report?.actions ?? [];
   return (
     <div className="doctor-panel">
       {onRunSetup ? (
@@ -1809,6 +1862,12 @@ function DoctorPanel({
           <span>{report?.root ?? "正在读取 Patchbay doctor 结果"}</span>
         </div>
       </div>
+      {doctorActions.length ? (
+        <section>
+          <h2>Actions</h2>
+          <DoctorActionButtons actions={doctorActions} onAction={onDoctorAction} setupBusy={setupBusy} profileBusy={profileBusy} />
+        </section>
+      ) : null}
       {report?.next_actions?.length ? (
         <section>
           <h2>下一步</h2>
@@ -1900,6 +1959,7 @@ function DetailPanel({
   doctor,
   onRunSetup,
   onApplyEconomy,
+  onDoctorAction,
   onHealthAction,
   setupBusy,
   profileBusy,
@@ -1917,6 +1977,7 @@ function DetailPanel({
   doctor: DoctorReport | null;
   onRunSetup?: (host?: SetupHostOption) => void;
   onApplyEconomy?: () => void;
+  onDoctorAction?: (action: AgentHealthAction) => void;
   onHealthAction?: (action: AgentHealthAction) => void;
   setupBusy?: boolean;
   profileBusy?: boolean;
@@ -1984,6 +2045,7 @@ function DetailPanel({
         report={doctor}
         onRunSetup={onRunSetup}
         onApplyEconomy={onApplyEconomy}
+        onDoctorAction={onDoctorAction}
         setupBusy={setupBusy}
         profileBusy={profileBusy}
       />

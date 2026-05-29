@@ -117,13 +117,15 @@ def _mcp_check(root: Path, *, include_mcp: bool) -> dict[str, Any]:
 def _summarize(root: Path, checks: dict[str, Any]) -> dict[str, Any]:
     required_sections = ("repo", "config", "cli", "mcp", "skill")
     next_actions = _next_actions(checks)
+    recommendations = _recommendations(checks)
     ok = all(bool(checks.get(section, {}).get("ok")) for section in required_sections) and not next_actions
     return {
         "ok": ok,
         "root": str(root),
         "checks": checks,
         "next_actions": next_actions,
-        "recommendations": _recommendations(checks),
+        "recommendations": recommendations,
+        "actions": _structured_actions(checks, next_actions, recommendations),
     }
 
 
@@ -165,6 +167,110 @@ def _recommendations(checks: dict[str, Any]) -> list[str]:
             "Run `patchbay config profile apply economy` to route write/fix implementation work to Reasonix/DeepSeek."
         )
     return recommendations
+
+
+def _structured_actions(
+    checks: dict[str, Any],
+    next_actions: list[str],
+    recommendations: list[str],
+) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]] = []
+    repo = checks.get("repo", {})
+    config = checks.get("config", {})
+    cli = checks.get("cli", {})
+    mcp = checks.get("mcp", {})
+    skill = checks.get("skill", {})
+
+    if repo.get("missing_files") or not config.get("config_exists"):
+        actions.append(
+            {
+                "id": "run_setup",
+                "label": "Run setup",
+                "kind": "local_agent",
+                "message": "patchbay setup",
+                "safe": True,
+                "reason": "Initialize Patchbay project files, local config, Skill installation, MCP guidance, and a doctor summary.",
+            }
+        )
+    if skill.get("source_exists") and not skill.get("installed"):
+        actions.append(
+            {
+                "id": "install_skill",
+                "label": "Install Codex Skill",
+                "kind": "command",
+                "command": "patchbay skill install codex",
+                "safe": True,
+                "reason": "Install the bundled Patchbay Skill so Codex can discover the multi-agent workflow trigger.",
+            }
+        )
+    if mcp.get("skipped"):
+        actions.append(
+            {
+                "id": "probe_mcp",
+                "label": "Probe MCP",
+                "kind": "command",
+                "command": "patchbay mcp doctor --json",
+                "safe": True,
+                "reason": "Run the stdio MCP probe when the host needs full tool registration evidence.",
+            }
+        )
+    elif not mcp.get("ok"):
+        actions.append(
+            {
+                "id": "install_mcp",
+                "label": "Register MCP",
+                "kind": "command",
+                "command": "patchbay mcp install <host>",
+                "safe": True,
+                "reason": "Register the Patchbay MCP server with the target host after inspecting the doctor output.",
+            }
+        )
+    if not cli.get("ok"):
+        actions.append(
+            {
+                "id": "install_patchbay",
+                "label": "Install Patchbay",
+                "kind": "command",
+                "command": "uvx --from git+https://github.com/GenistarWynth/patchbay-mcp patchbay setup --host codex",
+                "safe": True,
+                "reason": "Install or launch Patchbay from the published package path.",
+            }
+        )
+    if any("config profile apply economy" in item or "Reasonix/DeepSeek" in item for item in recommendations):
+        actions.append(
+            {
+                "id": "apply_economy_profile",
+                "label": "Apply economy profile",
+                "kind": "local_agent",
+                "message": "apply economy profile",
+                "safe": True,
+                "reason": "Route high-volume write/fix implementation work to Reasonix/DeepSeek.",
+            }
+        )
+    if next_actions or recommendations:
+        actions.append(
+            {
+                "id": "refresh_readiness",
+                "label": "Refresh readiness",
+                "kind": "local_agent",
+                "message": "readiness",
+                "safe": True,
+                "reason": "Re-run read-only readiness checks after applying setup or routing changes.",
+            }
+        )
+    return _dedupe_actions(actions)
+
+
+def _dedupe_actions(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    result: list[dict[str, Any]] = []
+    for action in actions:
+        action_id = str(action.get("id") or "")
+        if action_id in seen:
+            continue
+        seen.add(action_id)
+        result.append(action)
+    return result
 
 
 def _git_root(root: Path) -> Path | None:

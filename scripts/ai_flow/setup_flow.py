@@ -47,6 +47,18 @@ def run_setup(
         note = str(mcp.get("note") or "").strip()
         if note:
             next_actions.append(note)
+    actions = list(doctor.get("actions") or [])
+    if isinstance(mcp, dict) and mcp.get("command") and not mcp.get("dry_run") and not mcp.get("executed"):
+        actions.append(
+            {
+                "id": "register_mcp",
+                "label": "Register MCP",
+                "kind": "command",
+                "command": str(mcp["command"]),
+                "safe": True,
+                "reason": "Register the MCP server command returned by setup.",
+            }
+        )
     return {
         "ok": bool(doctor.get("ok")),
         "dry_run": dry_run,
@@ -59,6 +71,7 @@ def run_setup(
         "mcp": mcp,
         "doctor": doctor,
         "next_actions": _dedupe(next_actions),
+        "actions": _dedupe_actions(actions),
     }
 
 
@@ -118,5 +131,17 @@ def _dedupe(items: list[str]) -> list[str]:
         if item in seen:
             continue
         seen.add(item)
+        result.append(item)
+    return result
+
+
+def _dedupe_actions(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    result: list[dict[str, Any]] = []
+    for item in items:
+        action_id = str(item.get("id") or "")
+        if action_id in seen:
+            continue
+        seen.add(action_id)
         result.append(item)
     return result

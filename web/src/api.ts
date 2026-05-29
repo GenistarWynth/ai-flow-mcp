@@ -180,6 +180,7 @@ export type DoctorReport = {
   checks?: Record<string, DoctorCheck>;
   next_actions?: string[];
   recommendations?: string[];
+  actions?: AgentHealthAction[];
 };
 
 export type ConfigProfileStatus = {
@@ -216,6 +217,7 @@ export type SetupResult = {
     [key: string]: unknown;
   };
   next_actions?: string[];
+  actions?: AgentHealthAction[];
   [key: string]: unknown;
 };
 
@@ -284,6 +286,7 @@ export type AgentHealthAction = {
   label: string;
   kind?: "local_agent" | "diagnostic_tab" | string;
   message?: string;
+  command?: string;
   tab?: RunReferenceView["tab"];
   safe?: boolean;
   reason?: string;
@@ -373,6 +376,7 @@ export type AgentResponse = {
     [key: string]: unknown;
   };
   capabilities?: { name: string; summary: string }[];
+  actions?: AgentHealthAction[];
   next_actions?: string[];
   recommendations?: string[];
   diff?: string | null;

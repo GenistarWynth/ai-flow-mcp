@@ -975,6 +975,7 @@ def _doctor_response(root: Path) -> dict[str, Any]:
     report = run_doctor(root, include_mcp=False)
     next_actions = list(report.get("next_actions") or [])
     recommendations = list(report.get("recommendations") or [])
+    actions = list(report.get("actions") or [])
     suggested_actions = _doctor_suggested_actions(next_actions, recommendations)
     if report.get("ok"):
         reply = "Patchbay readiness checks passed."
@@ -990,7 +991,7 @@ def _doctor_response(root: Path) -> dict[str, Any]:
         ok=bool(report.get("ok")),
         error=None if report.get("ok") else reply,
         next_actions=suggested_actions,
-        extra={"doctor": report, "recommendations": recommendations},
+        extra={"doctor": report, "recommendations": recommendations, "actions": actions},
     )
 
 

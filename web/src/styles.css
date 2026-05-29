@@ -510,6 +510,11 @@ button.danger { color: #b42318; border-color: #f0b6b2; background: #fff8f7; }
 .doctor-summary strong, .doctor-summary span { display: block; min-width: 0; overflow-wrap: anywhere; }
 .doctor-summary span { margin-top: 3px; color: #647083; font-size: 12px; }
 .doctor-actions, .doctor-recommendations, .doctor-checks { display: grid; gap: 7px; }
+.doctor-action-buttons { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 8px; }
+.doctor-action-buttons button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #cfd7e3; border-radius: 8px; padding: 6px 9px; color: #172033; background: #ffffff; font-size: 12px; font-weight: 800; }
+.doctor-action-buttons button:hover { border-color: #9fb0c4; background: #f8fafc; }
+.doctor-action-buttons button:disabled { color: #8b96a7; background: #eef2f7; cursor: not-allowed; }
+.doctor-action-buttons code { display: inline-flex; align-items: center; min-height: 28px; border: 1px solid #d9dee6; border-radius: 8px; padding: 4px 7px; color: #344255; background: #fbfcfe; font-size: 11px; overflow-wrap: anywhere; }
 .doctor-actions span, .doctor-check { border: 1px solid #d9dee6; border-radius: 8px; padding: 8px 10px; background: #ffffff; overflow-wrap: anywhere; }
 .doctor-actions span { color: #344255; font-size: 12px; font-weight: 700; }
 .doctor-recommendation { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; border: 1px solid #bfdbfe; border-radius: 8px; padding: 8px 10px; color: #174ea6; background: #eff6ff; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }

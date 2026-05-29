@@ -173,6 +173,23 @@ model = "mock"
         result = run_doctor(self.repo, include_mcp=False, skill_path=self.skills)
 
         self.assertTrue(any("config profile apply economy" in item for item in result["recommendations"]))
+        action = next(item for item in result["actions"] if item["id"] == "apply_economy_profile")
+        self.assertEqual(action["kind"], "local_agent")
+        self.assertEqual(action["message"], "apply economy profile")
+        self.assertTrue(action["safe"])
+
+    def test_doctor_exposes_structured_setup_and_skill_actions(self) -> None:
+        from scripts.ai_flow.doctor import run_doctor
+
+        result = run_doctor(self.repo, include_mcp=False, skill_path=self.skills)
+
+        actions = {item["id"]: item for item in result["actions"]}
+        self.assertIn("run_setup", actions)
+        self.assertEqual(actions["run_setup"]["message"], "patchbay setup")
+        self.assertIn("install_skill", actions)
+        self.assertEqual(actions["install_skill"]["command"], "patchbay skill install codex")
+        self.assertIn("probe_mcp", actions)
+        self.assertEqual(actions["probe_mcp"]["command"], "patchbay mcp doctor --json")
 
     def test_setup_omits_manual_mcp_step_after_successful_registration(self) -> None:
         from scripts.ai_flow import setup_flow

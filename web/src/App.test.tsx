@@ -269,7 +269,25 @@ function createClient(overrides: Partial<PatchbayClient> = {}): PatchbayClient {
         mcp: { ok: true, skipped: true, note: "Skipped by web workbench." },
         skill: { ok: true, installed: false }
       },
-      next_actions: ["Run `patchbay skill install codex` so Codex can discover the Patchbay Skill."]
+      next_actions: ["Run `patchbay skill install codex` so Codex can discover the Patchbay Skill."],
+      actions: [
+        {
+          id: "install_skill",
+          label: "Install Codex Skill",
+          kind: "command",
+          command: "patchbay skill install codex",
+          safe: true,
+          reason: "Install the bundled Patchbay Skill."
+        },
+        {
+          id: "refresh_readiness",
+          label: "Refresh readiness",
+          kind: "local_agent",
+          message: "readiness",
+          safe: true,
+          reason: "Re-run read-only readiness checks."
+        }
+      ]
     }),
     runAction: vi.fn().mockResolvedValue({ ok: true }),
     apply: vi.fn().mockResolvedValue({ ok: true }),
@@ -308,7 +326,8 @@ describe("Workbench", () => {
 
     await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
     expect(await screen.findByText("需要处理")).toBeVisible();
-    expect(screen.getByText(/patchbay skill install codex/)).toBeVisible();
+    expect(screen.getAllByText(/patchbay skill install codex/)[0]).toBeVisible();
+    expect(screen.getByRole("button", { name: "Refresh readiness" })).toBeVisible();
     expect(client.getDoctor).toHaveBeenCalledWith({ include_mcp: false });
   });
 
@@ -824,6 +843,16 @@ describe("Workbench", () => {
         next_actions: [],
         recommendations: [
           "Run `patchbay config profile apply economy` to route write/fix implementation work to Reasonix/DeepSeek."
+        ],
+        actions: [
+          {
+            id: "apply_economy_profile",
+            label: "Apply economy profile",
+            kind: "local_agent",
+            message: "apply economy profile",
+            safe: true,
+            reason: "Route high-volume write/fix work to Reasonix/DeepSeek."
+          }
         ]
       })
       .mockResolvedValue({
@@ -847,7 +876,7 @@ describe("Workbench", () => {
 
     expect(await screen.findByText("建议")).toBeVisible();
     expect(screen.getByText(/patchbay config profile apply economy/)).toBeVisible();
-    await userEvent.click(screen.getByRole("button", { name: "应用经济路由" }));
+    await userEvent.click(screen.getByRole("button", { name: "Apply economy profile" }));
 
     await waitFor(() => expect(applyConfigProfile).toHaveBeenCalledWith("economy"));
     expect(await screen.findByText("Economy routing profile applied.")).toBeVisible();
