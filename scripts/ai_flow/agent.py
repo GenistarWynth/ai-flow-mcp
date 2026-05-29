@@ -865,16 +865,51 @@ def _runs_response(root: Path) -> dict[str, Any]:
     recent = list(report.get("runs") or [])
     if recent:
         latest = recent[0]
-        reply = f"Latest Patchbay run is {latest.get('run_id')} ({latest.get('status') or 'unknown'}). Pass that run_id to inspect or continue it."
-        next_actions = ["status", "continue", "readiness"]
+        reply = f"Latest Patchbay run is {latest.get('run_id')} ({latest.get('status') or 'unknown'}). Open that run before choosing any gated action."
+        next_actions = ["open latest run", "readiness"]
+        actions = [
+            {
+                "id": "open_latest_run",
+                "label": "Open latest run",
+                "kind": "open_run",
+                "run_id": latest.get("run_id"),
+                "safe": True,
+                "reason": "Open the latest Patchbay run without advancing any gate.",
+            },
+            {
+                "id": "open_readiness",
+                "label": "Open readiness",
+                "kind": "local_agent",
+                "message": "readiness",
+                "safe": True,
+                "reason": "Run read-only setup diagnostics before starting or resuming work.",
+            },
+        ]
     else:
         reply = "No Patchbay runs found. Send a task to start with a plan, or send readiness to check setup."
         next_actions = ["start", "readiness"]
+        actions = [
+            {
+                "id": "start_new_task",
+                "label": "Start new task",
+                "kind": "focus_composer",
+                "safe": True,
+                "reason": "Focus the composer so a new Patchbay plan can be started.",
+            },
+            {
+                "id": "open_readiness",
+                "label": "Open readiness",
+                "kind": "local_agent",
+                "message": "readiness",
+                "safe": True,
+                "reason": "Run read-only setup diagnostics before starting work.",
+            },
+        ]
     return _stateless_response(
         action="runs",
         reply=reply,
         next_actions=next_actions,
-        extra={"runs": report, "recent_run": recent[0] if recent else None},
+        extra={"runs": report, "recent_run": recent[0] if recent else None, "actions": actions},
     )
 
 

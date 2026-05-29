@@ -232,7 +232,34 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertIsNone(response["run_id"])
         self.assertEqual(response["recent_run"]["run_id"], planned["run_id"])
         self.assertEqual(response["runs"]["count"], 1)
+        actions = {item["id"]: item for item in response["actions"]}
+        self.assertEqual(actions["open_latest_run"]["kind"], "open_run")
+        self.assertEqual(actions["open_latest_run"]["run_id"], planned["run_id"])
+        self.assertTrue(actions["open_latest_run"]["safe"])
+        self.assertEqual(actions["open_readiness"]["message"], "readiness")
+        self.assertIn("open latest run", response["next_actions"])
+        self.assertNotIn("continue", response["next_actions"])
+        self.assertNotIn("approve", response["next_actions"])
+        self.assertNotIn("apply", response["next_actions"])
         self.assertEqual(len(list((self.repo / ".ai" / "runs").iterdir())), 1)
+
+    def test_agent_status_without_runs_returns_structured_start_actions(self) -> None:
+        response = agent_message(self.repo, "status")
+
+        self.assertEqual(response["action"], "runs")
+        self.assertTrue(response["ok"])
+        self.assertIsNone(response["run_id"])
+        self.assertIsNone(response["recent_run"])
+        self.assertEqual(response["runs"]["count"], 0)
+        self.assertEqual(response["next_actions"], ["start", "readiness"])
+        actions = {item["id"]: item for item in response["actions"]}
+        self.assertEqual(actions["start_new_task"]["kind"], "focus_composer")
+        self.assertTrue(actions["start_new_task"]["safe"])
+        self.assertEqual(actions["open_readiness"]["message"], "readiness")
+        self.assertNotIn("continue", response["next_actions"])
+        self.assertNotIn("approve", response["next_actions"])
+        self.assertNotIn("apply", response["next_actions"])
+        self.assertEqual(len(list((self.repo / ".ai" / "runs").iterdir())), 0)
 
     def test_agent_status_word_in_task_still_starts_plan(self) -> None:
         response = agent_message(self.repo, "add status page")
@@ -568,6 +595,10 @@ class AgentWorkflowTests(AgentTestCase):
         payload = json.loads(response["result"]["content"][0]["text"])
         self.assertEqual(payload["action"], "runs")
         self.assertEqual(payload["recent_run"]["run_id"], planned["run_id"])
+        actions = {item["id"]: item for item in payload["actions"]}
+        self.assertEqual(actions["open_latest_run"]["run_id"], planned["run_id"])
+        self.assertTrue(actions["open_latest_run"]["safe"])
+        self.assertNotIn("continue", payload["next_actions"])
 
     def test_mcp_patchbay_agent_can_return_metrics_for_run(self) -> None:
         from scripts.ai_flow import mcp_server
@@ -755,6 +786,9 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertEqual(response["action"], "runs")
         self.assertEqual(response["recent_run"]["run_id"], planned["run_id"])
         self.assertIsNone(response["run_id"])
+        actions = {item["id"]: item for item in response["actions"]}
+        self.assertEqual(actions["open_latest_run"]["run_id"], planned["run_id"])
+        self.assertNotIn("continue", response["next_actions"])
 
     def test_cli_agent_metrics_with_run_returns_efficiency_digest(self) -> None:
         planned = agent_message(self.repo, "cli metrics target")
