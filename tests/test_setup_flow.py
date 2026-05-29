@@ -267,6 +267,25 @@ model = "mock"
         self.assertTrue(action["safe"])
         self.assertTrue(any("Register the MCP server with:" in item for item in result["next_actions"]))
 
+    def test_setup_doctor_actions_inherit_target_host(self) -> None:
+        from scripts.ai_flow import doctor, setup_flow
+
+        mcp_result = {
+            "host": "claude-desktop",
+            "command": "claude mcp add patchbay -- python scripts/patchbay_mcp_server.py",
+            "executed": False,
+            "dry_run": True,
+            "note": "Dry run.",
+        }
+        with (
+            mock.patch.object(setup_flow, "run_mcp_install", return_value=mcp_result),
+            mock.patch.object(doctor, "run_mcp_doctor", return_value={"server_reachable": False, "required_tools_present": False}),
+        ):
+            result = setup_flow.run_setup(self.repo, host="claude-desktop", skip_skill=True, mcp_dry_run=True, probe_mcp=True)
+
+        actions = {item["id"]: item for item in result["actions"]}
+        self.assertEqual(actions["install_mcp"]["command"], "patchbay mcp install claude-desktop")
+
     def test_mcp_skill_tools_install_and_verify_bundle(self) -> None:
         from scripts.ai_flow import mcp_server
 

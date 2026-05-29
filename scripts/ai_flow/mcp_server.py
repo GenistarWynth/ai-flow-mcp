@@ -85,8 +85,8 @@ def patchbay_metrics(run_id: str) -> dict[str, Any]:
     return service.metrics(ROOT, run_id)
 
 
-def patchbay_doctor(include_mcp: bool = True, skill_path: str = "") -> dict[str, Any]:
-    return run_doctor(ROOT, include_mcp=include_mcp, skill_path=skill_path or None)
+def patchbay_doctor(include_mcp: bool = True, skill_path: str = "", host: str = "codex") -> dict[str, Any]:
+    return run_doctor(ROOT, include_mcp=include_mcp, skill_path=skill_path or None, host=host)
 
 
 def patchbay_setup(
@@ -339,6 +339,10 @@ def _tool_schema(name: str) -> dict[str, Any]:
         required = []
     elif name.endswith("_doctor"):
         properties = {
+            "host": {
+                "type": "string",
+                "description": "MCP host for concrete registration actions: codex, claude, claude-code, claude-desktop, gemini.",
+            },
             "include_mcp": {
                 "type": "boolean",
                 "description": "Probe the stdio MCP server and verify required tools (default true).",
@@ -434,7 +438,7 @@ def _tool_schema(name: str) -> dict[str, Any]:
         "patchbay_status": "Return current run status and artifacts, including latest cross-phase event.",
         "patchbay_context": "Return the unified handoff digest for resuming a run across MCP hosts, CLI sessions, and the web workbench, including agent_activity.health_cards with safe local/diagnostic actions.",
         "patchbay_metrics": "Return only run_metrics efficiency evidence: phase durations, attempts, event/trace counts, provider usage, known cost/token fields, routing_evidence.economy_health, and top-level actions[] mirrored from routing_evidence.actions[] for safe local_agent or diagnostic_tab routing follow-ups.",
-        "patchbay_doctor": "Run unified read-only readiness checks for CLI shims, config, MCP reachability/tools, bundled Skill source, and Skill installation state; returns next_actions, recommendations, and structured actions[].",
+        "patchbay_doctor": "Run unified read-only readiness checks for CLI shims, config, MCP reachability/tools, bundled Skill source, and Skill installation state; returns next_actions, recommendations, and structured actions[], with host-aware concrete MCP registration actions.",
         "patchbay_setup": "Initialize Patchbay project files, create local config, install the Codex Skill, return MCP registration guidance, include a doctor summary, and expose structured actions[] for safe follow-ups.",
         "patchbay_install": "Alias for patchbay_setup: initialize Patchbay project files, create local config, install the Codex Skill, register MCP when possible, include a doctor summary, and expose structured actions[].",
         "patchbay_skill_install": "Install only the bundled Patchbay Codex Skill into a selected skills root.",

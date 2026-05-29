@@ -1312,6 +1312,7 @@ class McpSchemaTests(unittest.TestCase):
         self.assertIn("patchbay_doctor", tools)
         self.assertIn("read-only readiness", tools["patchbay_doctor"].lower())
         self.assertIn("actions[]", tools["patchbay_doctor"])
+        self.assertIn("registration actions", tools["patchbay_doctor"].lower())
         self.assertIn("patchbay_setup", tools)
         self.assertIn("initialize patchbay", tools["patchbay_setup"].lower())
         self.assertIn("actions[]", tools["patchbay_setup"])
@@ -1357,6 +1358,16 @@ class McpSchemaTests(unittest.TestCase):
             self.assertIn("create_config", schema["properties"])
             self.assertNotIn("run_id", schema["properties"])
             self.assertEqual(schema["required"], [])
+
+    def test_doctor_schema_accepts_host_for_registration_actions(self) -> None:
+        from scripts.ai_flow.mcp_server import handle
+        tools_response = handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+        tools = {tool["name"]: tool for tool in tools_response["result"]["tools"]}
+
+        schema = tools["patchbay_doctor"]["inputSchema"]
+        self.assertIn("host", schema["properties"])
+        self.assertIn("registration actions", schema["properties"]["host"]["description"])
+        self.assertEqual(schema["required"], [])
 
     def test_config_profile_apply_schema(self) -> None:
         from scripts.ai_flow.mcp_server import handle

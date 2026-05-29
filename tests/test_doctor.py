@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 class DoctorTest(unittest.TestCase):
@@ -30,6 +31,15 @@ class DoctorTest(unittest.TestCase):
         self.assertIn(".ai/patchbay.example.toml", result["checks"]["repo"]["missing_files"])
         self.assertTrue(result["checks"]["mcp"]["skipped"])
         self.assertTrue(any("patchbay init" in action for action in result["next_actions"]))
+
+    def test_doctor_structured_mcp_action_uses_target_host(self) -> None:
+        from scripts.ai_flow import doctor
+
+        with mock.patch.object(doctor, "run_mcp_doctor", return_value={"server_reachable": False, "required_tools_present": False}):
+            result = doctor.run_doctor(self.tmp, include_mcp=True, host="claude-desktop")
+
+        actions = {item["id"]: item for item in result["actions"]}
+        self.assertEqual(actions["install_mcp"]["command"], "patchbay mcp install claude-desktop")
 
     def test_unified_doctor_accepts_initialized_project(self) -> None:
         from scripts.ai_flow import service

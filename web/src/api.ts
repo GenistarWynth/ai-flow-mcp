@@ -435,7 +435,7 @@ export type PatchbayClient = {
   getConfig(): Promise<unknown>;
   getConfigProfile(): Promise<ConfigProfileStatus>;
   applyConfigProfile(profile?: "economy" | string): Promise<ConfigProfileStatus>;
-  getDoctor(options?: { include_mcp?: boolean; skill_path?: string }): Promise<DoctorReport>;
+  getDoctor(options?: { include_mcp?: boolean; skill_path?: string; host?: string }): Promise<DoctorReport>;
   runAction(runId: string, action: string): Promise<unknown>;
   apply(runId: string): Promise<unknown>;
   cleanup(runId: string): Promise<unknown>;
@@ -541,7 +541,7 @@ export function applyConfigProfile(profile: "economy" | string = "economy", clie
   });
 }
 
-export function fetchDoctor(options: { include_mcp?: boolean; skill_path?: string } = {}, client?: ClientOptions) {
+export function fetchDoctor(options: { include_mcp?: boolean; skill_path?: string; host?: string } = {}, client?: ClientOptions) {
   return requestJson<DoctorReport>(`/api/doctor${query(options)}`, client);
 }
 

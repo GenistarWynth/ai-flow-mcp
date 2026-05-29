@@ -135,6 +135,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = sub.add_parser("doctor", help="Run unified CLI/config/MCP/Skill readiness checks.")
     doctor.add_argument("--root", default="", help="Repository root to inspect.")
+    doctor.add_argument("--host", default="codex", help="MCP host for structured registration actions.")
     doctor.add_argument("--skip-mcp", action="store_true", help="Skip stdio MCP server probing.")
     doctor.add_argument("--skill-path", default="", help="Codex skills root to inspect.")
     _add_json(doctor)
@@ -406,6 +407,7 @@ def dispatch(args: argparse.Namespace, cwd: Path) -> Any:
             root=getattr(a, "root", "") or None,
             include_mcp=not bool(getattr(a, "skip_mcp", False)),
             skill_path=getattr(a, "skill_path", "") or None,
+            host=getattr(a, "host", "codex"),
         ),
         "setup": lambda a, c: run_setup(
             c,

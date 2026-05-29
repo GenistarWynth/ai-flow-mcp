@@ -17,6 +17,7 @@ def run_doctor(
     root: str | Path | None = None,
     include_mcp: bool = True,
     skill_path: str | Path | None = None,
+    host: str = "codex",
 ) -> dict[str, Any]:
     """Run read-only readiness checks for CLI, config, MCP, Skill, and repo layout."""
     repo_root = Path(root).expanduser().resolve() if root else find_project_root(cwd, prefer_git=True)
@@ -27,7 +28,7 @@ def run_doctor(
         "mcp": _mcp_check(repo_root, include_mcp=include_mcp),
         "skill": run_skill_doctor(repo_root, path=skill_path),
     }
-    return _summarize(repo_root, checks)
+    return _summarize(repo_root, checks, host=host)
 
 
 def _repo_check(root: Path) -> dict[str, Any]:
@@ -114,7 +115,7 @@ def _mcp_check(root: Path, *, include_mcp: bool) -> dict[str, Any]:
     }
 
 
-def _summarize(root: Path, checks: dict[str, Any]) -> dict[str, Any]:
+def _summarize(root: Path, checks: dict[str, Any], *, host: str) -> dict[str, Any]:
     required_sections = ("repo", "config", "cli", "mcp", "skill")
     next_actions = _next_actions(checks)
     recommendations = _recommendations(checks)
@@ -125,7 +126,7 @@ def _summarize(root: Path, checks: dict[str, Any]) -> dict[str, Any]:
         "checks": checks,
         "next_actions": next_actions,
         "recommendations": recommendations,
-        "actions": _structured_actions(checks, next_actions, recommendations),
+        "actions": _structured_actions(checks, next_actions, recommendations, host=host),
     }
 
 
@@ -173,6 +174,8 @@ def _structured_actions(
     checks: dict[str, Any],
     next_actions: list[str],
     recommendations: list[str],
+    *,
+    host: str,
 ) -> list[dict[str, Any]]:
     actions: list[dict[str, Any]] = []
     repo = checks.get("repo", {})
@@ -220,7 +223,7 @@ def _structured_actions(
                 "id": "install_mcp",
                 "label": "Register MCP",
                 "kind": "command",
-                "command": "patchbay mcp install <host>",
+                "command": f"patchbay mcp install {_doctor_host(host)}",
                 "safe": True,
                 "reason": "Register the Patchbay MCP server with the target host after inspecting the doctor output.",
             }
@@ -259,6 +262,11 @@ def _structured_actions(
             }
         )
     return _dedupe_actions(actions)
+
+
+def _doctor_host(host: str) -> str:
+    normalized = str(host or "codex").strip().lower()
+    return normalized if normalized in {"codex", "claude", "claude-code", "claude-desktop", "gemini"} else "codex"
 
 
 def _dedupe_actions(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -104,6 +104,7 @@ class _Handler(SimpleHTTPRequestHandler):
                         self.repo_root,
                         include_mcp=_bool_query(query, "include_mcp", False),
                         skill_path=_str_query(query, "skill_path"),
+                        host=_str_query(query, "host") or "codex",
                     )
                 )
                 return

@@ -119,12 +119,12 @@ describe("Patchbay API client", () => {
     const fetchMock = vi.fn(() => jsonResponse({ ok: true }));
     const client = { fetch: fetchMock };
 
-    await fetchDoctor({ include_mcp: false, skill_path: "C:/tmp/skills" }, client);
+    await fetchDoctor({ include_mcp: false, skill_path: "C:/tmp/skills", host: "claude-desktop" }, client);
     await postAgentMessage("apply economy profile", {}, client);
     await postAgentMessage("continue", { maxFixRounds: 2 }, client);
 
     const calls = fetchMock.mock.calls as unknown as Array<[RequestInfo | URL, RequestInit | undefined]>;
-    expect(calls[0][0]).toBe("/api/doctor?include_mcp=false&skill_path=C%3A%2Ftmp%2Fskills");
+    expect(calls[0][0]).toBe("/api/doctor?include_mcp=false&skill_path=C%3A%2Ftmp%2Fskills&host=claude-desktop");
     expect(calls[1]).toEqual([
       "/api/agent/message",
       expect.objectContaining({
