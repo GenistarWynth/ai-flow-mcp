@@ -300,6 +300,8 @@ class HandoffContextTest(unittest.TestCase):
         self.assertEqual(health["severity"], "warning")
         self.assertEqual(health["missing_config_phases"], ["write", "fix"])
         self.assertEqual(health["next_action"], "apply_economy_profile")
+        self.assertEqual(cli_metrics["routing_evidence"]["actions"][0]["id"], "apply_economy_profile")
+        self.assertEqual(cli_metrics["actions"][0]["message"], "apply economy profile")
         context = self.cli_json("context", planned["run_id"])
         card = context["agent_activity"]["health_cards"][0]
         self.assertEqual(card["status"], "not_configured")

@@ -631,7 +631,7 @@ function economyHealthCard(status: RunStatus | null) {
       detail: health.summary ?? routing?.summary ?? "",
       recommendation: health.recommendation,
       next_action: health.next_action,
-      action: healthActionFromNext(health.next_action),
+      action: routing?.actions?.find((action) => action.safe !== false) ?? healthActionFromNext(health.next_action),
       coverage_percent: routing?.coverage?.observed_economy_percent ?? null
     }
   ];

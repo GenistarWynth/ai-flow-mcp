@@ -695,6 +695,8 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertEqual(routing["economy_health"]["status"], "pending_evidence")
         self.assertEqual(routing["economy_health"]["severity"], "info")
         self.assertEqual(routing["economy_health"]["missing_evidence"], ["fix"])
+        self.assertEqual(routing["actions"][0]["id"], "wait_for_routing_evidence")
+        self.assertEqual(response["actions"][0]["kind"], "diagnostic_tab")
         self.assertIn("fix", routing["missing_evidence"])
         self.assertEqual(routing["phases"]["write"]["observed"][0]["provider"], "reasonix_cli")
         self.assertIn("1/2 economy phases observed", routing["summary"])
@@ -727,6 +729,8 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertEqual(routing["coverage"]["observed_economy_percent"], 0)
         self.assertEqual(routing["economy_health"]["status"], "drift")
         self.assertEqual(routing["economy_health"]["drift_phases"], ["write"])
+        self.assertEqual(routing["actions"][0]["id"], "inspect_routing_events")
+        self.assertEqual(response["actions"][0]["tab"], "Trace")
         self.assertIn("write observed a non-economy provider", routing["summary"])
 
     def test_agent_metrics_flags_mixed_provider_drift_on_economy_route(self) -> None:

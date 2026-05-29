@@ -109,6 +109,7 @@ export type RoutingEvidence = {
   economy_health?: EconomyHealth;
   phases?: Record<string, RoutingEvidencePhase>;
   phase_strategy?: Record<string, PhaseStrategy>;
+  actions?: AgentHealthAction[];
   summary?: string;
   recommendation?: string;
 };

@@ -1549,6 +1549,7 @@ def _run_routing_evidence(run_metrics: dict[str, Any], effective: dict[str, Any]
         missing_evidence=missing_evidence,
         coverage=coverage,
     )
+    actions = _routing_health_actions(economy_health)
     return {
         "target": {"provider": ECONOMY_PROVIDER, "model": ECONOMY_MODEL},
         "economy_configured": economy_configured,
@@ -1559,6 +1560,7 @@ def _run_routing_evidence(run_metrics: dict[str, Any], effective: dict[str, Any]
         "missing_evidence": missing_evidence,
         "coverage": coverage,
         "economy_health": economy_health,
+        "actions": actions,
         "phases": phases,
         "summary": _routing_evidence_summary(
             economy_configured=economy_configured,
@@ -1568,6 +1570,44 @@ def _run_routing_evidence(run_metrics: dict[str, Any], effective: dict[str, Any]
             coverage=coverage,
         ),
     }
+
+
+def _routing_health_actions(health: dict[str, Any]) -> list[dict[str, Any]]:
+    next_action = str(health.get("next_action") or "")
+    if next_action == "apply_economy_profile":
+        return [
+            {
+                "id": "apply_economy_profile",
+                "label": "Apply economy profile",
+                "kind": "local_agent",
+                "message": "apply economy profile",
+                "safe": True,
+                "reason": "Route high-volume write/fix work to the Reasonix/DeepSeek economy profile.",
+            }
+        ]
+    if next_action == "inspect_routing_events":
+        return [
+            {
+                "id": "inspect_routing_events",
+                "label": "Inspect routing events",
+                "kind": "diagnostic_tab",
+                "tab": "Trace",
+                "safe": True,
+                "reason": "Open provider events to inspect non-economy write/fix provider evidence.",
+            }
+        ]
+    if next_action == "wait_for_routing_evidence":
+        return [
+            {
+                "id": "wait_for_routing_evidence",
+                "label": "Watch provider events",
+                "kind": "diagnostic_tab",
+                "tab": "Trace",
+                "safe": True,
+                "reason": "Open events while write/fix phases produce provider evidence.",
+            }
+        ]
+    return []
 
 
 def _economy_health(
@@ -1893,12 +1933,14 @@ def context(
 def metrics(cwd: Path, run_id: str) -> dict[str, Any]:
     """Return the run efficiency digest without the full handoff payload."""
     status_data = status(cwd, run_id)
+    routing = status_data.get("routing_evidence", {})
     return {
         "run_id": run_id,
         "status": status_data.get("status"),
         "current_phase": status_data.get("current_phase"),
         "effective_phase_providers": status_data.get("effective_phase_providers", {}),
-        "routing_evidence": status_data.get("routing_evidence", {}),
+        "routing_evidence": routing,
+        "actions": routing.get("actions", []) if isinstance(routing, dict) else [],
         "run_metrics": status_data.get("run_metrics", {}),
     }
 

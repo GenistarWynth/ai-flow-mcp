@@ -936,6 +936,7 @@ def _metrics_response(root: Path, run_id: str) -> dict[str, Any]:
     metrics_payload = dict(result)
     if routing:
         metrics_payload["routing_evidence"] = routing
+    actions = list(result.get("actions") or (routing.get("actions") if isinstance(routing, dict) else []) or [])
     return {
         "schema_version": SCHEMA_VERSION,
         "ok": True,
@@ -949,6 +950,7 @@ def _metrics_response(root: Path, run_id: str) -> dict[str, Any]:
         "diff": None,
         "requires_confirmation": None,
         "next_actions": ["status", "continue", "readiness"],
+        "actions": actions,
         "error": None,
         "metrics": metrics_payload,
     }
