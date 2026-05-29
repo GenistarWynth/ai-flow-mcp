@@ -667,6 +667,25 @@ describe("Workbench", () => {
         requested_view: { tab: "Diff", reason: "The prompt asked for the run diff or patch." }
       },
       requested_view: { tab: "Diff", reason: "The prompt asked for the run diff or patch." },
+      actions: [
+        {
+          id: "open_latest_run",
+          label: "Open latest run",
+          kind: "open_run",
+          run_id: "run-ready",
+          tab: "Diff",
+          safe: true,
+          reason: "Open the latest Patchbay run before choosing any gated action."
+        },
+        {
+          id: "open_readiness",
+          label: "Open readiness",
+          kind: "local_agent",
+          message: "readiness",
+          safe: true,
+          reason: "Run read-only setup diagnostics."
+        }
+      ],
       runs: { count: 1, runs: [{ run_id: "run-ready", task: "Approve a plan", status: "PLANNED" }] }
     });
     const client = createClient({
@@ -710,6 +729,68 @@ describe("Workbench", () => {
     expect(client.runAction).not.toHaveBeenCalled();
     expect(client.apply).not.toHaveBeenCalled();
     expect(client.cleanup).not.toHaveBeenCalled();
+  });
+
+  it("uses structured missing-run actions without parsing next-action prose", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "missing_run",
+      ok: false,
+      reply: "`continue` needs an existing run_id. Latest run is run-ready (PLANNED).",
+      next_actions: ["runs", "readiness"],
+      recent_run: { run_id: "run-ready", task: "Approve a plan", status: "PLANNED" },
+      run_reference: {
+        run_id: "run-ready",
+        task: "Approve a plan",
+        status: "PLANNED",
+        requested_view: { tab: "Trace", reason: "The prompt asked for run events or trace." }
+      },
+      actions: [
+        {
+          id: "open_latest_run",
+          label: "Open latest run",
+          kind: "open_run",
+          run_id: "run-ready",
+          tab: "Trace",
+          safe: true,
+          reason: "Open the latest Patchbay run before choosing any gated action."
+        }
+      ],
+      runs: { count: 1, runs: [{ run_id: "run-ready", task: "Approve a plan", status: "PLANNED" }] }
+    });
+    const client = createClient({
+      listRuns: vi
+        .fn()
+        .mockResolvedValueOnce({ runs: [] })
+        .mockResolvedValue({ runs: [{ run_id: "run-ready", task: "Approve a plan", status: "PLANNED" }] }),
+      agentMessage,
+      getStatus: vi.fn().mockResolvedValue({
+        run_id: "run-ready",
+        task: "Approve a plan",
+        status: "PLANNED",
+        current_phase: "plan",
+        gate_state: { approved: false, tests_passed: false, review_result: null, ready_to_apply: false },
+        next_commands: ["approve"],
+        artifacts: [],
+        effective_phase_providers: {}
+      }),
+      getContext: vi.fn().mockResolvedValue({ ...plannedContext, run_id: "run-ready" })
+    });
+
+    render(<Workbench client={client} />);
+
+    await waitFor(() => expect(client.listRuns).toHaveBeenCalled());
+    const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(composer, "continue{enter}");
+
+    const openLatest = await screen.findByRole("button", { name: /open latest run/ });
+    await userEvent.click(openLatest);
+
+    expect(await screen.findByRole("heading", { name: "Approve a plan" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "活动" })).toHaveAttribute("aria-selected", "true");
+    expect(agentMessage).toHaveBeenCalledTimes(1);
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
   });
 
   it("runs local setup from the empty state and exposes readiness immediately", async () => {

@@ -299,6 +299,10 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertIsNone(response["recent_run"])
         self.assertIsNone(response["run_reference"])
         self.assertEqual(response["next_actions"], ["start", "readiness"])
+        actions = {item["id"]: item for item in response["actions"]}
+        self.assertEqual(actions["start_new_task"]["kind"], "focus_composer")
+        self.assertTrue(actions["start_new_task"]["safe"])
+        self.assertEqual(actions["open_readiness"]["message"], "readiness")
         self.assertEqual(len(list((self.repo / ".ai" / "runs").iterdir())), 0)
 
     def test_agent_apply_without_run_returns_local_guidance(self) -> None:
@@ -322,6 +326,12 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertEqual(response["run_reference"]["run_id"], run_id)
         self.assertEqual(response["run_reference"]["status"], "PLANNED")
         self.assertEqual(response["run_reference"]["safe_actions"], ["open_run", "status", "events"])
+        actions = {item["id"]: item for item in response["actions"]}
+        self.assertEqual(actions["open_latest_run"]["kind"], "open_run")
+        self.assertEqual(actions["open_latest_run"]["run_id"], run_id)
+        self.assertTrue(actions["open_latest_run"]["safe"])
+        self.assertEqual(actions["show_runs"]["message"], "status")
+        self.assertEqual(actions["open_readiness"]["message"], "readiness")
         self.assertIn("open latest run", response["next_actions"])
         self.assertNotIn("continue", response["next_actions"])
         self.assertNotIn("approve", response["next_actions"])

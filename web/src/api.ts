@@ -284,10 +284,11 @@ export type AgentGateCard = {
 export type AgentHealthAction = {
   id: string;
   label: string;
-  kind?: "local_agent" | "diagnostic_tab" | string;
+  kind?: "local_agent" | "diagnostic_tab" | "open_run" | "focus_composer" | string;
   message?: string;
   command?: string;
   tab?: RunReferenceView["tab"];
+  run_id?: string;
   safe?: boolean;
   reason?: string;
 };

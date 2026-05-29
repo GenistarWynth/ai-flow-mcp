@@ -934,6 +934,33 @@ def _missing_run_response(root: Path, text: str) -> dict[str, Any]:
             "safe_actions": ["open_run", "status", "events"],
             "requested_view": requested_view,
         }
+        actions = [
+            {
+                "id": "open_latest_run",
+                "label": "Open latest run",
+                "kind": "open_run",
+                "run_id": latest.get("run_id"),
+                "tab": (requested_view or {}).get("tab"),
+                "safe": True,
+                "reason": "Open the latest Patchbay run before choosing any gated action.",
+            },
+            {
+                "id": "show_runs",
+                "label": "Show runs",
+                "kind": "local_agent",
+                "message": "status",
+                "safe": True,
+                "reason": "List recent Patchbay runs without advancing any run gate.",
+            },
+            {
+                "id": "open_readiness",
+                "label": "Open readiness",
+                "kind": "local_agent",
+                "message": "readiness",
+                "safe": True,
+                "reason": "Run read-only setup diagnostics before starting or resuming work.",
+            },
+        ]
         reply = (
             f"`{text}` needs an existing run_id. Latest run is {latest.get('run_id')} "
             f"({latest.get('status') or 'unknown'}). Open that run first, then choose the next gated action."
@@ -942,6 +969,23 @@ def _missing_run_response(root: Path, text: str) -> dict[str, Any]:
     else:
         reply = f"`{text}` needs an existing run_id, but no Patchbay runs were found. Send a task to start with a plan."
         next_actions = ["start", "readiness"]
+        actions = [
+            {
+                "id": "start_new_task",
+                "label": "Start new task",
+                "kind": "focus_composer",
+                "safe": True,
+                "reason": "Focus the composer so a new Patchbay plan can be started.",
+            },
+            {
+                "id": "open_readiness",
+                "label": "Open readiness",
+                "kind": "local_agent",
+                "message": "readiness",
+                "safe": True,
+                "reason": "Run read-only setup diagnostics before starting work.",
+            },
+        ]
     return _stateless_response(
         action="missing_run",
         reply=reply,
@@ -953,6 +997,7 @@ def _missing_run_response(root: Path, text: str) -> dict[str, Any]:
             "recent_run": recent[0] if recent else None,
             "run_reference": run_reference,
             "requested_view": requested_view,
+            "actions": actions,
         },
     )
 

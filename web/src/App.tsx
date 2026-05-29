@@ -180,9 +180,15 @@ function commandReason(command: string, safe: boolean) {
 }
 
 function localReplyActions(response: AgentResponse | null): LocalReplyAction[] {
-  const actions = response?.next_actions ?? [];
   const seen = new Set<string>();
   const result: LocalReplyAction[] = [];
+  for (const action of response?.actions ?? []) {
+    const mapped = mapStructuredLocalReplyAction(action);
+    if (!mapped || seen.has(mapped.id)) continue;
+    seen.add(mapped.id);
+    result.push(mapped);
+  }
+  const actions = response?.next_actions ?? [];
   for (const raw of actions) {
     const mapped = mapLocalReplyAction(raw);
     if (!mapped || seen.has(mapped.id)) continue;
@@ -190,6 +196,20 @@ function localReplyActions(response: AgentResponse | null): LocalReplyAction[] {
     result.push(mapped);
   }
   return result;
+}
+
+function mapStructuredLocalReplyAction(action: AgentHealthAction): LocalReplyAction | null {
+  if (action.safe === false) return null;
+  if (action.kind === "open_run" || action.id === "open_latest_run") {
+    return { id: "open-latest-run", label: action.label || "打开最近运行", message: "open latest run", icon: "search" };
+  }
+  if (action.kind === "focus_composer" || action.id === "start_new_task") {
+    return { id: "start", label: action.label || "开始任务", message: "start", icon: "play" };
+  }
+  if (action.kind === "local_agent" && action.message) {
+    return mapLocalReplyAction(action.message) ?? { id: action.id, label: action.label, message: action.message, icon: "play" };
+  }
+  return null;
 }
 
 function mapLocalReplyAction(raw: string): LocalReplyAction | null {
