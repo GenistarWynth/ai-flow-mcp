@@ -46,7 +46,7 @@ Legacy `[models]`, `[commands]`, and `[writer].provider` keys remain supported a
 - File-backed run artifacts under `.ai/runs/<run_id>/`.
 - Human approval gate before implementation.
 - Patch safety checks, read-only reviewer verification, and a default apply gate that treats skipped tests as not passed unless `workflow.allow_apply_without_tests = true`.
-- **Cross-host visibility**: `patchbay context <run_id>` / `patchbay_context` is the preferred resume call. It returns the current gate state, next safe action, provider trail, artifacts, timeline, and `run_metrics` efficiency evidence in one handoff digest. `run_metrics.routing_evidence` shows whether write/fix are configured for the Reasonix/DeepSeek economy route and whether provider events have actually observed it; `routing_evidence.economy_health` and `agent_activity.health_cards` expose the same signal as machine-readable healthy, pending-evidence, drift, or not-configured states for desktop and MCP clients. Readiness and setup responses also include `actions[]` entries so clients can render safe one-click follow-ups without parsing prose. `patchbay events <run_id>` and `patchbay_status` remain available for focused inspection.
+- **Cross-host visibility**: `patchbay context <run_id>` / `patchbay_context` is the preferred resume call. It returns the current gate state, next safe action, provider trail, artifacts, timeline, and `run_metrics` efficiency evidence in one handoff digest. `run_metrics.routing_evidence` shows whether write/fix are configured for the Reasonix/DeepSeek economy route and whether provider events have actually observed it; `routing_evidence.economy_health` and `agent_activity.health_cards` expose the same signal as machine-readable healthy, pending-evidence, drift, or not-configured states for desktop and MCP clients. `patchbay_metrics` also returns top-level `actions[]` mirrored from `routing_evidence.actions[]`, so clients can render safe routing follow-ups such as applying the economy profile or opening the Trace tab without parsing `economy_health.next_action`. Readiness and setup responses include the same structured action contract. `patchbay events <run_id>` and `patchbay_status` remain available for focused inspection.
 - **Failure recovery**: failed runs expose `failure_recovery` through `status`, `context`, and the conversational Agent, including the failed stage, suggested next action, priority artifacts, and structured `actions[]` for safe inspection or replacement-task follow-ups.
 
 ## Quick Start
@@ -108,7 +108,7 @@ python scripts/patchbay metrics <run_id>
 python scripts/patchbay apply <run_id>
 ```
 
-`metrics` includes phase duration/attempt counts, provider usage, token/cost availability, and `routing_evidence` with `economy_health` for the write/fix economy route.
+`metrics` includes phase duration/attempt counts, provider usage, token/cost availability, and `routing_evidence` with `economy_health` for the write/fix economy route. For desktop and MCP clients, prefer the returned `actions[]` or `routing_evidence.actions[]` over deriving UI controls from `economy_health.next_action`; those actions are already typed as `local_agent` or `diagnostic_tab` and marked with `safe`.
 
 Use `--background` for long conversational turns so the caller can return immediately and poll status/events:
 

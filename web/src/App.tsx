@@ -1595,7 +1595,15 @@ function NextActionCard({
   );
 }
 
-function MetricsGrid({ metrics }: { metrics?: RunMetrics | null }) {
+function MetricsGrid({
+  metrics,
+  onAction,
+  actionBusy
+}: {
+  metrics?: RunMetrics | null;
+  onAction?: (action: AgentHealthAction) => void;
+  actionBusy?: boolean;
+}) {
   const phaseDurations = metricEntries(metrics);
   const slowestPhase = phaseDurations.reduce<[string, number] | null>((slowest, entry) => (!slowest || entry[1] > slowest[1] ? entry : slowest), null);
   const retries = retryEntries(metrics);
@@ -1606,6 +1614,8 @@ function MetricsGrid({ metrics }: { metrics?: RunMetrics | null }) {
   const routing = metrics?.routing_evidence;
   const routingCoverage = routingCoverageLabel(routing);
   const economyHealth = economyHealthLabel(routing);
+  const routingAction =
+    routing?.actions?.find((action) => action.safe !== false) ?? healthActionFromNext(routing?.economy_health?.next_action);
   return (
     <div className="metrics-panel">
       <div className="metric-row">
@@ -1646,6 +1656,19 @@ function MetricsGrid({ metrics }: { metrics?: RunMetrics | null }) {
         <div className="metric-row">
           <span>经济健康</span>
           <strong>{economyHealth}</strong>
+        </div>
+      ) : null}
+      {routingAction ? (
+        <div className="metric-action-row" aria-label="路由建议动作">
+          <span>{routingAction.reason || "Patchbay 已提供安全的路由后续动作。"}</span>
+          <button
+            type="button"
+            onClick={() => onAction?.(routingAction)}
+            disabled={!onAction || (routingAction.kind !== "diagnostic_tab" && actionBusy)}
+          >
+            {routingAction.kind === "diagnostic_tab" ? <Search size={13} /> : <Settings size={13} />}
+            {routingAction.label}
+          </button>
         </div>
       ) : null}
       <div className="metric-row">
@@ -2109,7 +2132,7 @@ function DetailPanel({
         ) : null}
         <section>
           <h2>效率</h2>
-          <MetricsGrid metrics={metrics} />
+          <MetricsGrid metrics={metrics} onAction={onHealthAction} actionBusy={profileBusy} />
         </section>
         {(activity.health_cards ?? []).length ? (
           <section>

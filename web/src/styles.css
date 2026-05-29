@@ -475,6 +475,11 @@ button.danger { color: #b42318; border-color: #f0b6b2; background: #fff8f7; }
 .metric-routing.ready { border-color: #b7e4c7; color: #166534; background: #f1fbf6; }
 .metric-routing span { color: inherit; font-size: 12px; font-weight: 800; }
 .metric-routing strong { color: #172033; font-size: 12px; overflow-wrap: anywhere; }
+.metric-action-row { display: grid; gap: 7px; border: 1px solid #bfdbfe; border-radius: 8px; padding: 8px 10px; background: #eff6ff; }
+.metric-action-row span { color: #344255; font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
+.metric-action-row button { justify-self: start; display: inline-flex; align-items: center; gap: 5px; border: 1px solid #cfd7e3; border-radius: 8px; padding: 5px 8px; color: #172033; background: #ffffff; font-size: 12px; font-weight: 800; }
+.metric-action-row button:hover { border-color: #9fb0c4; background: #f8fafc; }
+.metric-action-row button:disabled { color: #8b96a7; background: #eef2f7; cursor: not-allowed; }
 .health-card { display: grid; gap: 5px; border: 1px solid #d9dee6; border-radius: 8px; padding: 8px 10px; background: #ffffff; }
 .health-card.tone-success { border-color: #b7e4c7; background: #f1fbf6; }
 .health-card.tone-ready { border-color: #bfdbfe; background: #eff6ff; }

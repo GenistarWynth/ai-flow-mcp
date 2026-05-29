@@ -432,7 +432,17 @@ describe("Workbench", () => {
             summary: "Economy route is configured; waiting for fix provider evidence.",
             recommendation: "Run or poll write/fix phases to confirm high-volume work is actually using the economy route.",
             next_action: "wait_for_routing_evidence"
-          }
+          },
+          actions: [
+            {
+              id: "inspect_routing_events",
+              label: "Inspect routing events",
+              kind: "diagnostic_tab",
+              tab: "Trace",
+              safe: true,
+              reason: "Open provider events to inspect routing evidence."
+            }
+          ]
         }
       }
     };
@@ -470,6 +480,9 @@ describe("Workbench", () => {
     expect(screen.getAllByText("待观测").length).toBeGreaterThan(0);
     expect(screen.getByText("6")).toBeVisible();
     expect(screen.getByText("审查 2x")).toBeVisible();
+    const metricsSection = screen.getByRole("heading", { name: "效率" }).closest("section")!;
+    await userEvent.click(within(metricsSection).getByRole("button", { name: "Inspect routing events" }));
+    expect(screen.getByRole("tab", { name: "活动" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("runs structured health-card actions without advancing run gates", async () => {
