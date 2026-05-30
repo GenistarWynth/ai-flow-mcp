@@ -227,6 +227,18 @@ function localReplyCommandActions(response: AgentResponse | null): AgentHealthAc
   return result;
 }
 
+function isConfigureReasonixAction(action: Pick<AgentHealthAction, "id" | "message">) {
+  return action.id === "configure_reasonix_command" || action.message?.startsWith("configure reasonix command");
+}
+
+function reasonixCommandMessage(path: string) {
+  const trimmed = path.trim();
+  if (!trimmed) return "configure reasonix command";
+  const quoted = /^[`'"].*[`'"]$/.test(trimmed);
+  const value = /\s/.test(trimmed) && !quoted ? `"${trimmed}"` : trimmed;
+  return `configure reasonix command to ${value}`;
+}
+
 function mapStructuredLocalReplyAction(action: AgentHealthAction): LocalReplyAction | null {
   if (action.safe === false) return null;
   if (action.kind === "open_run" || action.id === "open_latest_run") {
@@ -264,6 +276,9 @@ function mapLocalReplyAction(raw: string): LocalReplyAction | null {
     text.includes("use economy route")
   ) {
     return { id: "apply-economy", label: "经济路由", message: "apply economy profile", icon: "play" };
+  }
+  if (text.includes("configure reasonix command") || text.includes("commands.reasonix")) {
+    return { id: "configure_reasonix_command", label: "Configure Reasonix", message: "configure reasonix command", icon: "settings" };
   }
   if (text.includes("readiness") || text.includes("doctor") || text.includes("diagnose")) {
     return { id: "readiness", label: "就绪", message: "readiness", icon: "shield" };
@@ -1109,12 +1124,12 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }
   };
 
-  const configureReasonixCommandAction = async () => {
+  const configureReasonixCommandAction = async (message = "configure reasonix command") => {
     if (profileInFlight) return;
     setError("");
     setProfileInFlight(true);
     try {
-      const response = await client.agentMessage("configure reasonix command");
+      const response = await client.agentMessage(message);
       if (!selectedRun) setNewTaskReply(response);
       const [nextDoctor, nextConfig] = await Promise.all([client.getDoctor({ include_mcp: false, host: readinessHost.id }), client.getConfig()]);
       setDoctor(nextDoctor);
@@ -1145,8 +1160,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
 
   const runHealthAction = async (action: AgentHealthAction) => {
     if (action.safe === false) return;
-    if (action.id === "configure_reasonix_command" || action.message === "configure reasonix command") {
-      await configureReasonixCommandAction();
+    if (isConfigureReasonixAction(action)) {
+      await configureReasonixCommandAction(action.message || "configure reasonix command");
       return;
     }
     if (action.kind === "local_agent" && (action.id === "apply_economy_profile" || action.message === "apply economy profile")) {
@@ -1169,8 +1184,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const runDoctorAction = async (action: AgentHealthAction) => {
     if (action.safe === false) return;
     const actionHost = setupHostFromAction(action, readinessHost);
-    if (action.id === "configure_reasonix_command" || action.message === "configure reasonix command") {
-      await configureReasonixCommandAction();
+    if (isConfigureReasonixAction(action)) {
+      await configureReasonixCommandAction(action.message || "configure reasonix command");
       return;
     }
     if (action.id === "run_setup" || action.message?.startsWith("patchbay setup")) {
@@ -1195,8 +1210,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       await applyEconomyProfileAction();
       return;
     }
-    if (action.id === "configure_reasonix_command" || action.message === "configure reasonix command") {
-      await configureReasonixCommandAction();
+    if (action.id === "configure_reasonix_command" || action.message.startsWith("configure reasonix command")) {
+      await configureReasonixCommandAction(action.message);
       return;
     }
     if (action.id === "readiness") {
@@ -2023,6 +2038,40 @@ function PhaseStrategyMap({
   );
 }
 
+function ReasonixCommandAction({
+  action,
+  onAction,
+  disabled
+}: {
+  action: AgentHealthAction;
+  onAction?: (action: AgentHealthAction) => void;
+  disabled?: boolean;
+}) {
+  const [path, setPath] = useState("");
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    onAction?.({ ...action, message: reasonixCommandMessage(path) });
+  };
+  return (
+    <form className="reasonix-command-action" onSubmit={submit}>
+      <label>
+        <span>Reasonix path</span>
+        <input
+          aria-label="Reasonix command path"
+          value={path}
+          onChange={(event) => setPath(event.target.value)}
+          placeholder="reasonix or full path"
+          disabled={disabled}
+        />
+      </label>
+      <button type="submit" disabled={!onAction || disabled}>
+        <Settings size={13} />
+        {action.label || "Configure Reasonix"}
+      </button>
+    </form>
+  );
+}
+
 function DoctorActionButtons({
   actions,
   onAction,
@@ -2041,6 +2090,13 @@ function DoctorActionButtons({
       {visible.map((action) =>
         action.kind === "command" ? (
           <CommandActionRow key={action.id || action.label} command={action.command ?? ""} label={action.label} />
+        ) : isConfigureReasonixAction(action) ? (
+          <ReasonixCommandAction
+            key={action.id || action.label}
+            action={action}
+            onAction={onAction}
+            disabled={setupBusy || profileBusy}
+          />
         ) : (
           <button
             type="button"

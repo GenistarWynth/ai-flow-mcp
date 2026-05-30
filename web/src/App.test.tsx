@@ -675,6 +675,52 @@ describe("Workbench", () => {
     expect(client.runAction).not.toHaveBeenCalled();
   });
 
+  it("configures an explicit Reasonix path from the readiness panel", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "reasonix_command_configure",
+      ok: true,
+      reply: "Reasonix command configured."
+    });
+    const getDoctor = vi.fn().mockResolvedValue({
+      ok: false,
+      root: "C:/repo",
+      host: "codex",
+      checks: {
+        repo: { ok: true },
+        config: { ok: true },
+        mcp: { ok: true, skipped: true },
+        skill: { ok: true }
+      },
+      actions: [
+        {
+          id: "configure_reasonix_command",
+          label: "Configure Reasonix",
+          kind: "local_agent",
+          message: "configure reasonix command",
+          safe: true,
+          reason: "Set commands.reasonix so the economy route can execute."
+        }
+      ]
+    });
+    const client = createClient({ agentMessage, getDoctor });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    await userEvent.type(within(details).getByLabelText("Reasonix command path"), "C:/Program Files/Reasonix/reasonix.cmd");
+    await userEvent.click(within(details).getByRole("button", { name: "Configure Reasonix" }));
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith('configure reasonix command to "C:/Program Files/Reasonix/reasonix.cmd"')
+    );
+    expect(client.applyConfigProfile).not.toHaveBeenCalled();
+    expect(client.runAction).not.toHaveBeenCalled();
+  });
+
   it("filters the run list by search and status", async () => {
     const client = createClient();
 
