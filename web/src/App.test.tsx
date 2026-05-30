@@ -1406,6 +1406,81 @@ describe("Workbench", () => {
     expect(client.apply).not.toHaveBeenCalled();
   });
 
+  it("opens the latest run from a gate-status reply without advancing gates", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "gate_status",
+      ok: true,
+      reply: "Run run-ready is blocked by 4 gate checks: Plan approval: Plan has not been explicitly approved.",
+      next_actions: ["open latest run", "status", "events", "readiness"],
+      recent_run: { run_id: "run-ready", task: "Approve a plan", status: "PLANNED" },
+      run_reference: {
+        run_id: "run-ready",
+        task: "Approve a plan",
+        status: "PLANNED",
+        safe_actions: ["open_run", "status", "events"],
+        gate_diagnosis: { status: "PLANNED", ready_to_apply: false }
+      },
+      gate_diagnosis: {
+        status: "PLANNED",
+        ready_to_apply: false,
+        blockers: [{ key: "approval", label: "Plan approval", ok: false, detail: "Plan has not been explicitly approved." }]
+      },
+      actions: [
+        {
+          id: "open_latest_run",
+          label: "Open latest run",
+          kind: "open_run",
+          run_id: "run-ready",
+          safe: true,
+          reason: "Open the latest Patchbay run before choosing any gated action."
+        },
+        {
+          id: "open_trace",
+          label: "Open activity",
+          kind: "diagnostic_tab",
+          tab: "Trace",
+          safe: true,
+          reason: "Inspect event and provider activity for gate evidence."
+        }
+      ],
+      runs: { count: 1, runs: [{ run_id: "run-ready", task: "Approve a plan", status: "PLANNED" }] }
+    });
+    const client = createClient({
+      listRuns: vi
+        .fn()
+        .mockResolvedValueOnce({ runs: [] })
+        .mockResolvedValue({ runs: [{ run_id: "run-ready", task: "Approve a plan", status: "PLANNED" }] }),
+      agentMessage,
+      getStatus: vi.fn().mockResolvedValue({
+        run_id: "run-ready",
+        task: "Approve a plan",
+        status: "PLANNED",
+        current_phase: "plan",
+        gate_state: { approved: false, tests_passed: false, review_result: null, ready_to_apply: false },
+        next_commands: ["approve"],
+        artifacts: [],
+        effective_phase_providers: {}
+      }),
+      getContext: vi.fn().mockResolvedValue({ ...plannedContext, run_id: "run-ready" })
+    });
+
+    render(<Workbench client={client} />);
+
+    await waitFor(() => expect(client.listRuns).toHaveBeenCalled());
+    const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(composer, "what is blocking apply?{enter}");
+
+    expect(await screen.findByText(/blocked by 4 gate checks/i)).toBeVisible();
+    await userEvent.click(await screen.findByRole("button", { name: /open latest run/i }));
+
+    expect(await screen.findByRole("heading", { name: "Approve a plan" })).toBeInTheDocument();
+    await waitFor(() => expect(client.getContext).toHaveBeenCalledWith("run-ready"));
+    expect(agentMessage).toHaveBeenCalledWith("what is blocking apply?", { include: { plan: true }, background: true });
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
   it("uses self-contained structured open-run actions without fallback run references", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: null,

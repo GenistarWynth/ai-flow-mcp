@@ -9,8 +9,26 @@ export type RunSummary = {
 export type GateState = {
   approved?: boolean;
   tests_passed?: boolean;
+  tests_status?: string;
   review_result?: string | null;
   ready_to_apply?: boolean;
+};
+
+export type GateDiagnosisCheck = {
+  key?: string;
+  label?: string;
+  ok?: boolean;
+  status?: string | null;
+  detail?: string;
+};
+
+export type GateDiagnosis = {
+  status?: string;
+  ready_to_apply?: boolean;
+  tests_status?: string;
+  review_result?: string | null;
+  blockers?: GateDiagnosisCheck[];
+  checks?: GateDiagnosisCheck[];
 };
 
 export type FailureRecovery = {
@@ -387,8 +405,16 @@ export type AgentResponse = {
   context?: HandoffContext | null;
   runs?: { count?: number; runs?: RunSummary[] };
   recent_run?: RunSummary | null;
-  run_reference?: (RunSummary & { suggested_message?: string; safe_actions?: string[]; next_actions?: string[]; requested_view?: RunReferenceView | null }) | null;
+  run_reference?: (RunSummary & {
+    suggested_message?: string;
+    safe_actions?: string[];
+    next_actions?: string[];
+    gate_diagnosis?: GateDiagnosis;
+    requested_view?: RunReferenceView | null;
+  }) | null;
   requested_view?: RunReferenceView | null;
+  latest_status?: RunStatus;
+  gate_diagnosis?: GateDiagnosis;
   doctor?: DoctorReport;
   setup?: SetupResult;
   setup_host?: string;

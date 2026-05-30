@@ -109,6 +109,8 @@ def agent_message(
         return _profile_show_response(root)
     if intent == "next_step":
         return _next_step_response(root, run_id=run_id, include=include)
+    if intent == "gate_status":
+        return _gate_status_response(root, run_id=run_id, include=include)
     if intent == "missing_run":
         return _missing_run_response(root, text)
     if intent == "setup":
@@ -616,6 +618,8 @@ def _classify_intent(message: str, *, has_run: bool, confirmation: str) -> str:
         return "setup"
     if _is_next_step_query(text):
         return "next_step"
+    if _is_gate_status_query(text):
+        return "gate_status"
     if _is_metrics_intent(text):
         return "metrics" if has_run else "missing_run"
     if not has_run:
@@ -718,6 +722,44 @@ def _is_next_step_query(text: str) -> bool:
     if "next" in words and bool(words & {"do", "now", "should", "step", "what"}):
         return True
     return _has_any(text, ("下一步", "接下来做什么", "现在该干什么", "现在做什么", "后续怎么做"))
+
+
+def _is_gate_status_query(text: str) -> bool:
+    if not text:
+        return False
+    if text in {
+        "blockers",
+        "blocked",
+        "gate",
+        "gate status",
+        "gates",
+        "what is blocked",
+        "what is blocking apply",
+        "why blocked",
+        "why can't i apply",
+        "why cannot i apply",
+        "why is apply blocked",
+        "门禁",
+        "门禁状态",
+        "卡住了",
+        "为什么不能应用",
+        "为什么不能 apply",
+        "为什么不能套用",
+        "为什么被阻塞",
+        "哪个门禁没过",
+        "哪些门禁没过",
+    }:
+        return True
+    words = _words(text)
+    if _has_task_intent(text, words):
+        return False
+    if words & {"blocked", "blocker", "blockers", "gate", "gates"}:
+        return bool(words & {"apply", "current", "is", "patchbay", "run", "status", "why", "what"})
+    if "apply" in text and _has_any(text, ("why", "can't", "cannot", "blocked", "blocking")):
+        return True
+    return _has_any(text, ("门禁", "卡住", "阻塞", "不能应用", "不能 apply", "不能套用", "没过")) and _has_any(
+        text, ("为什么", "原因", "哪个", "哪些", "状态", "查看", "显示")
+    )
 
 
 def _config_profile_intent(text: str) -> str | None:
@@ -1241,6 +1283,78 @@ def _next_step_response(root: Path, *, run_id: str | None, include: dict[str, An
             "run_reference": run_reference,
             "latest_status": current,
             "actions": _next_step_actions(latest_run_id, current, include_open_run=True),
+        },
+    )
+
+
+def _gate_status_response(root: Path, *, run_id: str | None, include: dict[str, Any] | None = None) -> dict[str, Any]:
+    if run_id:
+        current = service.status(root, run_id)
+        diagnosis = _gate_diagnosis(current)
+        return _agent_response(
+            root,
+            run_id,
+            action="gate_status",
+            reply=_gate_status_reply(run_id, diagnosis),
+            include=include,
+            extra={"gate_diagnosis": diagnosis, "actions": _gate_status_actions(run_id, current, include_open_run=False)},
+        )
+
+    report = service.runs(root, limit=5)
+    recent = list(report.get("runs") or [])
+    if not recent:
+        return _stateless_response(
+            action="gate_status",
+            reply="No Patchbay runs found. Send a task to start with a plan, or send readiness to check setup.",
+            next_actions=["start", "readiness"],
+            extra={
+                "runs": report,
+                "recent_run": None,
+                "actions": [
+                    {
+                        "id": "start_new_task",
+                        "label": "Start new task",
+                        "kind": "focus_composer",
+                        "safe": True,
+                        "reason": "Focus the composer so a new Patchbay plan can be started.",
+                    },
+                    {
+                        "id": "open_readiness",
+                        "label": "Open readiness",
+                        "kind": "local_agent",
+                        "message": "readiness",
+                        "safe": True,
+                        "reason": "Run read-only setup diagnostics before starting work.",
+                    },
+                ],
+            },
+        )
+
+    latest = recent[0]
+    latest_run_id = str(latest.get("run_id") or "")
+    current = service.status(root, latest_run_id) if latest_run_id else dict(latest)
+    diagnosis = _gate_diagnosis(current)
+    run_reference = {
+        "run_id": latest.get("run_id"),
+        "status": latest.get("status") or current.get("status"),
+        "task": latest.get("task"),
+        "updated_at": latest.get("updated_at"),
+        "suggested_message": "open latest run",
+        "safe_actions": ["open_run", "status", "events"],
+        "gate_diagnosis": diagnosis,
+    }
+    return _stateless_response(
+        action="gate_status",
+        reply=_gate_status_reply(latest_run_id, diagnosis)
+        + " Open that run before taking any gated action from a stateless client.",
+        next_actions=["open latest run", "status", "events", "readiness"],
+        extra={
+            "runs": report,
+            "recent_run": latest,
+            "run_reference": run_reference,
+            "latest_status": current,
+            "gate_diagnosis": diagnosis,
+            "actions": _gate_status_actions(latest_run_id, current, include_open_run=True),
         },
     )
 
@@ -1944,6 +2058,123 @@ def _next_step_actions(run_id: str, status_data: dict[str, Any], *, include_open
             "message": "readiness",
             "safe": True,
             "reason": "Run read-only setup diagnostics if the next step is blocked by local setup.",
+        }
+    )
+    return actions
+
+
+def _gate_diagnosis(status_data: dict[str, Any]) -> dict[str, Any]:
+    gate = status_data.get("gate_state", {}) or {}
+    status_value = str(status_data.get("status") or "unknown")
+    tests_status = str(gate.get("tests_status") or status_data.get("tests_status") or "NOT_RUN")
+    review_result = gate.get("review_result") or status_data.get("review_result")
+    checks = [
+        {
+            "key": "approval",
+            "label": "Plan approval",
+            "ok": bool(gate.get("approved")) or status_value not in {PLANNED},
+            "status": "done" if gate.get("approved") else "pending",
+            "detail": "Plan approval is recorded." if gate.get("approved") else "Plan has not been explicitly approved.",
+        },
+        {
+            "key": "tests",
+            "label": "Tests",
+            "ok": bool(gate.get("tests_passed")),
+            "status": tests_status,
+            "detail": "Tests passed." if gate.get("tests_passed") else f"Tests are not passing yet (tests_status={tests_status}).",
+        },
+        {
+            "key": "review",
+            "label": "Review",
+            "ok": review_result == "PASS",
+            "status": review_result or "pending",
+            "detail": "Review passed." if review_result == "PASS" else f"Review has not returned PASS (review_result={review_result or 'pending'}).",
+        },
+        {
+            "key": "apply",
+            "label": "Apply gate",
+            "ok": bool(gate.get("ready_to_apply")),
+            "status": "ready" if gate.get("ready_to_apply") else "blocked",
+            "detail": "Apply can proceed with explicit confirmation."
+            if gate.get("ready_to_apply")
+            else "Apply is blocked until tests pass and review returns PASS.",
+        },
+    ]
+    blockers = [item for item in checks if not item["ok"]]
+    return {
+        "status": status_value,
+        "ready_to_apply": bool(gate.get("ready_to_apply")),
+        "tests_status": tests_status,
+        "review_result": review_result,
+        "blockers": blockers,
+        "checks": checks,
+    }
+
+
+def _gate_status_reply(run_id: str, diagnosis: dict[str, Any]) -> str:
+    if diagnosis.get("ready_to_apply"):
+        return f"Run {run_id} is through the technical gates; apply still requires explicit confirmation."
+    blockers = diagnosis.get("blockers") or []
+    if not blockers:
+        return f"Run {run_id} has no detected gate blockers, but apply is not marked ready. Inspect status and events."
+    details = "; ".join(f"{item.get('label')}: {item.get('detail')}" for item in blockers[:3])
+    return f"Run {run_id} is blocked by {len(blockers)} gate check{'s' if len(blockers) != 1 else ''}: {details}"
+
+
+def _gate_status_actions(run_id: str, status_data: dict[str, Any], *, include_open_run: bool) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]] = []
+    if include_open_run:
+        actions.append(
+            {
+                "id": "open_latest_run",
+                "label": "Open latest run",
+                "kind": "open_run",
+                "run_id": run_id,
+                "safe": True,
+                "reason": "Open the latest Patchbay run before choosing any gated action.",
+            }
+        )
+    actions.append(
+        {
+            "id": "open_trace",
+            "label": "Open activity",
+            "kind": "diagnostic_tab",
+            "tab": "Trace",
+            "safe": True,
+            "reason": "Inspect event and provider activity for gate evidence.",
+        }
+    )
+    status_value = str(status_data.get("status") or "")
+    if status_value == PLANNED:
+        actions.append(
+            {
+                "id": "open_plan",
+                "label": "Open plan",
+                "kind": "diagnostic_tab",
+                "tab": "Artifacts",
+                "safe": True,
+                "reason": "Review PLAN.md before explicit plan approval.",
+            }
+        )
+    if status_value in {IMPLEMENTED, TESTED, REVIEWED_PASS, REVIEWED_CHANGES_REQUESTED}:
+        actions.append(
+            {
+                "id": "open_diff",
+                "label": "Open diff",
+                "kind": "diagnostic_tab",
+                "tab": "Diff",
+                "safe": True,
+                "reason": "Inspect the patch and evidence related to the apply gate.",
+            }
+        )
+    actions.append(
+        {
+            "id": "open_readiness",
+            "label": "Open readiness",
+            "kind": "local_agent",
+            "message": "readiness",
+            "safe": True,
+            "reason": "Run read-only setup diagnostics if a gate is blocked by local configuration.",
         }
     )
     return actions
