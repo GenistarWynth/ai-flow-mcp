@@ -264,33 +264,50 @@ function mapStructuredLocalReplyAction(action: AgentHealthAction): LocalReplyAct
   return null;
 }
 
+function includesAny(text: string, needles: string[]) {
+  return needles.some((needle) => text.includes(needle));
+}
+
+function requestedTabFromLocalReply(text: string): RunReferenceView["tab"] | null {
+  if (includesAny(text, ["diff", "patch", "补丁", "变更", "差异", "改动"])) return "Diff";
+  if (includesAny(text, ["events", "trace", "事件", "轨迹", "跟踪"])) return "Trace";
+  if (includesAny(text, ["log", "logs", "日志"])) return "Log";
+  if (includesAny(text, ["artifact", "artifacts", "plan", "review", "产物", "计划", "审查", "评审"])) return "Artifacts";
+  return null;
+}
+
 function mapLocalReplyAction(raw: string): LocalReplyAction | null {
   const text = raw.toLowerCase();
-  if (text.includes("open latest") || text.includes("select latest")) {
-    return { id: "open-latest-run", label: "打开最近运行", message: "open latest run", icon: "search" };
+  const requestedTab = requestedTabFromLocalReply(text);
+  if (requestedTab) {
+    return { id: "open-latest-run", label: raw || "打开最近运行", message: "open latest run", icon: "search", tab: requestedTab };
+  }
+  if (includesAny(text, ["open latest", "select latest", "latest run", "recent run", "打开最近", "最近运行", "最新运行"])) {
+    return { id: "open-latest-run", label: raw || "打开最近运行", message: "open latest run", icon: "search" };
   }
   if (
     text.includes("apply economy profile") ||
     text.includes("config profile apply economy") ||
     text.includes("use economy routing") ||
-    text.includes("use economy route")
+    text.includes("use economy route") ||
+    includesAny(text, ["应用经济路由", "启用经济路由", "经济路由", "便宜模型", "低成本模型"])
   ) {
     return { id: "apply-economy", label: "经济路由", message: "apply economy profile", icon: "play" };
   }
   if (text.includes("configure reasonix command") || text.includes("commands.reasonix")) {
     return { id: "configure_reasonix_command", label: "Configure Reasonix", message: "configure reasonix command", icon: "settings" };
   }
-  if (text.includes("readiness") || text.includes("doctor") || text.includes("diagnose")) {
+  if (includesAny(text, ["readiness", "doctor", "diagnose", "就绪", "诊断", "检查"])) {
     return { id: "readiness", label: "就绪", message: "readiness", icon: "shield" };
   }
-  if (text.includes("setup") || text.includes("install")) {
+  if (includesAny(text, ["setup", "install", "安装", "初始化"])) {
     const setupHost = setupHostOptions.find((host) => text.includes(host.id));
     if (setupHost) {
       return { id: `setup-${setupHost.id}`, label: setupHost.label, message: setupHost.message, icon: "settings" };
     }
     return { id: "setup", label: "运行 setup", message: "patchbay setup", icon: "settings" };
   }
-  if (text.includes("runs") || text.includes("status")) {
+  if (includesAny(text, ["runs", "status", "运行列表", "运行状态", "状态"])) {
     return { id: "runs", label: "运行列表", message: "status", icon: "search" };
   }
   if (text === "start" || text.includes("start")) {
