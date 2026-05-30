@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -94,6 +95,12 @@ test = []
                 return last
             time.sleep(0.1)
         self.fail(f"Timed out waiting for condition; last value: {last!r}")
+
+    def _set_reasonix_command_to_python(self) -> None:
+        config_path = self.repo / ".ai" / "patchbay.toml"
+        escaped = sys.executable.replace("\\", "\\\\")
+        with config_path.open("a", encoding="utf-8", newline="\n") as handle:
+            handle.write(f'\n[commands]\nreasonix = "{escaped}"\n')
 
 
 class AgentWorkflowTests(AgentTestCase):
@@ -718,6 +725,7 @@ test = []
         from scripts.ai_flow.events import append_event
 
         agent_message(self.repo, "apply economy profile")
+        self._set_reasonix_command_to_python()
         planned = agent_message(self.repo, "routing metrics target")
         run_path = self.repo / ".ai" / "runs" / planned["run_id"]
         append_event(
@@ -735,6 +743,8 @@ test = []
 
         routing = response["metrics"]["routing_evidence"]
         self.assertTrue(routing["economy_configured"])
+        self.assertTrue(routing["economy_command_ready"])
+        self.assertEqual(routing["command_not_ready_phases"], [])
         self.assertEqual(routing["observed_economy_phases"], ["write"])
         self.assertEqual(routing["coverage"]["observed_economy_total"], 1)
         self.assertEqual(routing["coverage"]["observed_economy_percent"], 50)
@@ -750,10 +760,31 @@ test = []
         self.assertIn("economy health pending_evidence", response["reply"])
         self.assertIn("observed write", response["reply"])
 
+    def test_agent_metrics_warns_when_economy_command_is_missing(self) -> None:
+        agent_message(self.repo, "apply economy profile")
+        planned = agent_message(self.repo, "routing command health target")
+
+        response = agent_message(self.repo, "cost", run_id=planned["run_id"])
+
+        routing = response["metrics"]["routing_evidence"]
+        self.assertTrue(routing["economy_configured"])
+        self.assertFalse(routing["economy_command_ready"])
+        self.assertEqual(routing["command_not_ready_phases"], ["write", "fix"])
+        self.assertEqual(routing["phases"]["write"]["command_status"]["status"], "missing_config")
+        self.assertEqual(routing["phases"]["fix"]["command_status"]["status"], "missing_config")
+        self.assertEqual(routing["economy_health"]["status"], "command_not_ready")
+        self.assertEqual(routing["economy_health"]["next_action"], "configure_reasonix_command")
+        self.assertEqual(routing["economy_health"]["command_not_ready_phases"], ["write", "fix"])
+        self.assertEqual(routing["actions"][0]["id"], "configure_reasonix_command")
+        self.assertEqual(response["actions"][0]["kind"], "command")
+        self.assertIn("commands.reasonix", response["actions"][0]["command"])
+        self.assertIn("economy health command_not_ready", response["reply"])
+
     def test_agent_metrics_flags_non_economy_provider_observed_on_economy_route(self) -> None:
         from scripts.ai_flow.events import append_event
 
         agent_message(self.repo, "apply economy profile")
+        self._set_reasonix_command_to_python()
         planned = agent_message(self.repo, "routing drift target")
         run_path = self.repo / ".ai" / "runs" / planned["run_id"]
         append_event(
@@ -784,6 +815,7 @@ test = []
         from scripts.ai_flow.events import append_event
 
         agent_message(self.repo, "apply economy profile")
+        self._set_reasonix_command_to_python()
         planned = agent_message(self.repo, "mixed routing drift target")
         run_path = self.repo / ".ai" / "runs" / planned["run_id"]
         append_event(

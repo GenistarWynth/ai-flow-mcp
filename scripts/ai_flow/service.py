@@ -4,6 +4,7 @@ from copy import deepcopy
 from datetime import datetime
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -43,6 +44,7 @@ from .config import (
     find_project_root,
     load_config,
     resolve_phase,
+    split_command,
 )
 from .context import build_context
 from .errors import AiFlowError, GitError, SafetyError, StateError
@@ -1290,7 +1292,7 @@ def status(cwd: Path, run_id: str) -> dict[str, Any]:
             "command_key": resolved.get("command_key", ""),
         }
     data["effective_phase_providers"] = effective
-    data["routing_evidence"] = _run_routing_evidence(run_metrics, effective)
+    data["routing_evidence"] = _run_routing_evidence(run_metrics, effective, cfg)
     run_metrics["routing_evidence"] = data["routing_evidence"]
     data["run_metrics"] = run_metrics
     job_path = _job_path(run_path)
@@ -1487,7 +1489,7 @@ def _run_metrics(run_path: Path) -> dict[str, Any]:
     }
 
 
-def _run_routing_evidence(run_metrics: dict[str, Any], effective: dict[str, Any]) -> dict[str, Any]:
+def _run_routing_evidence(run_metrics: dict[str, Any], effective: dict[str, Any], cfg: dict[str, Any] | None = None) -> dict[str, Any]:
     provider_usage = [
         entry
         for entry in run_metrics.get("provider_usage", [])
@@ -1519,11 +1521,13 @@ def _run_routing_evidence(run_metrics: dict[str, Any], effective: dict[str, Any]
             observed_non_economy_phases.append(phase)
         if not observed:
             missing_evidence.append(phase)
+        command_status = _routing_phase_command_status(cfg or {}, configured)
         phases[phase] = {
             "configured": configured,
             "observed": observed,
             "configured_economy": configured_economy,
             "observed_economy": observed_economy,
+            "command_status": command_status if command_status.get("required") else None,
             "status": (
                 "observed_mixed"
                 if observed_economy and observed_other
@@ -1535,6 +1539,22 @@ def _run_routing_evidence(run_metrics: dict[str, Any], effective: dict[str, Any]
             ),
         }
     economy_configured = configured_economy_phases == ["write", "fix"]
+    command_statuses = {
+        phase: phases[phase].get("command_status")
+        for phase in ("write", "fix")
+        if isinstance(phases.get(phase, {}).get("command_status"), dict)
+    }
+    command_not_ready = [
+        phase
+        for phase in ("write", "fix")
+        if isinstance(command_statuses.get(phase), dict) and command_statuses[phase].get("ready") is False
+    ]
+    required_command_statuses = [item for item in command_statuses.values() if item.get("required")]
+    economy_command_ready = (
+        all(item.get("ready") for item in required_command_statuses)
+        if required_command_statuses
+        else None
+    )
     coverage = _routing_coverage(
         configured_economy_phases=configured_economy_phases,
         observed_phases=observed_phases,
@@ -1547,12 +1567,15 @@ def _run_routing_evidence(run_metrics: dict[str, Any], effective: dict[str, Any]
         observed_economy_phases=observed_economy_phases,
         observed_non_economy_phases=observed_non_economy_phases,
         missing_evidence=missing_evidence,
+        command_not_ready=command_not_ready,
         coverage=coverage,
     )
     actions = _routing_health_actions(economy_health)
     return {
         "target": {"provider": ECONOMY_PROVIDER, "model": ECONOMY_MODEL},
         "economy_configured": economy_configured,
+        "economy_command_ready": economy_command_ready,
+        "command_not_ready_phases": command_not_ready,
         "configured_economy_phases": configured_economy_phases,
         "observed_phases": observed_phases,
         "observed_economy_phases": observed_economy_phases,
@@ -1574,6 +1597,17 @@ def _run_routing_evidence(run_metrics: dict[str, Any], effective: dict[str, Any]
 
 def _routing_health_actions(health: dict[str, Any]) -> list[dict[str, Any]]:
     next_action = str(health.get("next_action") or "")
+    if next_action == "configure_reasonix_command":
+        return [
+            {
+                "id": "configure_reasonix_command",
+                "label": "Configure Reasonix",
+                "kind": "command",
+                "command": "patchbay config --set-key commands.reasonix --set-value reasonix",
+                "safe": True,
+                "reason": "Set the Reasonix executable so the Reasonix/DeepSeek write/fix economy route can actually run.",
+            }
+        ]
     if next_action == "apply_economy_profile":
         return [
             {
@@ -1617,6 +1651,7 @@ def _economy_health(
     observed_economy_phases: list[str],
     observed_non_economy_phases: list[str],
     missing_evidence: list[str],
+    command_not_ready: list[str],
     coverage: dict[str, Any],
 ) -> dict[str, Any]:
     required_phases = ["write", "fix"]
@@ -1641,6 +1676,23 @@ def _economy_health(
             "summary": summary,
             "recommendation": "Run `patchbay config profile apply economy` before write/fix so simple implementation and repair work routes to Reasonix/DeepSeek.",
             "next_action": "apply_economy_profile",
+        }
+    if command_not_ready:
+        summary = f"Economy route is configured, but {'/'.join(command_not_ready)} cannot execute because the Reasonix command is not ready."
+        return {
+            "status": "command_not_ready",
+            "severity": "warning",
+            "configured": True,
+            "target": target,
+            "required_phases": required_phases,
+            "missing_config_phases": [],
+            "command_not_ready_phases": command_not_ready,
+            "drift_phases": drift_phases,
+            "missing_evidence": missing_observation,
+            "observed_economy_phases": observed_economy_phases,
+            "summary": summary,
+            "recommendation": "Set `commands.reasonix` before continuing high-volume write/fix work on the Reasonix/DeepSeek economy route.",
+            "next_action": "configure_reasonix_command",
         }
     if drift_phases:
         summary = f"Economy route is configured, but {'/'.join(drift_phases)} observed non-economy provider events."
@@ -1728,6 +1780,48 @@ def _routing_phase_snapshot(route: dict[str, Any]) -> dict[str, Any]:
         if isinstance(value, dict) and value:
             snapshot[key] = value
     return snapshot
+
+
+def _routing_phase_command_status(cfg: dict[str, Any], phase: dict[str, Any]) -> dict[str, Any]:
+    provider = str(phase.get("provider") or "")
+    command_key = str(phase.get("command_key") or "")
+    if provider != ECONOMY_PROVIDER:
+        return {
+            "required": False,
+            "ready": True,
+            "provider": provider,
+            "command_key": command_key,
+        }
+    commands = cfg.get("commands", {}) if isinstance(cfg.get("commands"), dict) else {}
+    command = str(commands.get(command_key, "") or "").strip()
+    parts = split_command(command)
+    executable = parts[0] if parts else ""
+    resolved = shutil.which(executable) if executable else None
+    if not command:
+        return {
+            "required": True,
+            "ready": False,
+            "status": "missing_config",
+            "provider": provider,
+            "command_key": command_key,
+            "command": command,
+            "executable": executable,
+            "resolved": "",
+            "recommendation": f"Set commands.{command_key} to your Reasonix executable, such as reasonix or reasonix.cmd.",
+        }
+    return {
+        "required": True,
+        "ready": bool(resolved),
+        "status": "ready" if resolved else "not_found",
+        "provider": provider,
+        "command_key": command_key,
+        "command": command,
+        "executable": executable,
+        "resolved": resolved or "",
+        "recommendation": ""
+        if resolved
+        else f"Install Reasonix or set commands.{command_key} to the full Reasonix executable path.",
+    }
 
 
 def _is_economy_route(route: dict[str, Any]) -> bool:

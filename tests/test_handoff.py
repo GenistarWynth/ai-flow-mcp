@@ -94,12 +94,12 @@ class HandoffContextTest(unittest.TestCase):
         self.assertIn("确认", activity["conversation_state"]["composer_placeholder"])
         self.assertEqual([card["key"] for card in activity["gate_cards"]], ["approval", "tests", "review", "apply"])
         self.assertEqual(activity["health_cards"][0]["key"], "economy_route")
-        self.assertEqual(activity["health_cards"][0]["status"], "pending_evidence")
-        self.assertEqual(activity["health_cards"][0]["tone"], "ready")
+        self.assertEqual(activity["health_cards"][0]["status"], "command_not_ready")
+        self.assertEqual(activity["health_cards"][0]["tone"], "blocked")
         self.assertEqual(activity["health_cards"][0]["coverage_percent"], 0)
-        self.assertEqual(activity["health_cards"][0]["action"]["id"], "wait_for_routing_evidence")
-        self.assertEqual(activity["health_cards"][0]["action"]["kind"], "diagnostic_tab")
-        self.assertEqual(activity["health_cards"][0]["action"]["tab"], "Trace")
+        self.assertEqual(activity["health_cards"][0]["action"]["id"], "configure_reasonix_command")
+        self.assertEqual(activity["health_cards"][0]["action"]["kind"], "command")
+        self.assertIn("commands.reasonix", activity["health_cards"][0]["action"]["command"])
         self.assertNotIn("provider", activity["headline"].lower())
         self.assertEqual(activity["messages"][0]["kind"], "event")
         artifact = {item["name"]: item for item in context["artifacts"]}
@@ -266,7 +266,7 @@ class HandoffContextTest(unittest.TestCase):
         )
         self.assertEqual(
             canonical_payload["agent_activity"]["health_cards"][0]["action"]["id"],
-            "wait_for_routing_evidence",
+            "configure_reasonix_command",
         )
 
     def test_metrics_command_and_mcp_tool_expose_efficiency_digest(self) -> None:

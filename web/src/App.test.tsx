@@ -587,6 +587,93 @@ describe("Workbench", () => {
     expect(client.runAction).not.toHaveBeenCalled();
   });
 
+  it("shows command setup actions for economy command health", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    const commandContext: HandoffContext = {
+      ...readyContext,
+      run_metrics: {
+        ...readyContext.run_metrics!,
+        routing_evidence: {
+          economy_configured: true,
+          economy_command_ready: false,
+          command_not_ready_phases: ["write", "fix"],
+          summary: "Economy route is configured, but write/fix cannot execute because the Reasonix command is not ready.",
+          phases: {
+            write: {
+              configured: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" },
+              configured_economy: true,
+              command_status: { required: true, ready: false, status: "missing_config", command_key: "reasonix" }
+            },
+            fix: {
+              configured: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" },
+              configured_economy: true,
+              command_status: { required: true, ready: false, status: "missing_config", command_key: "reasonix" }
+            }
+          },
+          economy_health: {
+            status: "command_not_ready",
+            severity: "warning",
+            configured: true,
+            target: { provider: "reasonix_cli", model: "deepseek-v4-pro" },
+            required_phases: ["write", "fix"],
+            missing_config_phases: [],
+            command_not_ready_phases: ["write", "fix"],
+            drift_phases: [],
+            missing_evidence: ["write", "fix"],
+            observed_economy_phases: [],
+            summary: "Economy route is configured, but write/fix cannot execute because the Reasonix command is not ready.",
+            recommendation: "Set `commands.reasonix` before continuing high-volume write/fix work.",
+            next_action: "configure_reasonix_command"
+          }
+        }
+      },
+      agent_activity: {
+        ...readyContext.agent_activity!,
+        health_cards: [
+          {
+            key: "economy_route",
+            label: "Economy route",
+            status: "command_not_ready",
+            tone: "blocked",
+            detail: "Economy route is configured, but write/fix cannot execute because the Reasonix command is not ready.",
+            recommendation: "Set `commands.reasonix` before continuing high-volume write/fix work.",
+            next_action: "configure_reasonix_command",
+            coverage_percent: 0
+          }
+        ]
+      }
+    };
+    const client = createClient({
+      getContext: vi.fn().mockResolvedValue(commandContext),
+      getStatus: vi.fn().mockResolvedValue({
+        run_id: "run-ready",
+        task: "Ship dashboard",
+        status: "REVIEWED_PASS",
+        current_phase: "apply",
+        gate_state: { approved: true, tests_passed: true, review_result: "PASS", ready_to_apply: true },
+        run_metrics: commandContext.run_metrics,
+        artifacts: [],
+        effective_phase_providers: {}
+      })
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    expect(screen.getByText("命令未就绪 · write/fix")).toBeVisible();
+    expect(screen.getAllByText("命令未配置").length).toBeGreaterThan(0);
+    await userEvent.click(screen.getAllByRole("button", { name: "Copy command Configure Reasonix" })[0]);
+
+    expect(writeText).toHaveBeenCalledWith("patchbay config --set-key commands.reasonix --set-value reasonix");
+    expect(client.applyConfigProfile).not.toHaveBeenCalled();
+    expect(client.runAction).not.toHaveBeenCalled();
+  });
+
   it("filters the run list by search and status", async () => {
     const client = createClient();
 

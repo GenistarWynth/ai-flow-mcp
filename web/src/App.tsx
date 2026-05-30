@@ -514,6 +514,7 @@ function healthStatusLabel(status?: string) {
   if (status === "pending_evidence") return "待观测";
   if (status === "drift") return "漂移";
   if (status === "not_configured") return "未配置";
+  if (status === "command_not_ready") return "命令未就绪";
   return status || "未知";
 }
 
@@ -582,10 +583,21 @@ function economyHealthLabel(routing?: RoutingEvidence | null) {
   if (!health?.status) return "";
   if (health.status === "drift") return `${healthStatusLabel(health.status)} · ${(health.drift_phases ?? []).join("/") || "write/fix"}`;
   if (health.status === "not_configured") return `${healthStatusLabel(health.status)} · ${(health.missing_config_phases ?? []).join("/") || "write/fix"}`;
+  if (health.status === "command_not_ready") return `${healthStatusLabel(health.status)} · ${(health.command_not_ready_phases ?? routing?.command_not_ready_phases ?? []).join("/") || "write/fix"}`;
   return healthStatusLabel(health.status);
 }
 
 function healthActionFromNext(nextAction?: string): AgentHealthAction | null {
+  if (nextAction === "configure_reasonix_command") {
+    return {
+      id: "configure_reasonix_command",
+      label: "Configure Reasonix",
+      kind: "command",
+      command: "patchbay config --set-key commands.reasonix --set-value reasonix",
+      safe: true,
+      reason: "Set the Reasonix executable so the Reasonix/DeepSeek write/fix economy route can actually run."
+    };
+  }
   if (nextAction === "apply_economy_profile") {
     return {
       id: "apply_economy_profile",
@@ -1703,14 +1715,18 @@ function MetricsGrid({
       {routingAction ? (
         <div className="metric-action-row" aria-label="路由建议动作">
           <span>{routingAction.reason || "Patchbay 已提供安全的路由后续动作。"}</span>
-          <button
-            type="button"
-            onClick={() => onAction?.(routingAction)}
-            disabled={!onAction || (routingAction.kind !== "diagnostic_tab" && actionBusy)}
-          >
-            {routingAction.kind === "diagnostic_tab" ? <Search size={13} /> : <Settings size={13} />}
-            {routingAction.label}
-          </button>
+          {routingAction.kind === "command" && routingAction.command ? (
+            <CommandActionRow command={routingAction.command} label={routingAction.label} />
+          ) : (
+            <button
+              type="button"
+              onClick={() => onAction?.(routingAction)}
+              disabled={!onAction || (routingAction.kind !== "diagnostic_tab" && actionBusy)}
+            >
+              {routingAction.kind === "diagnostic_tab" ? <Search size={13} /> : <Settings size={13} />}
+              {routingAction.label}
+            </button>
+          )}
         </div>
       ) : null}
       <div className="metric-row">
@@ -1817,7 +1833,8 @@ function HealthCardGrid({
   return (
     <div className="health-card-grid">
       {visible.map((card) => {
-        const action = card.action?.safe === false ? null : card.action;
+        const cardAction = card.action ?? healthActionFromNext(card.next_action);
+        const action = cardAction?.safe === false ? null : cardAction;
         return (
           <div className={`health-card tone-${card.tone ?? "idle"}`} key={card.key || card.label}>
             <div className="health-card-head">
@@ -1827,7 +1844,9 @@ function HealthCardGrid({
             {typeof card.coverage_percent === "number" ? <small>{card.coverage_percent}% economy observed</small> : null}
             {card.detail ? <p>{card.detail}</p> : null}
             {card.recommendation ? <em>{card.recommendation}</em> : null}
-            {action ? (
+            {action?.kind === "command" && action.command ? (
+              <CommandActionRow command={action.command} label={action.label} />
+            ) : action ? (
               <button
                 className="health-card-action"
                 type="button"

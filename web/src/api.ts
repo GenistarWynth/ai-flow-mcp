@@ -96,12 +96,13 @@ export type RoutingCoverage = {
 };
 
 export type EconomyHealth = {
-  status?: "healthy" | "pending_evidence" | "drift" | "not_configured" | string;
+  status?: "healthy" | "pending_evidence" | "drift" | "not_configured" | "command_not_ready" | string;
   severity?: "ok" | "info" | "warning" | string;
   configured?: boolean;
   target?: PhaseProvider;
   required_phases?: string[];
   missing_config_phases?: string[];
+  command_not_ready_phases?: string[];
   drift_phases?: string[];
   missing_evidence?: string[];
   observed_economy_phases?: string[];
@@ -115,6 +116,7 @@ export type RoutingEvidence = {
   target?: PhaseProvider;
   economy_configured?: boolean;
   economy_command_ready?: boolean | null;
+  command_not_ready_phases?: string[];
   configured_economy_phases?: string[];
   observed_phases?: string[];
   observed_economy_phases?: string[];
