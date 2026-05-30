@@ -290,6 +290,95 @@ textarea { resize: none; }
   font-weight: 700;
 }
 .routing-result-routes strong { overflow-wrap: anywhere; }
+.gate-diagnosis-card {
+  justify-self: center;
+  display: grid;
+  gap: 9px;
+  width: min(820px, 100%);
+  border: 1px solid #fed7aa;
+  border-left: 4px solid #d97706;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #344255;
+  background: #fff7ed;
+}
+.gate-diagnosis-card.ready {
+  border-color: #b7e4c7;
+  border-left-color: #168a54;
+  background: #f1fbf6;
+}
+.gate-diagnosis-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.gate-diagnosis-head strong { color: #172033; }
+.gate-diagnosis-head span {
+  margin-left: auto;
+  border: 1px solid rgba(100, 112, 131, 0.22);
+  border-radius: 8px;
+  padding: 3px 7px;
+  color: #344255;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+.gate-diagnosis-card p {
+  margin: 0;
+  color: #647083;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.gate-diagnosis-checks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+.gate-diagnosis-check {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 7px;
+  border: 1px solid #d9dee6;
+  border-radius: 8px;
+  padding: 8px;
+  background: #ffffff;
+}
+.gate-diagnosis-check.ok {
+  border-color: #b7e4c7;
+  background: #fbfffd;
+}
+.gate-diagnosis-check.blocked {
+  border-color: #fed7aa;
+  background: #fffaf4;
+}
+.gate-check-icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 8px;
+  color: #92400e;
+  background: #ffedd5;
+}
+.gate-diagnosis-check.ok .gate-check-icon {
+  color: #16794f;
+  background: #dcfce7;
+}
+.gate-diagnosis-check strong, .gate-diagnosis-check span {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.gate-diagnosis-check strong { color: #172033; font-size: 12px; }
+.gate-diagnosis-check span {
+  margin-top: 2px;
+  color: #647083;
+  font-size: 11px;
+  font-weight: 800;
+}
+.gate-diagnosis-check p { margin-top: 5px; }
 .chat-bubble {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr);

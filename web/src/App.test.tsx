@@ -1424,7 +1424,13 @@ describe("Workbench", () => {
       gate_diagnosis: {
         status: "PLANNED",
         ready_to_apply: false,
-        blockers: [{ key: "approval", label: "Plan approval", ok: false, detail: "Plan has not been explicitly approved." }]
+        blockers: [{ key: "approval", label: "Plan approval", ok: false, detail: "Plan has not been explicitly approved." }],
+        checks: [
+          { key: "approval", label: "Plan approval", ok: false, status: "pending", detail: "Plan has not been explicitly approved." },
+          { key: "tests", label: "Tests", ok: false, status: "NOT_RUN", detail: "Tests are not passing yet." },
+          { key: "review", label: "Review", ok: false, status: "pending", detail: "Review has not returned PASS." },
+          { key: "apply", label: "Apply gate", ok: false, status: "blocked", detail: "Apply is blocked until tests pass and review returns PASS." }
+        ]
       },
       actions: [
         {
@@ -1472,11 +1478,96 @@ describe("Workbench", () => {
     await userEvent.type(composer, "what is blocking apply?{enter}");
 
     expect(await screen.findByText(/blocked by 4 gate checks/i)).toBeVisible();
+    expect(screen.getByLabelText("Gate diagnosis")).toBeVisible();
+    expect(screen.getByText("门禁诊断")).toBeVisible();
+    expect(screen.getByText("Apply 仍被 1 项检查阻塞。")).toBeVisible();
+    expect(screen.getByText("Plan approval")).toBeVisible();
+    expect(screen.getByText("Apply gate")).toBeVisible();
     await userEvent.click(await screen.findByRole("button", { name: /open latest run/i }));
 
     expect(await screen.findByRole("heading", { name: "Approve a plan" })).toBeInTheDocument();
     await waitFor(() => expect(client.getContext).toHaveBeenCalledWith("run-ready"));
     expect(agentMessage).toHaveBeenCalledWith("what is blocking apply?", { include: { plan: true }, background: true });
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
+  it("renders run-bound gate diagnosis as a local Agent reply without advancing gates", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: "run-ready",
+      action: "gate_status",
+      ok: true,
+      reply: "Run run-ready is through the technical gates; apply still requires explicit confirmation.",
+      gate_diagnosis: {
+        status: "REVIEWED_PASS",
+        ready_to_apply: true,
+        blockers: [],
+        checks: [
+          { key: "approval", label: "Plan approval", ok: true, status: "done", detail: "Plan approval is recorded." },
+          { key: "tests", label: "Tests", ok: true, status: "PASS", detail: "Tests passed." },
+          { key: "review", label: "Review", ok: true, status: "PASS", detail: "Review passed." },
+          { key: "apply", label: "Apply gate", ok: true, status: "ready", detail: "Apply can proceed with explicit confirmation." }
+        ]
+      },
+      actions: [
+        {
+          id: "open_diff",
+          label: "Open diff",
+          kind: "diagnostic_tab",
+          tab: "Diff",
+          safe: true,
+          reason: "Inspect the patch and evidence related to the apply gate."
+        }
+      ]
+    });
+    const client = createClient({ agentMessage });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await userEvent.type(screen.getByLabelText("给 Patchbay Agent 输入消息"), "why is apply blocked");
+    await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith("why is apply blocked", {
+        runId: "run-ready",
+        include: { diff: true, review: true },
+        background: true
+      })
+    );
+    expect(await screen.findByText(/through the technical gates/i)).toBeVisible();
+    expect(screen.getByLabelText("Gate diagnosis")).toBeVisible();
+    expect(screen.getByText("所有技术门禁已通过；apply 仍需要显式确认。")).toBeVisible();
+    expect(screen.getByText("Apply gate")).toBeVisible();
+    expect(screen.getByRole("tab", { name: "差异" })).toHaveAttribute("aria-selected", "true");
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
+  it("sends selected-run economy prompts to Agent instead of treating apply as a phase command", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "profile_apply",
+      ok: true,
+      reply: "Economy routing profile applied."
+    });
+    const client = createClient({ agentMessage });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await userEvent.type(screen.getByLabelText("给 Patchbay Agent 输入消息"), "apply economy profile");
+    await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith("apply economy profile", {
+        runId: "run-ready",
+        include: { diff: true, review: true },
+        background: true
+      })
+    );
+    expect(await screen.findByText("Economy routing profile applied.")).toBeVisible();
+    expect(screen.queryByRole("dialog", { name: "确认应用补丁" })).not.toBeInTheDocument();
     expect(client.runAction).not.toHaveBeenCalled();
     expect(client.apply).not.toHaveBeenCalled();
   });

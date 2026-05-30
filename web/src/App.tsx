@@ -1,4 +1,4 @@
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, Fragment, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Bot,
@@ -29,6 +29,7 @@ import {
   createPatchbayClient,
   DoctorReport,
   FailureRecovery,
+  GateDiagnosis,
   HandoffContext,
   PatchbayClient,
   PhaseProvider,
@@ -46,7 +47,7 @@ import "./styles.css";
 
 type TabName = "Overview" | "Readiness" | "Trace" | "Log" | "Diff" | "Artifacts" | "Config" | "Providers";
 type ConfirmState = { action: string; title: string; body: string; safe: boolean; confirmLabel?: string } | null;
-type LocalMessage = { id: string; body: string; timestamp: string };
+type LocalMessage = { id: string; body: string; timestamp: string; role?: "user" | "assistant"; response?: AgentResponse };
 type DoctorProfileStatus = {
   profile?: string;
   recommendation?: string;
@@ -789,9 +790,14 @@ function confirmCopy(action: SuggestedAction, readyToApply: boolean): ConfirmSta
 function resolveComposerIntent(text: string, suggestions: SuggestedAction[], primaryAction: AgentAction | null | undefined) {
   const value = text.trim().toLowerCase();
   if (!value || value.length > 24) return null;
+  const normalized = value.replace(/[?？!！.。]/g, "").trim();
+  const questionTerms = ["why", "what", "how", "blocked", "blocking", "blocker", "gate", "status", "原因", "为什么", "哪个", "哪些", "门禁", "阻塞", "状态"];
+  if (value.includes("?") || value.includes("？") || questionTerms.some((term) => value.includes(term))) return null;
+  const localAgentTerms = ["economy", "profile", "routing", "reasonix", "deepseek", "经济路由", "便宜模型", "低成本"];
+  if (localAgentTerms.some((term) => value.includes(term))) return null;
   const findAction = (name: string) => suggestions.find((item) => item.action === name);
   const continueWords = ["继续", "下一步", "确认", "go", "continue", "next"];
-  if (continueWords.some((word) => value === word || value.includes(word))) {
+  if (continueWords.some((word) => normalized === word)) {
     if (primaryAction) return actionFromSuggestion(primaryAction);
     return suggestions[0] ?? null;
   }
@@ -1132,6 +1138,18 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }));
   };
 
+  const appendLocalAgentReply = (response: AgentResponse) => {
+    const body = response.reply || response.action || "Patchbay Agent returned a local response.";
+    const timestamp = new Date().toISOString();
+    setLocalMessages((current) => ({
+      ...current,
+      [runKey]: [
+        ...(current[runKey] ?? []),
+        { id: `local-agent-${Date.now()}`, role: "assistant", body, timestamp, response }
+      ]
+    }));
+  };
+
   const runSetupAction = async (host: SetupHostOption = readinessHost) => {
     if (setupInFlight) return;
     setError("");
@@ -1350,6 +1368,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
           include: { diff: true, review: true },
           background: true
         });
+        appendLocalAgentReply(response);
         await refreshRun(selectedRun, response);
       }
     } catch (err) {
@@ -1465,9 +1484,19 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                 <SetupHostButtons onRunSetup={runSetupAction} setupBusy={setupInFlight} selectedHost={readinessHost} onSelectHost={setReadinessHost} />
               </div>
               {localRunMessages.map((message) => (
-                <ChatBubble key={message.id} role="user" title="本地消息" body={message.body} timestamp={message.timestamp} />
+                <Fragment key={message.id}>
+                  <ChatBubble
+                    role={message.role ?? "user"}
+                    title={message.role === "assistant" ? "Patchbay Agent" : "本地消息"}
+                    body={message.body}
+                    timestamp={message.timestamp}
+                    tone={message.response?.ok === false ? "failed" : message.role === "assistant" ? "ready" : undefined}
+                  />
+                  {message.response?.gate_diagnosis ? <GateDiagnosisCard diagnosis={message.response.gate_diagnosis} /> : null}
+                </Fragment>
               ))}
               {newTaskReply ? <ChatBubble role="assistant" title="Patchbay Agent" body={newTaskReply.reply} tone={newTaskReply.ok === false ? "failed" : "ready"} /> : null}
+              {newTaskReply?.gate_diagnosis ? <GateDiagnosisCard diagnosis={newTaskReply.gate_diagnosis} /> : null}
               {newTaskReply?.setup ? <SetupResultCard response={newTaskReply} /> : null}
               {newTaskReply?.routing || newTaskReply?.metrics?.routing_evidence ? <RoutingResultCard response={newTaskReply} /> : null}
               {localReplyCommands.length ? (
@@ -1508,7 +1537,16 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                 <AgentEventBubble key={message.id} message={message} selected={selectedMessage?.id === message.id} onSelect={() => setSelectedMessage(message)} />
               ))}
               {localRunMessages.map((message) => (
-                <ChatBubble key={message.id} role="user" title="本地消息" body={message.body} timestamp={message.timestamp} />
+                <Fragment key={message.id}>
+                  <ChatBubble
+                    role={message.role ?? "user"}
+                    title={message.role === "assistant" ? "Patchbay Agent" : "本地消息"}
+                    body={message.body}
+                    timestamp={message.timestamp}
+                    tone={message.response?.ok === false ? "failed" : message.role === "assistant" ? "ready" : undefined}
+                  />
+                  {message.response?.gate_diagnosis ? <GateDiagnosisCard diagnosis={message.response.gate_diagnosis} /> : null}
+                </Fragment>
               ))}
               <NextActionCard
                 action={primaryAction}
@@ -1973,6 +2011,47 @@ function HealthCardGrid({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function GateDiagnosisCard({ diagnosis }: { diagnosis?: GateDiagnosis | null }) {
+  if (!diagnosis) return null;
+  const checks = diagnosis.checks?.length ? diagnosis.checks : diagnosis.blockers ?? [];
+  const blockers = diagnosis.blockers?.filter((check) => check.ok === false) ?? [];
+  const ready = Boolean(diagnosis.ready_to_apply);
+  const status = diagnosis.status || "unknown";
+  return (
+    <div className={`gate-diagnosis-card ${ready ? "ready" : "blocked"}`} aria-label="Gate diagnosis">
+      <div className="gate-diagnosis-head">
+        <ShieldCheck size={15} />
+        <strong>门禁诊断</strong>
+        <span>{status}</span>
+      </div>
+      <p>
+        {ready
+          ? "所有技术门禁已通过；apply 仍需要显式确认。"
+          : blockers.length
+            ? `Apply 仍被 ${blockers.length} 项检查阻塞。`
+            : "Apply 尚未标记为可执行，请查看状态和事件证据。"}
+      </p>
+      {checks.length ? (
+        <div className="gate-diagnosis-checks">
+          {checks.map((check) => {
+            const ok = Boolean(check.ok);
+            return (
+              <div className={`gate-diagnosis-check ${ok ? "ok" : "blocked"}`} key={check.key || check.label || check.detail}>
+                <div className="gate-check-icon">{ok ? <Check size={13} /> : <AlertTriangle size={13} />}</div>
+                <div>
+                  <strong>{check.label || check.key || "Gate check"}</strong>
+                  <span>{check.status ?? (ok ? "done" : "blocked")}</span>
+                  {check.detail ? <p>{check.detail}</p> : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }
