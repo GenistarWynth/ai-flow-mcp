@@ -132,6 +132,16 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertTrue(any(action["id"] == "apply_economy_profile" for action in response["actions"]))
         self.assertIn("Recommendations:", response["reply"])
 
+    def test_agent_chinese_environment_check_returns_readiness_without_starting_run(self) -> None:
+        for message in ("检查环境", "环境检查", "环境自检", "项目自检"):
+            with self.subTest(message=message):
+                response = agent_message(self.repo, message)
+
+                self.assertEqual(response["action"], "doctor")
+                self.assertIsNone(response["run_id"])
+
+        self.assertFalse((self.repo / ".ai" / "runs").exists())
+
     def test_agent_doctor_does_not_reapply_economy_when_reasonix_command_is_missing(self) -> None:
         config_path = self.repo / ".ai" / "patchbay.toml"
         config_path.write_text(

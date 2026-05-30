@@ -869,9 +869,9 @@ def _is_chinese_run_bound_request(text: str) -> bool:
 
 
 def _is_doctor_intent(text: str) -> bool:
-    if text in {"doctor", "readiness", "diagnose", "diagnostic", "diagnostics", "诊断"}:
+    if text in {"doctor", "readiness", "diagnose", "diagnostic", "diagnostics", "诊断", "自检", "环境检查", "检查环境"}:
         return True
-    if _has_any(text, ("就绪", "安装检查", "配置检查")):
+    if _has_any(text, ("就绪", "安装检查", "配置检查", "环境检查", "检查环境", "环境自检", "项目自检")):
         return True
     words = _words(text)
     if _has_task_intent(text, words):
