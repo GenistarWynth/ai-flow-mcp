@@ -182,6 +182,45 @@ class PublicVisibilityTest(unittest.TestCase):
         self.assertEqual(context["status"], "RUNNING")
         self.assertTrue(any(item["run_id"] == run_id and item["task"] == "pending background task" for item in runs["runs"]))
 
+    def test_finished_background_job_without_status_is_reported_failed(self) -> None:
+        from scripts.ai_flow import service
+
+        run_id = "20260524-finished-background-without-status"
+        run_path = self.repo / ".ai" / "runs" / run_id
+        run_path.mkdir(parents=True)
+        (run_path / "JOB.json").write_text(
+            json.dumps(
+                {
+                    "background": True,
+                    "phase": "plan",
+                    "pid": 123,
+                    "run_id": run_id,
+                    "task": "finished background task",
+                    "exit_code": 9,
+                    "started_at": "2026-05-24T00:00:00+00:00",
+                    "started_at_epoch": 0,
+                    "finished_at": "2026-05-24T00:00:01+00:00",
+                    "finished_at_epoch": 1,
+                    "root": str(self.repo),
+                    "run_dir": str(run_path),
+                    "events_path": str(run_path / "events.jsonl"),
+                    "trace_path": str(run_path / "trace.jsonl"),
+                }
+            ),
+            encoding="utf-8",
+        )
+        (run_path / "events.jsonl").write_text("", encoding="utf-8")
+
+        status = service.status(self.repo, run_id)
+        context = service.context(self.repo, run_id)
+        runs = service.runs(self.repo)
+
+        self.assertEqual(status["status"], "FAILED")
+        self.assertEqual(status["stage"], "plan")
+        self.assertIn("exit code 9", status["error"])
+        self.assertEqual(context["status"], "FAILED")
+        self.assertTrue(any(item["run_id"] == run_id and item["status"] == "FAILED" for item in runs["runs"]))
+
     def test_background_plan_cli_respects_explicit_run_id_collision(self) -> None:
         run_id = "20260524-background-explicit"
         first = run(

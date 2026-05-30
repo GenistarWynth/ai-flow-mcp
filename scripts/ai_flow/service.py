@@ -117,6 +117,44 @@ def _job_path(run_path: Path) -> Path:
     return run_path / "JOB.json"
 
 
+def _job_has_finished(job: dict[str, Any]) -> bool:
+    return "exit_code" in job or bool(job.get("finished_at")) or bool(job.get("reaper_error"))
+
+
+def _job_status_without_status(root: Path, run_id: str, job: dict[str, Any]) -> dict[str, Any]:
+    stage = str(job.get("phase") or "background")
+    finished = _job_has_finished(job)
+    exit_code = job.get("exit_code")
+    if finished:
+        detail = f"Background {stage} exited before writing STATUS.json"
+        if exit_code is not None:
+            detail += f" (exit code {exit_code})"
+        detail += "."
+    else:
+        detail = "Poll events/status until the background job writes STATUS.json."
+    return {
+        "run_id": run_id,
+        "status": FAILED if finished else "RUNNING",
+        "task": job.get("task", ""),
+        "repo_root": str(root),
+        "config_path": str(config_path(root)),
+        "worktree_path": None,
+        "tests_passed": False,
+        "tests_status": "NOT_RUN",
+        "review_result": None,
+        "fix_iterations": 0,
+        "created_at": job.get("started_at"),
+        "updated_at": job.get("finished_at") or job.get("started_at"),
+        "error": job.get("reaper_error") or (detail if finished else None),
+        "stage": stage,
+        "suggested_next_action": (
+            "Inspect events/trace and retry the phase; the background job did not produce durable status."
+            if finished
+            else detail
+        ),
+    }
+
+
 def _record_job(run_path: Path, data: dict[str, Any]) -> None:
     write_json(_job_path(run_path), data)
 
@@ -1314,23 +1352,7 @@ def status(cwd: Path, run_id: str) -> dict[str, Any]:
         if not job_path.exists():
             raise
         job = read_json(job_path)
-        data = {
-            "run_id": run_id,
-            "status": "RUNNING",
-            "task": "",
-            "repo_root": str(root),
-            "config_path": str(config_path(root)),
-            "worktree_path": None,
-            "tests_passed": False,
-            "tests_status": "NOT_RUN",
-            "review_result": None,
-            "fix_iterations": 0,
-            "created_at": job.get("started_at"),
-            "updated_at": job.get("started_at"),
-            "error": None,
-            "stage": job.get("phase", "background"),
-            "suggested_next_action": "Poll events/status until the background job writes STATUS.json.",
-        }
+        data = _job_status_without_status(root, run_id, job)
     data = dict(data)
     data["run_dir"] = str(run_path)
     data["artifacts"] = list_run_artifacts(run_path)
@@ -2142,12 +2164,7 @@ def runs(cwd: Path, *, limit: int = 20) -> dict[str, Any]:
                 data = load_status(candidate)
             elif (candidate / "JOB.json").exists():
                 job = read_json(candidate / "JOB.json")
-                data = {
-                    "run_id": job.get("run_id", candidate.name),
-                    "status": "RUNNING",
-                    "task": job.get("task", ""),
-                    "updated_at": job.get("started_at"),
-                }
+                data = _job_status_without_status(root, str(job.get("run_id") or candidate.name), job)
             else:
                 continue
         except Exception:
