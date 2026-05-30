@@ -273,6 +273,15 @@ function mapStructuredLocalReplyAction(action: AgentHealthAction): LocalReplyAct
   if (action.kind === "focus_composer" || action.id === "start_new_task") {
     return { id: "start", label: action.label || "开始任务", message: "start", icon: "play" };
   }
+  if (action.kind === "diagnostic_tab" && action.tab && diagnosticTabs.has(action.tab as TabName)) {
+    return {
+      id: action.id || `diagnostic-${action.tab}`,
+      label: action.label || `Open ${action.tab}`,
+      message: "diagnostic_tab",
+      icon: "search",
+      tab: action.tab
+    };
+  }
   if (action.kind === "local_agent" && action.message) {
     const mapped = mapLocalReplyAction(action.message);
     return {
@@ -1321,6 +1330,11 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         setActiveTab(requestedTab as TabName);
       }
       await loadRuns(runId);
+      return;
+    }
+    if (action.tab && diagnosticTabs.has(action.tab as TabName)) {
+      setDiagnosticsOpen(true);
+      setActiveTab(action.tab as TabName);
       return;
     }
     if (action.id === "start") {

@@ -1517,6 +1517,14 @@ describe("Workbench", () => {
           tab: "Diff",
           safe: true,
           reason: "Inspect the patch and evidence related to the apply gate."
+        },
+        {
+          id: "open_trace",
+          label: "Open trace",
+          kind: "diagnostic_tab",
+          tab: "Trace",
+          safe: true,
+          reason: "Inspect the event timeline related to the apply gate."
         }
       ]
     });
@@ -1540,6 +1548,9 @@ describe("Workbench", () => {
     expect(screen.getByText("所有技术门禁已通过；apply 仍需要显式确认。")).toBeVisible();
     expect(screen.getByText("Apply gate")).toBeVisible();
     expect(screen.getByRole("tab", { name: "差异" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("button", { name: "Open trace" })).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Open trace" }));
+    expect(screen.getByRole("tab", { name: "活动" })).toHaveAttribute("aria-selected", "true");
     expect(client.runAction).not.toHaveBeenCalled();
     expect(client.apply).not.toHaveBeenCalled();
   });
