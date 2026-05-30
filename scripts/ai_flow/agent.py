@@ -790,6 +790,10 @@ def _is_run_bound_intent(text: str) -> bool:
         "日志",
     }:
         return True
+    if _has_any(text, ("补丁", "变更", "差异", "改动", "事件", "跟踪", "轨迹", "日志", "产物", "计划", "审查", "评审")) and _has_any(
+        text, ("看", "查看", "打开", "显示", "读", "列出")
+    ):
+        return True
     words = _words(text)
     if words & TASK_INTENT_WORDS:
         return False
@@ -1083,13 +1087,13 @@ def _missing_run_response(root: Path, text: str) -> dict[str, Any]:
 def _missing_run_requested_view(text: str) -> dict[str, Any] | None:
     normalized = text.strip().lower()
     words = _words(normalized)
-    if words & {"diff", "patch"} or _has_any(normalized, ("琛ヤ竵", "鍙樻洿")):
+    if words & {"diff", "patch"} or _has_any(normalized, ("补丁", "变更", "差异", "改动")):
         return {"tab": "Diff", "reason": "The prompt asked for the run diff or patch."}
-    if words & {"events", "trace"} or _has_any(normalized, ("浜嬩欢", "璺熻釜")):
+    if words & {"events", "trace"} or _has_any(normalized, ("事件", "跟踪", "轨迹", "trace")):
         return {"tab": "Trace", "reason": "The prompt asked for run events or trace."}
-    if words & {"log", "logs"} or _has_any(normalized, ("鏃ュ織",)):
+    if words & {"log", "logs"} or _has_any(normalized, ("日志", "log")):
         return {"tab": "Log", "reason": "The prompt asked for run logs."}
-    if words & {"artifact", "artifacts", "plan", "review"} or _has_any(normalized, ("浜х墿", "璁″垝")):
+    if words & {"artifact", "artifacts", "plan", "review"} or _has_any(normalized, ("产物", "计划", "审查", "评审")):
         return {"tab": "Artifacts", "reason": "The prompt asked for run artifacts."}
     return None
 

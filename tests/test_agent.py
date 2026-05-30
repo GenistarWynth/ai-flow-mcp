@@ -513,6 +513,10 @@ test = []
         self.assertEqual(agent_message(self.repo, "events")["run_reference"]["requested_view"]["tab"], "Trace")
         self.assertEqual(agent_message(self.repo, "logs")["run_reference"]["requested_view"]["tab"], "Log")
         self.assertEqual(agent_message(self.repo, "artifact")["run_reference"]["requested_view"]["tab"], "Artifacts")
+        self.assertEqual(agent_message(self.repo, "看补丁")["run_reference"]["requested_view"]["tab"], "Diff")
+        self.assertEqual(agent_message(self.repo, "查看事件轨迹")["run_reference"]["requested_view"]["tab"], "Trace")
+        self.assertEqual(agent_message(self.repo, "打开日志")["run_reference"]["requested_view"]["tab"], "Log")
+        self.assertEqual(agent_message(self.repo, "看计划产物")["run_reference"]["requested_view"]["tab"], "Artifacts")
 
     def test_agent_review_code_remains_a_new_task(self) -> None:
         response = agent_message(self.repo, "review code quality")
