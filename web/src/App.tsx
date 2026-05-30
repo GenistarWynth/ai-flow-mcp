@@ -227,8 +227,18 @@ function localReplyCommandActions(response: AgentResponse | null): AgentHealthAc
   return result;
 }
 
+function isReasonixConfigureText(raw = "") {
+  const text = raw.toLowerCase();
+  if (text.includes("configure reasonix command") || text.includes("commands.reasonix")) return true;
+  return (
+    text.includes("reasonix") &&
+    includesAny(text, ["配置", "设置", "设为", "指定", "安装", "使用"]) &&
+    includesAny(text, ["命令", "路径", "可执行", "程序"])
+  );
+}
+
 function isConfigureReasonixAction(action: Pick<AgentHealthAction, "id" | "message">) {
-  return action.id === "configure_reasonix_command" || action.message?.startsWith("configure reasonix command");
+  return action.id === "configure_reasonix_command" || isReasonixConfigureText(action.message);
 }
 
 function reasonixCommandMessage(path: string) {
@@ -294,7 +304,7 @@ function mapLocalReplyAction(raw: string): LocalReplyAction | null {
   ) {
     return { id: "apply-economy", label: "经济路由", message: "apply economy profile", icon: "play" };
   }
-  if (text.includes("configure reasonix command") || text.includes("commands.reasonix")) {
+  if (isReasonixConfigureText(raw)) {
     return { id: "configure_reasonix_command", label: "Configure Reasonix", message: "configure reasonix command", icon: "settings" };
   }
   if (includesAny(text, ["readiness", "doctor", "diagnose", "就绪", "诊断", "检查"])) {

@@ -1022,6 +1022,39 @@ describe("Workbench", () => {
     expect(client.apply).not.toHaveBeenCalled();
   });
 
+  it("maps localized Reasonix setup next-actions to the command configurator", async () => {
+    const agentMessage = vi
+      .fn()
+      .mockResolvedValueOnce({
+        run_id: null,
+        action: "doctor",
+        ok: false,
+        reply: "Reasonix 命令未配置。",
+        next_actions: ["配置 Reasonix 命令"]
+      })
+      .mockResolvedValueOnce({
+        run_id: null,
+        action: "reasonix_command_configure",
+        ok: true,
+        reply: "Reasonix command configured."
+      });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      agentMessage
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.type(screen.getByLabelText("给 Patchbay Agent 输入消息"), "检查 Reasonix");
+    await userEvent.click(screen.getByRole("button", { name: "创建任务" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Configure Reasonix" }));
+
+    await waitFor(() => expect(agentMessage).toHaveBeenLastCalledWith("configure reasonix command"));
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
   it("opens the latest run from a structured status reply without gated action text", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: null,
