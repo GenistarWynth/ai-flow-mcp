@@ -1022,6 +1022,55 @@ describe("Workbench", () => {
     expect(client.apply).not.toHaveBeenCalled();
   });
 
+  it("opens actual Chinese failure next-actions from missing-run replies", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "missing_run",
+      ok: false,
+      reply: "`为什么失败` needs an existing run_id. Latest run is run-ready (FAILED).",
+      next_actions: ["查看失败原因", "就绪"],
+      recent_run: { run_id: "run-ready", task: "Approve a plan", status: "FAILED" },
+      run_reference: {
+        run_id: "run-ready",
+        task: "Approve a plan",
+        status: "FAILED"
+      },
+      runs: { count: 1, runs: [{ run_id: "run-ready", task: "Approve a plan", status: "FAILED" }] }
+    });
+    const client = createClient({
+      listRuns: vi
+        .fn()
+        .mockResolvedValueOnce({ runs: [] })
+        .mockResolvedValue({ runs: [{ run_id: "run-ready", task: "Approve a plan", status: "FAILED" }] }),
+      agentMessage,
+      getStatus: vi.fn().mockResolvedValue({
+        run_id: "run-ready",
+        task: "Approve a plan",
+        status: "FAILED",
+        current_phase: "write",
+        gate_state: { approved: false, tests_passed: false, review_result: null, ready_to_apply: false },
+        next_commands: [],
+        artifacts: ["writer.log"],
+        effective_phase_providers: {}
+      }),
+      getContext: vi.fn().mockResolvedValue({ ...plannedContext, run_id: "run-ready", status: "FAILED", artifacts: [{ name: "writer.log", purpose: "Writer log" }] })
+    });
+
+    render(<Workbench client={client} />);
+
+    await waitFor(() => expect(client.listRuns).toHaveBeenCalled());
+    const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(composer, "为什么失败{enter}");
+
+    await userEvent.click(await screen.findByRole("button", { name: "查看失败原因" }));
+
+    expect(await screen.findByRole("heading", { name: "Approve a plan" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "日志" })).toHaveAttribute("aria-selected", "true");
+    expect(agentMessage).toHaveBeenCalledTimes(1);
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
   it("maps localized Reasonix setup next-actions to the command configurator", async () => {
     const agentMessage = vi
       .fn()

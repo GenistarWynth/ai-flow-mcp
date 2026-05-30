@@ -280,8 +280,8 @@ function includesAny(text: string, needles: string[]) {
 
 function requestedTabFromLocalReply(text: string): RunReferenceView["tab"] | null {
   if (includesAny(text, ["diff", "patch", "补丁", "变更", "差异", "改动"])) return "Diff";
-  if (includesAny(text, ["events", "trace", "事件", "轨迹", "跟踪"])) return "Trace";
-  if (includesAny(text, ["log", "logs", "日志"])) return "Log";
+  if (includesAny(text, ["events", "trace", "事件", "轨迹", "跟踪", "活动"])) return "Trace";
+  if (includesAny(text, ["log", "logs", "日志", "失败", "错误", "报错", "原因", "为什么"])) return "Log";
   if (includesAny(text, ["artifact", "artifacts", "plan", "review", "产物", "计划", "审查", "评审"])) return "Artifacts";
   return null;
 }
@@ -292,7 +292,7 @@ function mapLocalReplyAction(raw: string): LocalReplyAction | null {
   if (requestedTab) {
     return { id: "open-latest-run", label: raw || "打开最近运行", message: "open latest run", icon: "search", tab: requestedTab };
   }
-  if (includesAny(text, ["open latest", "select latest", "latest run", "recent run", "打开最近", "最近运行", "最新运行"])) {
+  if (includesAny(text, ["open latest", "select latest", "latest run", "recent run", "打开最近", "查看最近运行", "最近运行", "最新运行"])) {
     return { id: "open-latest-run", label: raw || "打开最近运行", message: "open latest run", icon: "search" };
   }
   if (
@@ -307,17 +307,17 @@ function mapLocalReplyAction(raw: string): LocalReplyAction | null {
   if (isReasonixConfigureText(raw)) {
     return { id: "configure_reasonix_command", label: "Configure Reasonix", message: "configure reasonix command", icon: "settings" };
   }
-  if (includesAny(text, ["readiness", "doctor", "diagnose", "就绪", "诊断", "检查"])) {
+  if (includesAny(text, ["readiness", "doctor", "diagnose", "就绪", "诊断", "检查", "检查环境", "环境自检"])) {
     return { id: "readiness", label: "就绪", message: "readiness", icon: "shield" };
   }
-  if (includesAny(text, ["setup", "install", "安装", "初始化"])) {
+  if (includesAny(text, ["setup", "install", "安装", "初始化", "配置 patchbay", "帮我配置", "帮助我配置"])) {
     const setupHost = setupHostOptions.find((host) => text.includes(host.id));
     if (setupHost) {
       return { id: `setup-${setupHost.id}`, label: setupHost.label, message: setupHost.message, icon: "settings" };
     }
     return { id: "setup", label: "运行 setup", message: "patchbay setup", icon: "settings" };
   }
-  if (includesAny(text, ["runs", "status", "运行列表", "运行状态", "状态"])) {
+  if (includesAny(text, ["runs", "status", "运行列表", "运行状态", "查看运行", "最近任务", "任务列表", "状态"])) {
     return { id: "runs", label: "运行列表", message: "status", icon: "search" };
   }
   if (text === "start" || text.includes("start")) {
