@@ -239,6 +239,28 @@ test = []
         self.assertEqual(load_config(self.repo)["commands"]["reasonix"], "reasonix")
         self.assertFalse((self.repo / ".ai" / "runs").exists())
 
+    def test_agent_can_configure_reasonix_command_from_chinese_prompt(self) -> None:
+        from scripts.ai_flow.config import load_config
+
+        agent_message(self.repo, "apply economy profile")
+        response = agent_message(self.repo, "配置 Reasonix 命令")
+
+        self.assertEqual(response["action"], "reasonix_command_configure")
+        self.assertEqual(response["config_update"]["set"]["commands.reasonix"], "reasonix")
+        self.assertEqual(response["reasonix_command"]["source"], "default")
+        self.assertEqual(load_config(self.repo)["commands"]["reasonix"], "reasonix")
+        self.assertFalse((self.repo / ".ai" / "runs").exists())
+
+    def test_agent_can_configure_reasonix_command_from_chinese_use_prompt(self) -> None:
+        from scripts.ai_flow.config import load_config
+
+        response = agent_message(self.repo, "使用 Reasonix 命令")
+
+        self.assertEqual(response["action"], "reasonix_command_configure")
+        self.assertEqual(response["config_update"]["set"]["commands.reasonix"], "reasonix")
+        self.assertEqual(load_config(self.repo)["commands"]["reasonix"], "reasonix")
+        self.assertFalse((self.repo / ".ai" / "runs").exists())
+
     def test_agent_can_configure_reasonix_command_with_explicit_path(self) -> None:
         from scripts.ai_flow.config import load_config
 
@@ -246,6 +268,23 @@ test = []
         expected_command = f'"{command_path}"'
         agent_message(self.repo, "apply economy profile")
         response = agent_message(self.repo, f'configure reasonix command to "{command_path}"')
+
+        self.assertEqual(response["action"], "reasonix_command_configure")
+        self.assertEqual(response["config_update"]["set"]["commands.reasonix"], expected_command)
+        self.assertEqual(response["reasonix_command"]["command"], expected_command)
+        self.assertEqual(response["reasonix_command"]["source"], "message")
+        self.assertEqual(load_config(self.repo)["commands"]["reasonix"], expected_command)
+        self.assertEqual(response["routing"]["phases"]["write"]["command_status"]["command"], expected_command)
+        self.assertEqual(response["routing"]["phases"]["write"]["command_status"]["executable"], str(command_path))
+        self.assertFalse((self.repo / ".ai" / "runs").exists())
+
+    def test_agent_can_configure_reasonix_command_from_chinese_path_prompt(self) -> None:
+        from scripts.ai_flow.config import load_config
+
+        command_path = self.tempdir / "Reasonix CLI" / "reasonix.cmd"
+        expected_command = f'"{command_path}"'
+        agent_message(self.repo, "apply economy profile")
+        response = agent_message(self.repo, f'把 Reasonix 命令设为 "{command_path}"')
 
         self.assertEqual(response["action"], "reasonix_command_configure")
         self.assertEqual(response["config_update"]["set"]["commands.reasonix"], expected_command)
@@ -270,6 +309,12 @@ test = []
         cost_dashboard_task = agent_message(self.repo, "optimize cost dashboard")
         self.assertEqual(cost_dashboard_task["action"], "start")
         self.assertEqual(cost_dashboard_task["status"]["status"], "PLANNED")
+
+    def test_agent_reasonix_command_words_in_chinese_task_still_start_plan(self) -> None:
+        response = agent_message(self.repo, "使用 Reasonix 命令修复 writer 流程")
+
+        self.assertEqual(response["action"], "start")
+        self.assertEqual(response["status"]["status"], "PLANNED")
 
     def test_agent_help_message_returns_capabilities_without_starting_run(self) -> None:
         response = agent_message(self.repo, "help")
@@ -691,6 +736,29 @@ test = []
                     "id": 1,
                     "method": "tools/call",
                     "params": {"name": "patchbay_agent", "arguments": {"message": "configure reasonix command"}},
+                }
+            )
+        finally:
+            mcp_server.ROOT = original_root
+
+        payload = json.loads(response["result"]["content"][0]["text"])
+        self.assertEqual(payload["action"], "reasonix_command_configure")
+        self.assertEqual(payload["config_update"]["set"]["commands.reasonix"], "reasonix")
+        self.assertEqual(load_config(self.repo)["commands"]["reasonix"], "reasonix")
+
+    def test_mcp_patchbay_agent_can_configure_reasonix_command_from_chinese_prompt(self) -> None:
+        from scripts.ai_flow import mcp_server
+        from scripts.ai_flow.config import load_config
+
+        original_root = mcp_server.ROOT
+        try:
+            mcp_server.ROOT = self.repo
+            response = mcp_server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {"name": "patchbay_agent", "arguments": {"message": "配置 Reasonix 命令"}},
                 }
             )
         finally:

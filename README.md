@@ -33,7 +33,7 @@ commands = ["python -m unittest discover -s tests -v"]
 timeout = 900
 ```
 
-The default cost profile keeps expensive reasoning in plan/review and sends high-volume implementation and repair work to the lower-cost Reasonix/DeepSeek writer. If the Reasonix command is not configured yet, readiness will surface a `configure_reasonix_command` action before it offers `start_new_task`; send `patchbay agent message "configure reasonix command" --json` to set the default executable, or `patchbay agent message "configure reasonix command to <path>" --json` for a full local path, without starting a model run. Reapply the routing profile at any time with `patchbay config profile apply economy`.
+The default cost profile keeps expensive reasoning in plan/review and sends high-volume implementation and repair work to the lower-cost Reasonix/DeepSeek writer. If the Reasonix command is not configured yet, readiness will surface a `configure_reasonix_command` action before it offers `start_new_task`; send `patchbay agent message "configure reasonix command" --json` to set the default executable, or `patchbay agent message "configure reasonix command to <path>" --json` for a full local path, without starting a model run. Localized conversational prompts such as `配置 Reasonix 命令` and `把 Reasonix 命令设为 <path>` are accepted through the same Agent and MCP entry points. Reapply the routing profile at any time with `patchbay config profile apply economy`.
 
 Legacy `[models]`, `[commands]`, and `[writer].provider` keys remain supported as defaults. Each CLI phase may use either `command_key` to reference `[commands]` or `command` for an inline command. `apply` has no model executor; it applies the reviewed `FINAL.diff` only after tests and review pass.
 
@@ -79,7 +79,7 @@ patchbay install --host codex    # alias for setup
 patchbay config     # Interactive wizard — no hand-editing required
 patchbay config profile apply economy  # keep write/fix on Reasonix + DeepSeek
 patchbay agent message "apply economy profile" --json  # same routing change through the conversational Agent
-patchbay agent message "configure reasonix command" --json  # set commands.reasonix; append `to <path>` for a full path
+patchbay agent message "configure reasonix command" --json  # set commands.reasonix; append `to <path>` or use `把 Reasonix 命令设为 <path>`
 patchbay doctor     # Unified config/MCP/Skill readiness checks
 patchbay config --doctor     # Validate your resolved phase configuration
 patchbay config --set-key models.planner --set-value claude-opus-4-7

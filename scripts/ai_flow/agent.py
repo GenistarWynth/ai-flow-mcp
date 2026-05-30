@@ -698,10 +698,14 @@ def _config_profile_intent(text: str) -> str | None:
 def _chinese_economy_profile_intent(text: str) -> str | None:
     if not text:
         return None
-    if not _has_any(text, ("deepseek", "reasonix", "便宜", "低成本", "经济", "省钱", "性价比")):
+    economy_terms = ("deepseek", "便宜", "低成本", "经济", "省钱", "性价比")
+    policy_work_terms = ("写手", "写作", "写代码", "简单工作", "简单任务", "大量", "低难度", "便宜模型", "低成本模型")
+    if not _has_any(text, economy_terms + ("reasonix",)):
         return None
     if _has_any(text, ("查看", "状态", "检查", "当前", "现在", "只看", "读一下")):
         return "profile_show"
+    if _has_task_intent(text) and not _has_any(text, economy_terms) and not _has_any(text, policy_work_terms):
+        return None
     if not _has_any(text, ("写手", "写作", "写代码", "实现", "修复", "简单工作", "简单任务", "大量", "低难度", "便宜模型", "低成本模型")):
         return None
     if _has_any(text, ("用", "使用", "让", "交给", "给", "走", "路由", "干", "跑", "配置", "启用", "切到", "换成")):
@@ -722,6 +726,12 @@ def _is_reasonix_command_configure_intent(text: str) -> bool:
     words = _words(text)
     if "reasonix" not in words:
         return False
+    chinese_command_scope = "commands.reasonix" in text or _has_any(text, ("命令", "路径", "可执行", "程序"))
+    if chinese_command_scope:
+        if _has_any(text, ("配置", "设置", "设为", "指定", "安装", "命令是", "路径是")):
+            return True
+        if _has_any(text, ("使用", "用")) and not _has_task_intent(text, words):
+            return True
     return bool(words & {"configure", "set", "setup", "install"}) and bool(words & {"command", "commands", "executable", "path"})
 
 
@@ -1290,7 +1300,10 @@ def _reasonix_command_from_message(message: str) -> str:
     text = (message or "").strip()
     patterns = (
         r"--set-value\s+(.+)$",
-        r"commands\.reasonix\s*=\s*(.+)$",
+        r"commands\.reasonix\s*(?:=|为|设为|设置为|配置为)\s*(.+)$",
+        r"(?:把|将)?\s*reasonix\s*(?:命令|路径|可执行文件|可执行程序)?\s*(?:设为|设置为|配置为|指定为|改为|换成|用|使用|=|为|是)\s*(.+)$",
+        r"(?:设为|设置为|配置为|指定为|路径是|命令是|使用)\s+(.+)$",
+        r"reasonix\s*(?:命令|路径|可执行文件|可执行程序)\s*(?:到|为|是|=)\s*(.+)$",
         r"\b(?:to|as|at|path|executable)\s+(.+)$",
         r"\breasonix\s+command\s+(.+)$",
     )
@@ -1305,12 +1318,29 @@ def _reasonix_command_from_message(message: str) -> str:
 
 
 def _clean_reasonix_command_value(value: str) -> str:
-    cleaned = value.strip().rstrip(".,;")
-    cleaned = re.sub(r"^(?:to|as|=)\s+", "", cleaned, flags=re.IGNORECASE).strip()
-    had_wrapping_quotes = len(cleaned) >= 2 and cleaned[0] == cleaned[-1] and cleaned[0] in {"'", '"', "`"}
-    while len(cleaned) >= 2 and cleaned[0] == cleaned[-1] and cleaned[0] in {"'", '"', "`"}:
+    cleaned = value.strip().rstrip(".,;。；，、")
+    cleaned = re.sub(r"^(?:to|as|=|为|是|到|成|设为|设置为|配置为|指定为|用|使用)\s+", "", cleaned, flags=re.IGNORECASE).strip()
+    had_wrapping_quotes = len(cleaned) >= 2 and (
+        (cleaned[0] == cleaned[-1] and cleaned[0] in {"'", '"', "`"})
+        or (cleaned[0], cleaned[-1]) in {("“", "”"), ("‘", "’")}
+    )
+    while len(cleaned) >= 2 and (
+        (cleaned[0] == cleaned[-1] and cleaned[0] in {"'", '"', "`"})
+        or (cleaned[0], cleaned[-1]) in {("“", "”"), ("‘", "’")}
+    ):
         cleaned = cleaned[1:-1].strip()
-    if cleaned.lower() in {"command", "commands.reasonix", "reasonix command"}:
+    if cleaned.lower() in {
+        "command",
+        "commands.reasonix",
+        "reasonix command",
+        "reasonix 命令",
+        "reasonix 路径",
+        "命令",
+        "路径",
+        "可执行",
+        "可执行文件",
+        "可执行程序",
+    }:
         return ""
     if re.search(r"\s", cleaned) and (had_wrapping_quotes or _looks_like_command_path(cleaned)):
         return f'"{cleaned}"'

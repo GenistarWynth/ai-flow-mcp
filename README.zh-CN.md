@@ -33,7 +33,7 @@ timeout = 900
 
 旧的 `[models]`、`[commands]` 和 `[writer].provider` 键仍然作为默认值保留。
 
-默认的经济型路由会把大量实现/修复工作交给更便宜的 Reasonix/DeepSeek writer，而把规划和审查留给更强的模型。如果 Reasonix 命令还没配置，就绪检查会先返回 `configure_reasonix_command` 动作；运行 `patchbay agent message "configure reasonix command" --json` 可用默认 `reasonix` 可执行文件补齐配置，也可以用 `patchbay agent message "configure reasonix command to <path>" --json` 写入完整本机路径，两者都不会创建模型 run。需要恢复这套路由时，直接运行 `patchbay config profile apply economy`。
+默认的经济型路由会把大量实现/修复工作交给更便宜的 Reasonix/DeepSeek writer，而把规划和审查留给更强的模型。如果 Reasonix 命令还没配置，就绪检查会先返回 `configure_reasonix_command` 动作；运行 `patchbay agent message "配置 Reasonix 命令" --json` 可用默认 `reasonix` 可执行文件补齐配置，也可以用 `patchbay agent message "把 Reasonix 命令设为 <path>" --json` 写入完整本机路径，两者都不会创建模型 run。英文 `configure reasonix command` / `configure reasonix command to <path>` 仍然可用。需要恢复这套路由时，直接运行 `patchbay config profile apply economy`。
 
 ## 功能概览
 
@@ -83,7 +83,7 @@ patchbay install --host codex   # setup 的别名
 patchbay config     # 交互式向导，无需手动编辑
 patchbay config profile apply economy   # 保持 write/fix 走 Reasonix + DeepSeek
 patchbay agent message "apply economy profile" --json  # 通过对话式 Agent 做同样的路由调整
-patchbay agent message "configure reasonix command" --json  # 配置 commands.reasonix；可追加 `to <path>`
+patchbay agent message "配置 Reasonix 命令" --json  # 配置 commands.reasonix；可用 `把 Reasonix 命令设为 <path>`
 patchbay doctor     # 统一检查 config/MCP/Skill 是否就绪
 patchbay config --doctor     # 验证解析后的阶段配置
 patchbay config --set-key models.planner --set-value claude-opus-4-7
