@@ -123,6 +123,21 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertIsNone(response["run_id"])
         self.assertFalse((self.repo / ".ai" / "runs").exists())
 
+    def test_agent_doctor_message_can_target_mcp_host(self) -> None:
+        desktop = agent_message(self.repo, "readiness for Claude Desktop")
+        gemini = agent_message(self.repo, "检查 Gemini 命令行环境")
+
+        self.assertEqual(desktop["action"], "doctor")
+        self.assertEqual(desktop["setup_host"], "claude-desktop")
+        self.assertEqual(desktop["doctor"]["host"], "claude-desktop")
+        desktop_actions = {item["id"]: item for item in desktop["actions"]}
+        self.assertEqual(desktop_actions["probe_mcp"]["host"], "claude-desktop")
+        self.assertIn("--host claude-desktop", desktop_actions["probe_mcp"]["command"])
+        self.assertEqual(gemini["setup_host"], "gemini")
+        self.assertEqual(gemini["doctor"]["host"], "gemini")
+        self.assertIsNone(desktop["run_id"])
+        self.assertFalse((self.repo / ".ai" / "runs").exists())
+
     def test_agent_doctor_surfaces_non_blocking_recommendations(self) -> None:
         response = agent_message(self.repo, "readiness")
 

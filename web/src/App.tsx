@@ -63,6 +63,7 @@ type LocalReplyAction = {
   label: string;
   message: string;
   icon: "play" | "settings" | "shield" | "search";
+  host?: string;
   runId?: string;
   tab?: RunReferenceView["tab"];
 };
@@ -268,7 +269,8 @@ function mapStructuredLocalReplyAction(action: AgentHealthAction): LocalReplyAct
     const mapped = mapLocalReplyAction(action.message);
     return {
       ...(mapped ?? { id: action.id, label: action.label, message: action.message, icon: "play" as const }),
-      label: action.label || mapped?.label || action.message
+      label: action.label || mapped?.label || action.message,
+      host: action.host ?? mapped?.host
     };
   }
   return null;
@@ -299,6 +301,10 @@ function requestedTabFromAgentResponse(response?: AgentResponse | null): TabName
 
 function previewArtifactName(status?: RunStatus | null) {
   return status?.artifacts?.find((name) => name.endsWith(".log") || name.endsWith(".md")) ?? null;
+}
+
+function hostFromAgentResponse(response?: AgentResponse | null) {
+  return response?.setup_host ?? response?.setup?.setup_host ?? response?.setup?.doctor?.host ?? response?.doctor?.host ?? null;
 }
 
 function mapLocalReplyAction(raw: string): LocalReplyAction | null {
@@ -1133,12 +1139,14 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     setSetupInFlight(true);
     try {
       const response = await client.agentMessage(host.message);
+      const responseHost = setupHostById(hostFromAgentResponse(response) ?? host.id);
       const setupDoctor = response.setup?.doctor ?? response.doctor;
+      setReadinessHost(responseHost);
       if (!selectedRun) setNewTaskReply(response);
       if (setupDoctor) {
         setDoctor(setupDoctor);
       } else {
-        setDoctor(await client.getDoctor({ include_mcp: false, host: host.id }));
+        setDoctor(await client.getDoctor({ include_mcp: false, host: responseHost.id }));
       }
       await loadRuns(selectedRun || undefined);
     } catch (err) {
@@ -1269,7 +1277,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       return;
     }
     if (action.id === "readiness") {
-      await openReadinessAction();
+      await openReadinessAction(false, setupHostById(action.host));
       return;
     }
     if (action.id === "open-latest-run") {
@@ -1320,7 +1328,10 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
           appendLocalMessage(text);
           setNewTaskMode(true);
           setNewTaskReply(created);
-          if (created.doctor) setDoctor(created.doctor);
+          const responseHost = hostFromAgentResponse(created);
+          const responseDoctor = created.setup?.doctor ?? created.doctor;
+          if (responseHost) setReadinessHost(setupHostById(responseHost));
+          if (responseDoctor) setDoctor(responseDoctor);
           await loadRuns(undefined, { autoSelect: false });
           return;
         }

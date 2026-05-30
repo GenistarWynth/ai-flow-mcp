@@ -33,6 +33,8 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("Patchbay 怎么用", result["files"]["SKILL.md"])
         self.assertIn("查看最近运行", result["files"]["SKILL.md"])
         self.assertIn("查看失败原因", result["files"]["SKILL.md"])
+        self.assertIn("readiness for Claude Desktop", result["files"]["SKILL.md"])
+        self.assertIn("检查 Gemini 命令行环境", result["files"]["SKILL.md"])
         self.assertIn("install Codex Skill", result["files"]["SKILL.md"])
         self.assertIn("register MCP for Claude Desktop", result["files"]["SKILL.md"])
         self.assertIn("安装 Codex Skill", result["files"]["SKILL.md"])

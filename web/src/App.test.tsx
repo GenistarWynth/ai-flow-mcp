@@ -829,6 +829,97 @@ describe("Workbench", () => {
     expect(client.getStatus).not.toHaveBeenCalled();
   });
 
+  it("keeps conversational readiness targeted to the host named in the message", async () => {
+    const getDoctor = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        host: "codex",
+        root: "C:/repo",
+        checks: { repo: { ok: true }, mcp: { ok: true, skipped: true } },
+        next_actions: []
+      })
+      .mockResolvedValue({
+        ok: false,
+        host: "claude-desktop",
+        root: "C:/repo",
+        checks: { repo: { ok: true }, mcp: { ok: true, skipped: true } },
+        next_actions: []
+      });
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "doctor",
+      ok: false,
+      reply: "Patchbay readiness checks found setup work.",
+      setup_host: "claude-desktop",
+      doctor: {
+        ok: false,
+        host: "claude-desktop",
+        root: "C:/repo",
+        checks: { repo: { ok: true }, mcp: { ok: true, skipped: true } },
+        next_actions: ["Run `patchbay doctor --host claude-desktop --json` for MCP evidence."],
+        actions: [
+          {
+            id: "probe_mcp",
+            label: "Probe MCP",
+            kind: "command",
+            command: "patchbay doctor --host claude-desktop --json",
+            host: "claude-desktop",
+            safe: true,
+            reason: "Run host-aware MCP readiness."
+          },
+          {
+            id: "refresh_readiness",
+            label: "Refresh readiness",
+            kind: "local_agent",
+            message: "readiness",
+            host: "claude-desktop",
+            safe: true,
+            reason: "Refresh host-aware readiness."
+          }
+        ]
+      },
+      actions: [
+        {
+          id: "probe_mcp",
+          label: "Probe MCP",
+          kind: "command",
+          command: "patchbay doctor --host claude-desktop --json",
+          host: "claude-desktop",
+          safe: true,
+          reason: "Run host-aware MCP readiness."
+        },
+        {
+          id: "refresh_readiness",
+          label: "Refresh readiness",
+          kind: "local_agent",
+          message: "readiness",
+          host: "claude-desktop",
+          safe: true,
+          reason: "Refresh host-aware readiness."
+        }
+      ]
+    });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      getDoctor,
+      agentMessage
+    });
+
+    render(<Workbench client={client} />);
+
+    await waitFor(() => expect(client.listRuns).toHaveBeenCalled());
+    const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(composer, "readiness for Claude Desktop{enter}");
+
+    await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("readiness for Claude Desktop", { include: { plan: true }, background: true }));
+    expect(await screen.findByText("Patchbay readiness checks found setup work.")).toBeVisible();
+    expect(screen.getByText("patchbay doctor --host claude-desktop --json")).toBeVisible();
+
+    await userEvent.click(screen.getByRole("button", { name: /Refresh readiness/ }));
+    expect(await screen.findByLabelText("MCP host")).toHaveValue("claude-desktop");
+  });
+
   it("opens the latest run from a missing-run reply without advancing gates", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: null,

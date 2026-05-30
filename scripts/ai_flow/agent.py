@@ -96,7 +96,7 @@ def agent_message(
     text = (message or "").strip()
     intent = _classify_intent(text, has_run=bool(run_id), confirmation=confirmation)
     if intent == "doctor":
-        return _doctor_response(root)
+        return _doctor_response(root, text)
     if intent == "help":
         return _help_response()
     if intent == "runs":
@@ -945,6 +945,11 @@ def _is_doctor_intent(text: str) -> bool:
     words = _words(text)
     if _has_task_intent(text, words):
         return False
+    if _explicit_setup_host_from_message(text) and (
+        _has_any(text, ("检查", "自检", "环境", "就绪"))
+        or bool(words & {"check", "checks", "doctor", "diagnose", "diagnostic", "diagnostics", "readiness"})
+    ):
+        return True
     setup_words = {
         "check",
         "checks",
@@ -977,7 +982,7 @@ def _help_response() -> dict[str, Any]:
         },
         {
             "name": "readiness",
-            "summary": "Send `readiness` or `patchbay doctor` to inspect setup without creating a run.",
+            "summary": "Send `readiness`, `readiness for Claude Desktop`, or `检查 Gemini 命令行环境` to inspect host-aware setup without creating a run.",
         },
         {
             "name": "economy-profile",
@@ -1300,8 +1305,9 @@ def _run_view_response_extra(text: str, *, default_tab: str | None = None) -> di
     }
 
 
-def _doctor_response(root: Path) -> dict[str, Any]:
-    report = run_doctor(root, include_mcp=False)
+def _doctor_response(root: Path, message: str = "") -> dict[str, Any]:
+    host = _setup_host_from_message(message)
+    report = run_doctor(root, include_mcp=False, host=host)
     next_actions = list(report.get("next_actions") or [])
     recommendations = list(report.get("recommendations") or [])
     actions = list(report.get("actions") or [])
@@ -1320,7 +1326,12 @@ def _doctor_response(root: Path) -> dict[str, Any]:
         ok=bool(report.get("ok")),
         error=None if report.get("ok") else reply,
         next_actions=suggested_actions,
-        extra={"doctor": report, "recommendations": recommendations, "actions": actions},
+        extra={
+            "doctor": report,
+            "setup_host": report.get("host") or host,
+            "recommendations": recommendations,
+            "actions": actions,
+        },
     )
 
 
