@@ -1693,6 +1693,96 @@ describe("Workbench", () => {
     expect(client.apply).not.toHaveBeenCalled();
   });
 
+  it("uses run references for prose open-latest actions in selected runs", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: "run-ready",
+      action: "next_step",
+      ok: true,
+      reply: "Open the latest run first, then inspect the log.",
+      next_actions: ["open latest run"],
+      recent_run: { run_id: "run-fix", task: "Needs fix", status: "FAILED" },
+      run_reference: {
+        run_id: "run-fix",
+        task: "Needs fix",
+        status: "FAILED",
+        requested_view: { tab: "Log", reason: "The prompt asked for run logs." }
+      }
+    });
+    const fixStatus = {
+      run_id: "run-fix",
+      task: "Needs fix",
+      status: "FAILED",
+      current_phase: "fix",
+      error: "writer.log shows a failure",
+      gate_state: { approved: true, tests_passed: false, review_result: "CHANGES_REQUESTED", ready_to_apply: false },
+      artifacts: ["writer.log", "PLAN.md"],
+      next_commands: ["fix"],
+      effective_phase_providers: {}
+    };
+    const fixContext = {
+      ...plannedContext,
+      run_id: "run-fix",
+      status: "FAILED",
+      current_phase: "fix",
+      agent_activity: {
+        ...plannedContext.agent_activity,
+        headline: "Patchbay Agent is tracking run run-fix.",
+        current_step: {
+          phase: "fix",
+          label: "修复",
+          status: "FAILED",
+          status_label: "失败",
+          summary: "writer.log shows a failure"
+        },
+        conversation_state: {
+          ...plannedContext.agent_activity?.conversation_state,
+          task: "Needs fix",
+          status: "FAILED",
+          phase: "fix",
+          next_step: "Open the latest run and inspect the log.",
+          composer_placeholder: "输入“继续”或写下本地备注"
+        }
+      }
+    } satisfies HandoffContext;
+    const getStatus = vi.fn().mockImplementation((runId: string) => Promise.resolve(runId === "run-fix" ? fixStatus : {
+      run_id: "run-ready",
+      task: "Ship dashboard",
+      status: "REVIEWED_PASS",
+      current_phase: "apply",
+      tests_passed: true,
+      review_result: "PASS",
+      gate_state: { approved: true, tests_passed: true, review_result: "PASS", ready_to_apply: true },
+      run_metrics: readyContext.run_metrics,
+      next_commands: ["apply"],
+      artifacts: ["PLAN.md", "writer.log", "FINAL.diff"],
+      effective_phase_providers: {}
+    }));
+    const getContext = vi.fn().mockImplementation((runId: string) => Promise.resolve(runId === "run-fix" ? fixContext : plannedContext));
+    const getArtifact = vi.fn().mockResolvedValue({ text: "writer log text" });
+    const client = createClient({
+      agentMessage,
+      getStatus,
+      getContext,
+      getArtifact
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await userEvent.type(screen.getByLabelText("给 Patchbay Agent 输入消息"), "status");
+    await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+    const openLatest = await screen.findByRole("button", { name: /open latest run/i });
+    await userEvent.click(openLatest);
+
+    expect(await screen.findByRole("heading", { name: "Needs fix" })).toBeInTheDocument();
+    await waitFor(() => expect(getContext).toHaveBeenCalledWith("run-fix"));
+    await waitFor(() => expect(getArtifact).toHaveBeenCalledWith("run-fix", "writer.log", { tail: 80 }));
+    expect(screen.getByRole("tab", { name: "日志" })).toHaveAttribute("aria-selected", "true");
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
   it("runs local setup from the empty state and exposes readiness immediately", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: null,

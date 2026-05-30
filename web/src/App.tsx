@@ -201,19 +201,26 @@ function localReplyActions(response: AgentResponse | null): LocalReplyAction[] {
   const seen = new Set<string>();
   const result: LocalReplyAction[] = [];
   for (const action of response?.actions ?? []) {
-    const mapped = mapStructuredLocalReplyAction(action);
+    const mapped = enrichLocalReplyAction(mapStructuredLocalReplyAction(action), response);
     if (!mapped || seen.has(mapped.id)) continue;
     seen.add(mapped.id);
     result.push(mapped);
   }
   const actions = response?.next_actions ?? [];
   for (const raw of actions) {
-    const mapped = mapLocalReplyAction(raw);
+    const mapped = enrichLocalReplyAction(mapLocalReplyAction(raw), response);
     if (!mapped || seen.has(mapped.id)) continue;
     seen.add(mapped.id);
     result.push(mapped);
   }
   return result;
+}
+
+function enrichLocalReplyAction(action: LocalReplyAction | null, response?: AgentResponse | null): LocalReplyAction | null {
+  if (!action || action.id !== "open-latest-run") return action;
+  const runId = action.runId ?? response?.run_reference?.run_id ?? response?.recent_run?.run_id ?? response?.run_id ?? undefined;
+  const tab = action.tab ?? requestedTabFromAgentResponse(response) ?? undefined;
+  return { ...action, runId: runId || undefined, tab };
 }
 
 function localReplyCommandActions(response: AgentResponse | null): AgentHealthAction[] {
