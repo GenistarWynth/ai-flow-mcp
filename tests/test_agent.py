@@ -327,6 +327,16 @@ test = []
         setup_capability = next(item for item in response["capabilities"] if item["name"] == "setup")
         self.assertIn("Claude Desktop", setup_capability["summary"])
         self.assertIn("Gemini CLI", setup_capability["summary"])
+        actions = {item["id"]: item for item in response["actions"]}
+        self.assertEqual(actions["run_setup"]["kind"], "local_agent")
+        self.assertEqual(actions["run_setup"]["message"], "patchbay setup")
+        self.assertEqual(actions["start_new_task"]["kind"], "focus_composer")
+        self.assertEqual(actions["open_readiness"]["message"], "readiness")
+        self.assertEqual(actions["apply_economy_profile"]["message"], "apply economy profile")
+        self.assertEqual(actions["configure_reasonix_command"]["message"], "configure reasonix command")
+        self.assertIn("commands.reasonix", actions["configure_reasonix_command"]["command"])
+        self.assertEqual(actions["show_runs"]["message"], "status")
+        self.assertTrue(all(item["safe"] for item in actions.values()))
         self.assertFalse((self.repo / ".ai" / "runs").exists())
 
     def test_agent_patchbay_setup_runs_local_setup_without_starting_run(self) -> None:

@@ -939,8 +939,61 @@ def _help_response() -> dict[str, Any]:
         action="help",
         reply="Patchbay Agent can run setup, start a gated run, report readiness, apply economy routing, list recent runs, continue a run, show artifacts/diff, and apply only after explicit approval.",
         next_actions=["setup", "start", "readiness", "apply economy profile", "configure reasonix command", "runs"],
-        extra={"capabilities": capabilities},
+        extra={"capabilities": capabilities, "actions": _help_actions()},
     )
+
+
+def _help_actions() -> list[dict[str, Any]]:
+    return [
+        {
+            "id": "run_setup",
+            "label": "Run setup",
+            "kind": "local_agent",
+            "message": "patchbay setup",
+            "safe": True,
+            "reason": "Initialize local config, Skill installation, MCP guidance, and readiness checks.",
+        },
+        {
+            "id": "start_new_task",
+            "label": "Start new task",
+            "kind": "focus_composer",
+            "safe": True,
+            "reason": "Focus the composer so a new Patchbay plan can be started.",
+        },
+        {
+            "id": "open_readiness",
+            "label": "Open readiness",
+            "kind": "local_agent",
+            "message": "readiness",
+            "safe": True,
+            "reason": "Run read-only setup diagnostics before starting or resuming work.",
+        },
+        {
+            "id": "apply_economy_profile",
+            "label": "Apply economy profile",
+            "kind": "local_agent",
+            "message": "apply economy profile",
+            "safe": True,
+            "reason": "Route high-volume write/fix work to the Reasonix/DeepSeek economy profile.",
+        },
+        {
+            "id": "configure_reasonix_command",
+            "label": "Configure Reasonix",
+            "kind": "local_agent",
+            "message": "configure reasonix command",
+            "command": "patchbay config --set-key commands.reasonix --set-value reasonix",
+            "safe": True,
+            "reason": "Set the Reasonix executable used by the economy write/fix route.",
+        },
+        {
+            "id": "show_runs",
+            "label": "Show runs",
+            "kind": "local_agent",
+            "message": "status",
+            "safe": True,
+            "reason": "List recent Patchbay runs without advancing any run gate.",
+        },
+    ]
 
 
 def _setup_response(root: Path, message: str) -> dict[str, Any]:
