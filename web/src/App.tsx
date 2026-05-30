@@ -1003,8 +1003,6 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const selectedTask = conversationState?.task ?? activeStatus?.task ?? selectedSummary?.task ?? "";
   const runKey = selectedRun || "__new__";
   const localRunMessages = localMessages[runKey] ?? [];
-  const localReplySuggestions = localReplyActions(newTaskReply);
-  const localReplyCommands = localReplyCommandActions(newTaskReply);
   const composerPlaceholder = selectedRun
     ? conversationState?.composer_placeholder ?? "输入“继续”，或写下本地备注"
     : "描述一个新任务，Patchbay Agent 会先生成计划";
@@ -1492,37 +1490,11 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                     timestamp={message.timestamp}
                     tone={message.response?.ok === false ? "failed" : message.role === "assistant" ? "ready" : undefined}
                   />
-                  {message.response?.gate_diagnosis ? <GateDiagnosisCard diagnosis={message.response.gate_diagnosis} /> : null}
+                  <LocalAgentResponseDetails response={message.response} onAction={(action) => void runLocalReplyAction(action)} actionBusy={setupInFlight || profileInFlight} />
                 </Fragment>
               ))}
               {newTaskReply ? <ChatBubble role="assistant" title="Patchbay Agent" body={newTaskReply.reply} tone={newTaskReply.ok === false ? "failed" : "ready"} /> : null}
-              {newTaskReply?.gate_diagnosis ? <GateDiagnosisCard diagnosis={newTaskReply.gate_diagnosis} /> : null}
-              {newTaskReply?.setup ? <SetupResultCard response={newTaskReply} /> : null}
-              {newTaskReply?.routing || newTaskReply?.metrics?.routing_evidence ? <RoutingResultCard response={newTaskReply} /> : null}
-              {localReplyCommands.length ? (
-                <div className="local-agent-command-actions" aria-label="Agent command actions">
-                  {localReplyCommands.map((action) => (
-                    <CommandActionRow key={action.id || action.command} command={action.command ?? ""} label={action.label} />
-                  ))}
-                </div>
-              ) : null}
-              {localReplySuggestions.length ? (
-                <div className="empty-actions local-agent-actions" aria-label="Agent 建议动作">
-                  {localReplySuggestions.map((action) => (
-                    <button
-                      className={`empty-action ${action.id === "apply-economy" ? "" : "secondary"}`}
-                      type="button"
-                      key={action.id}
-                      aria-label={action.label}
-                      onClick={() => void runLocalReplyAction(action)}
-                      disabled={setupInFlight || profileInFlight}
-                    >
-                      {action.icon === "settings" ? <Settings size={14} /> : action.icon === "shield" ? <ShieldCheck size={14} /> : action.icon === "search" ? <Search size={14} /> : <Play size={14} />}
-                      {action.label}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
+              <LocalAgentResponseDetails response={newTaskReply} onAction={(action) => void runLocalReplyAction(action)} actionBusy={setupInFlight || profileInFlight} />
             </>
           ) : (
             <>
@@ -1545,7 +1517,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                     timestamp={message.timestamp}
                     tone={message.response?.ok === false ? "failed" : message.role === "assistant" ? "ready" : undefined}
                   />
-                  {message.response?.gate_diagnosis ? <GateDiagnosisCard diagnosis={message.response.gate_diagnosis} /> : null}
+                  <LocalAgentResponseDetails response={message.response} onAction={(action) => void runLocalReplyAction(action)} actionBusy={setupInFlight || profileInFlight} />
                 </Fragment>
               ))}
               <NextActionCard
@@ -2012,6 +1984,68 @@ function HealthCardGrid({
         );
       })}
     </div>
+  );
+}
+
+function LocalAgentResponseDetails({
+  response,
+  onAction,
+  actionBusy
+}: {
+  response?: AgentResponse | null;
+  onAction?: (action: LocalReplyAction) => void;
+  actionBusy?: boolean;
+}) {
+  if (!response) return null;
+  const commands = localReplyCommandActions(response);
+  const suggestions = localReplyActions(response);
+  const hasPanels = Boolean(
+    response.gate_diagnosis ||
+      response.setup ||
+      response.routing ||
+      response.metrics?.routing_evidence ||
+      commands.length ||
+      suggestions.length
+  );
+  if (!hasPanels) return null;
+  return (
+    <>
+      {response.gate_diagnosis ? <GateDiagnosisCard diagnosis={response.gate_diagnosis} /> : null}
+      {response.setup ? <SetupResultCard response={response} /> : null}
+      {response.routing || response.metrics?.routing_evidence ? <RoutingResultCard response={response} /> : null}
+      {commands.length ? (
+        <div className="local-agent-command-actions" aria-label="Agent command actions">
+          {commands.map((action) => (
+            <CommandActionRow key={action.id || action.command} command={action.command ?? ""} label={action.label} />
+          ))}
+        </div>
+      ) : null}
+      {suggestions.length ? (
+        <div className="empty-actions local-agent-actions" aria-label="Agent 建议动作">
+          {suggestions.map((action) => (
+            <button
+              className={`empty-action ${action.id === "apply-economy" ? "" : "secondary"}`}
+              type="button"
+              key={action.id}
+              aria-label={action.label}
+              onClick={() => onAction?.(action)}
+              disabled={!onAction || actionBusy}
+            >
+              {action.icon === "settings" ? (
+                <Settings size={14} />
+              ) : action.icon === "shield" ? (
+                <ShieldCheck size={14} />
+              ) : action.icon === "search" ? (
+                <Search size={14} />
+              ) : (
+                <Play size={14} />
+              )}
+              {action.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </>
   );
 }
 

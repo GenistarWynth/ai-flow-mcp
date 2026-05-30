@@ -1572,6 +1572,69 @@ describe("Workbench", () => {
     expect(client.apply).not.toHaveBeenCalled();
   });
 
+  it("renders selected-run routing replies with structured cards and safe actions", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "profile_show",
+      ok: true,
+      reply: "Economy routing profile is not active: write mock, fix mock.",
+      routing: {
+        profile: "custom",
+        target: { provider: "reasonix_cli", model: "deepseek-v4-pro" },
+        economy_configured: false,
+        economy_command_ready: null,
+        summary: "Economy routing profile is not active: write mock, fix mock.",
+        recommendation: "Run `patchbay config profile apply economy`.",
+        phases: {
+          write: { configured: { provider: "mock", model: "", command_key: "" }, configured_economy: false },
+          fix: { configured: { provider: "mock", model: "", command_key: "" }, configured_economy: false }
+        }
+      },
+      actions: [
+        {
+          id: "apply_economy_profile",
+          label: "Apply economy profile",
+          kind: "local_agent",
+          message: "apply economy profile",
+          safe: true,
+          reason: "Route high-volume write/fix work to Reasonix/DeepSeek."
+        },
+        {
+          id: "open_readiness",
+          label: "Open readiness",
+          kind: "local_agent",
+          message: "readiness",
+          safe: true,
+          reason: "Run read-only setup diagnostics."
+        }
+      ]
+    });
+    const client = createClient({ agentMessage });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await userEvent.type(screen.getByLabelText("给 Patchbay Agent 输入消息"), "is writer using cheap model?");
+    await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith("is writer using cheap model?", {
+        runId: "run-ready",
+        include: { diff: true, review: true },
+        background: true
+      })
+    );
+    const routingResult = await screen.findByLabelText("Routing result");
+    expect(within(routingResult).getByText("经济路由未启用")).toBeVisible();
+    expect(within(routingResult).getByText("Economy routing profile is not active: write mock, fix mock.")).toBeVisible();
+    expect(within(routingResult).getAllByText("mock / 默认")).toHaveLength(2);
+    await userEvent.click(screen.getByRole("button", { name: "Apply economy profile" }));
+
+    await waitFor(() => expect(client.applyConfigProfile).toHaveBeenCalledWith("economy"));
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
   it("uses self-contained structured open-run actions without fallback run references", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: null,
