@@ -146,7 +146,8 @@ class SetupFlowTest(unittest.TestCase):
         self.assertEqual(result["status"]["profile"], "economy")
         actions = {item["id"]: item for item in result["actions"]}
         self.assertEqual(actions["open_readiness"]["message"], "readiness")
-        self.assertEqual(actions["configure_reasonix_command"]["kind"], "command")
+        self.assertEqual(actions["configure_reasonix_command"]["kind"], "local_agent")
+        self.assertEqual(actions["configure_reasonix_command"]["message"], "configure reasonix command")
         self.assertIn("commands.reasonix", actions["configure_reasonix_command"]["command"])
         self.assertNotIn("start_new_task", actions)
         self.assertEqual(actions["validate_config"]["kind"], "command")
@@ -387,7 +388,8 @@ model = "mock"
         self.assertEqual(payload["profile"], "economy")
         actions = {item["id"]: item for item in payload["actions"]}
         self.assertEqual(actions["open_readiness"]["message"], "readiness")
-        self.assertEqual(actions["configure_reasonix_command"]["kind"], "command")
+        self.assertEqual(actions["configure_reasonix_command"]["kind"], "local_agent")
+        self.assertEqual(actions["configure_reasonix_command"]["message"], "configure reasonix command")
         self.assertIn("commands.reasonix", actions["configure_reasonix_command"]["command"])
         self.assertNotIn("start_new_task", actions)
         cfg = load_config(self.repo)

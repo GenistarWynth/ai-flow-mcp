@@ -167,9 +167,11 @@ test = []
 
         self.assertEqual(response["action"], "doctor")
         self.assertTrue(any("commands.reasonix" in item for item in response["recommendations"]))
+        self.assertIn("configure reasonix command", response["next_actions"])
         self.assertNotIn("apply economy profile", response["next_actions"])
         actions = {item["id"]: item for item in response["actions"]}
-        self.assertEqual(actions["configure_reasonix_command"]["kind"], "command")
+        self.assertEqual(actions["configure_reasonix_command"]["kind"], "local_agent")
+        self.assertEqual(actions["configure_reasonix_command"]["message"], "configure reasonix command")
         self.assertNotIn("apply_economy_profile", actions)
 
     def test_agent_can_show_and_apply_economy_profile_without_starting_run(self) -> None:
@@ -198,12 +200,29 @@ test = []
         self.assertIn("commands.reasonix", applied["reply"])
         applied_actions = {item["id"]: item for item in applied["actions"]}
         self.assertEqual(applied_actions["open_readiness"]["message"], "readiness")
-        self.assertEqual(applied_actions["configure_reasonix_command"]["kind"], "command")
+        self.assertEqual(applied_actions["configure_reasonix_command"]["kind"], "local_agent")
+        self.assertEqual(applied_actions["configure_reasonix_command"]["message"], "configure reasonix command")
         self.assertIn("commands.reasonix", applied_actions["configure_reasonix_command"]["command"])
         self.assertNotIn("start_new_task", applied_actions)
         cfg = load_config(self.repo)
         self.assertEqual(resolve_phase(cfg, "write")["model"], "deepseek-v4-pro")
         self.assertEqual(resolve_phase(cfg, "fix")["provider"], "reasonix_cli")
+        self.assertFalse((self.repo / ".ai" / "runs").exists())
+
+    def test_agent_can_configure_reasonix_command_without_starting_run(self) -> None:
+        from scripts.ai_flow.config import load_config
+
+        agent_message(self.repo, "apply economy profile")
+        response = agent_message(self.repo, "configure reasonix command")
+
+        self.assertEqual(response["action"], "reasonix_command_configure")
+        self.assertTrue(response["ok"])
+        self.assertIn("Reasonix command configured", response["reply"])
+        self.assertEqual(response["config_update"]["set"]["commands.reasonix"], "reasonix")
+        self.assertTrue(response["routing"]["economy_configured"])
+        self.assertTrue(response["routing"]["phases"]["write"]["command_status"]["required"])
+        self.assertEqual(response["routing"]["phases"]["write"]["command_status"]["command"], "reasonix")
+        self.assertEqual(load_config(self.repo)["commands"]["reasonix"], "reasonix")
         self.assertFalse((self.repo / ".ai" / "runs").exists())
 
     def test_agent_doctor_word_in_task_still_starts_plan(self) -> None:
@@ -597,6 +616,29 @@ test = []
         self.assertEqual(payload["action"], "profile_apply")
         self.assertEqual(payload["profile"]["status"]["profile"], "economy")
 
+    def test_mcp_patchbay_agent_can_configure_reasonix_command(self) -> None:
+        from scripts.ai_flow import mcp_server
+        from scripts.ai_flow.config import load_config
+
+        original_root = mcp_server.ROOT
+        try:
+            mcp_server.ROOT = self.repo
+            response = mcp_server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {"name": "patchbay_agent", "arguments": {"message": "configure reasonix command"}},
+                }
+            )
+        finally:
+            mcp_server.ROOT = original_root
+
+        payload = json.loads(response["result"]["content"][0]["text"])
+        self.assertEqual(payload["action"], "reasonix_command_configure")
+        self.assertEqual(payload["config_update"]["set"]["commands.reasonix"], "reasonix")
+        self.assertEqual(load_config(self.repo)["commands"]["reasonix"], "reasonix")
+
     def test_mcp_patchbay_agent_can_run_setup_without_starting_run(self) -> None:
         from scripts.ai_flow import mcp_server
 
@@ -776,7 +818,8 @@ test = []
         self.assertEqual(routing["economy_health"]["next_action"], "configure_reasonix_command")
         self.assertEqual(routing["economy_health"]["command_not_ready_phases"], ["write", "fix"])
         self.assertEqual(routing["actions"][0]["id"], "configure_reasonix_command")
-        self.assertEqual(response["actions"][0]["kind"], "command")
+        self.assertEqual(response["actions"][0]["kind"], "local_agent")
+        self.assertEqual(response["actions"][0]["message"], "configure reasonix command")
         self.assertIn("commands.reasonix", response["actions"][0]["command"])
         self.assertIn("economy health command_not_ready", response["reply"])
 
@@ -889,6 +932,16 @@ test = []
 
         self.assertEqual(response["action"], "profile_apply")
         self.assertEqual(response["profile"]["status"]["profile"], "economy")
+        self.assertIsNone(response["run_id"])
+
+    def test_cli_agent_configure_reasonix_command_message(self) -> None:
+        from scripts.ai_flow.config import load_config
+
+        response = self.cli_json("agent", "message", "configure reasonix command")
+
+        self.assertEqual(response["action"], "reasonix_command_configure")
+        self.assertEqual(response["config_update"]["set"]["commands.reasonix"], "reasonix")
+        self.assertEqual(load_config(self.repo)["commands"]["reasonix"], "reasonix")
         self.assertIsNone(response["run_id"])
 
     def test_cli_agent_patchbay_setup_runs_setup_without_starting_run(self) -> None:

@@ -82,6 +82,8 @@ def agent_message(
         return _help_response()
     if intent == "runs":
         return _runs_response(root)
+    if intent == "reasonix_command_configure":
+        return _reasonix_command_configure_response(root)
     if intent == "profile_apply":
         return _profile_apply_response(root)
     if intent == "profile_show":
@@ -565,6 +567,8 @@ def _classify_intent(message: str, *, has_run: bool, confirmation: str) -> str:
         return "approve_and_run"
     if confirmation == APPLY_CONFIRMATION:
         return "apply"
+    if _is_reasonix_command_configure_intent(text):
+        return "reasonix_command_configure"
     profile_intent = _config_profile_intent(text)
     if profile_intent:
         return profile_intent
@@ -662,6 +666,22 @@ def _config_profile_intent(text: str) -> str | None:
     if bool(words & {"cheap", "cost", "lower", "low", "economy"}) and bool(words & {"model", "models", "routing", "route", "profile"}):
         return "profile_apply" if bool(words & (apply_words | write_fix_words | {"optimize"})) else "profile_show"
     return None
+
+
+def _is_reasonix_command_configure_intent(text: str) -> bool:
+    if text in {
+        "configure reasonix",
+        "configure reasonix command",
+        "configure commands.reasonix",
+        "set reasonix command",
+        "set commands.reasonix",
+        "patchbay config --set-key commands.reasonix --set-value reasonix",
+    }:
+        return True
+    words = _words(text)
+    if "reasonix" not in words:
+        return False
+    return bool(words & {"configure", "set", "setup", "install"}) and bool(words & {"command", "commands", "executable", "path"})
 
 
 def _is_setup_intent(text: str) -> bool:
@@ -818,6 +838,10 @@ def _help_response() -> dict[str, Any]:
             "summary": "Send `apply economy profile` to route high-volume write/fix work to Reasonix/DeepSeek without starting a run.",
         },
         {
+            "name": "reasonix-command",
+            "summary": "Send `configure reasonix command` to set the default Reasonix executable used by the economy write/fix route.",
+        },
+        {
             "name": "status",
             "summary": "Send `status` without a run_id to list recent runs, or with a run_id to inspect one run.",
         },
@@ -837,7 +861,7 @@ def _help_response() -> dict[str, Any]:
     return _stateless_response(
         action="help",
         reply="Patchbay Agent can run setup, start a gated run, report readiness, apply economy routing, list recent runs, continue a run, show artifacts/diff, and apply only after explicit approval.",
-        next_actions=["setup", "start", "readiness", "apply economy profile", "runs"],
+        next_actions=["setup", "start", "readiness", "apply economy profile", "configure reasonix command", "runs"],
         extra={"capabilities": capabilities},
     )
 
@@ -1081,6 +1105,8 @@ def _doctor_suggested_actions(next_actions: list[str], recommendations: list[str
     actions = list(next_actions)
     if any("config profile apply economy" in item for item in recommendations):
         actions.append("apply economy profile")
+    if any("commands.reasonix" in item for item in recommendations):
+        actions.append("configure reasonix command")
     return _dedupe_strings(actions)
 
 
@@ -1162,6 +1188,30 @@ def _profile_apply_response(root: Path) -> dict[str, Any]:
             "profile": result,
             "routing": routing,
             "actions": list(result.get("actions") or []),
+        },
+    )
+
+
+def _reasonix_command_configure_response(root: Path) -> dict[str, Any]:
+    result = run_config_wizard(root, set_key="commands.reasonix", set_value="reasonix")
+    profile = run_config_wizard(root, show_profile=True)
+    routing = _profile_routing_digest(profile)
+    actions = list(profile.get("actions") or [])
+    reply = (
+        "Reasonix command configured as `reasonix`. "
+        "Patchbay will use it for the Reasonix/DeepSeek economy write/fix route when that profile is active."
+    )
+    if routing.get("economy_command_ready") is False:
+        reply += " The command is saved, but it is not currently resolvable on PATH; install Reasonix or set the full executable path."
+    return _stateless_response(
+        action="reasonix_command_configure",
+        reply=reply,
+        next_actions=list(profile.get("next_actions") or ["readiness", "start"]),
+        extra={
+            "config_update": result,
+            "profile": profile,
+            "routing": routing,
+            "actions": actions,
         },
     )
 

@@ -592,10 +592,11 @@ function healthActionFromNext(nextAction?: string): AgentHealthAction | null {
     return {
       id: "configure_reasonix_command",
       label: "Configure Reasonix",
-      kind: "command",
+      kind: "local_agent",
+      message: "configure reasonix command",
       command: "patchbay config --set-key commands.reasonix --set-value reasonix",
       safe: true,
-      reason: "Set the Reasonix executable so the Reasonix/DeepSeek write/fix economy route can actually run."
+      reason: "Set the default Reasonix executable so the Reasonix/DeepSeek write/fix economy route can actually run."
     };
   }
   if (nextAction === "apply_economy_profile") {
@@ -1099,7 +1100,27 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       const [nextDoctor, nextConfig] = await Promise.all([client.getDoctor({ include_mcp: false, host: readinessHost.id }), client.getConfig()]);
       setDoctor(nextDoctor);
       setConfig(nextConfig);
-      await loadRuns(selectedRun || undefined);
+      if (selectedRun) await refreshRun(selectedRun);
+      else await loadRuns(undefined, { autoSelect: false });
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setProfileInFlight(false);
+    }
+  };
+
+  const configureReasonixCommandAction = async () => {
+    if (profileInFlight) return;
+    setError("");
+    setProfileInFlight(true);
+    try {
+      const response = await client.agentMessage("configure reasonix command");
+      if (!selectedRun) setNewTaskReply(response);
+      const [nextDoctor, nextConfig] = await Promise.all([client.getDoctor({ include_mcp: false, host: readinessHost.id }), client.getConfig()]);
+      setDoctor(nextDoctor);
+      setConfig(nextConfig);
+      if (selectedRun) await refreshRun(selectedRun);
+      else await loadRuns(undefined, { autoSelect: false });
     } catch (err) {
       setError(String(err));
     } finally {
@@ -1124,6 +1145,10 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
 
   const runHealthAction = async (action: AgentHealthAction) => {
     if (action.safe === false) return;
+    if (action.id === "configure_reasonix_command" || action.message === "configure reasonix command") {
+      await configureReasonixCommandAction();
+      return;
+    }
     if (action.kind === "local_agent" && (action.id === "apply_economy_profile" || action.message === "apply economy profile")) {
       await applyEconomyProfileAction();
       return;
@@ -1144,6 +1169,10 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const runDoctorAction = async (action: AgentHealthAction) => {
     if (action.safe === false) return;
     const actionHost = setupHostFromAction(action, readinessHost);
+    if (action.id === "configure_reasonix_command" || action.message === "configure reasonix command") {
+      await configureReasonixCommandAction();
+      return;
+    }
     if (action.id === "run_setup" || action.message?.startsWith("patchbay setup")) {
       await runSetupAction(actionHost);
       return;
@@ -1164,6 +1193,10 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }
     if (action.id === "apply-economy") {
       await applyEconomyProfileAction();
+      return;
+    }
+    if (action.id === "configure_reasonix_command" || action.message === "configure reasonix command") {
+      await configureReasonixCommandAction();
       return;
     }
     if (action.id === "readiness") {

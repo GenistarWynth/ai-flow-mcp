@@ -110,7 +110,8 @@ provider = "mock"
         self.assertFalse(profile["economy"]["command_ready"])
         self.assertTrue(any("commands.reasonix" in item for item in result["recommendations"]))
         actions = {item["id"]: item for item in result["actions"]}
-        self.assertEqual(actions["configure_reasonix_command"]["kind"], "command")
+        self.assertEqual(actions["configure_reasonix_command"]["kind"], "local_agent")
+        self.assertEqual(actions["configure_reasonix_command"]["message"], "configure reasonix command")
         self.assertIn("commands.reasonix", actions["configure_reasonix_command"]["command"])
         self.assertNotIn("apply_economy_profile", actions)
 

@@ -379,10 +379,11 @@ def _configure_reasonix_action() -> dict[str, Any]:
     return {
         "id": "configure_reasonix_command",
         "label": "Configure Reasonix",
-        "kind": "command",
+        "kind": "local_agent",
+        "message": "configure reasonix command",
         "command": "patchbay config --set-key commands.reasonix --set-value reasonix",
         "safe": True,
-        "reason": "Set the Reasonix executable so the Reasonix/DeepSeek write/fix economy route can actually run.",
+        "reason": "Set the default Reasonix executable so the Reasonix/DeepSeek write/fix economy route can actually run.",
     }
 
 

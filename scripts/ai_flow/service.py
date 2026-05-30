@@ -1602,10 +1602,11 @@ def _routing_health_actions(health: dict[str, Any]) -> list[dict[str, Any]]:
             {
                 "id": "configure_reasonix_command",
                 "label": "Configure Reasonix",
-                "kind": "command",
+                "kind": "local_agent",
+                "message": "configure reasonix command",
                 "command": "patchbay config --set-key commands.reasonix --set-value reasonix",
                 "safe": True,
-                "reason": "Set the Reasonix executable so the Reasonix/DeepSeek write/fix economy route can actually run.",
+                "reason": "Set the default Reasonix executable so the Reasonix/DeepSeek write/fix economy route can actually run.",
             }
         ]
     if next_action == "apply_economy_profile":

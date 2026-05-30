@@ -161,7 +161,8 @@ class ConfigWizardTest(unittest.TestCase):
         self.assertEqual(status["economy"]["command_status"]["write"]["status"], "missing_config")
         actions = {item["id"]: item for item in result["actions"]}
         self.assertEqual(actions["open_readiness"]["message"], "readiness")
-        self.assertEqual(actions["configure_reasonix_command"]["kind"], "command")
+        self.assertEqual(actions["configure_reasonix_command"]["kind"], "local_agent")
+        self.assertEqual(actions["configure_reasonix_command"]["message"], "configure reasonix command")
         self.assertIn("commands.reasonix", actions["configure_reasonix_command"]["command"])
         self.assertEqual(actions["validate_config"]["command"], "patchbay config --doctor --json")
 

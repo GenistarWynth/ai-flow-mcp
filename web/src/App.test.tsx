@@ -588,11 +588,6 @@ describe("Workbench", () => {
   });
 
   it("shows command setup actions for economy command health", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText }
-    });
     const commandContext: HandoffContext = {
       ...readyContext,
       run_metrics: {
@@ -648,6 +643,12 @@ describe("Workbench", () => {
       }
     };
     const client = createClient({
+      agentMessage: vi.fn().mockResolvedValue({
+        run_id: null,
+        action: "reasonix_command_configure",
+        ok: true,
+        reply: "Reasonix command configured."
+      }),
       getContext: vi.fn().mockResolvedValue(commandContext),
       getStatus: vi.fn().mockResolvedValue({
         run_id: "run-ready",
@@ -667,9 +668,9 @@ describe("Workbench", () => {
     await userEvent.click(screen.getByRole("button", { name: "诊断" }));
     expect(screen.getByText("命令未就绪 · write/fix")).toBeVisible();
     expect(screen.getAllByText("命令未配置").length).toBeGreaterThan(0);
-    await userEvent.click(screen.getAllByRole("button", { name: "Copy command Configure Reasonix" })[0]);
+    await userEvent.click(screen.getAllByRole("button", { name: "Configure Reasonix" })[0]);
 
-    expect(writeText).toHaveBeenCalledWith("patchbay config --set-key commands.reasonix --set-value reasonix");
+    expect(client.agentMessage).toHaveBeenCalledWith("configure reasonix command");
     expect(client.applyConfigProfile).not.toHaveBeenCalled();
     expect(client.runAction).not.toHaveBeenCalled();
   });
@@ -1379,6 +1380,12 @@ describe("Workbench", () => {
 
   it("shows Reasonix command readiness without offering economy reapply", async () => {
     const applyConfigProfile = vi.fn();
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "reasonix_command_configure",
+      ok: true,
+      reply: "Reasonix command configured."
+    });
     const getDoctor = vi.fn().mockResolvedValue({
       ok: true,
       root: "C:/repo",
@@ -1389,7 +1396,8 @@ describe("Workbench", () => {
         {
           id: "configure_reasonix_command",
           label: "Configure Reasonix",
-          kind: "command",
+          kind: "local_agent",
+          message: "configure reasonix command",
           command: "patchbay config --set-key commands.reasonix --set-value reasonix",
           safe: true,
           reason: "Set the Reasonix executable."
@@ -1398,6 +1406,7 @@ describe("Workbench", () => {
     });
     const client = createClient({
       listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      agentMessage,
       getDoctor,
       applyConfigProfile
     });
@@ -1409,7 +1418,8 @@ describe("Workbench", () => {
     await userEvent.click(screen.getAllByRole("tab")[1]);
 
     expect((await screen.findAllByText(/commands.reasonix/)).length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "Copy command Configure Reasonix" })).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Configure Reasonix" }));
+    expect(agentMessage).toHaveBeenCalledWith("configure reasonix command");
     expect(screen.queryByRole("button", { name: "Apply economy profile" })).not.toBeInTheDocument();
     expect(applyConfigProfile).not.toHaveBeenCalled();
   });
