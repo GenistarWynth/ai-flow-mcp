@@ -1324,6 +1324,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       return;
     }
     if (action.id === "start") {
+      startNewTask();
       composerRef.current?.focus();
       return;
     }

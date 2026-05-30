@@ -1783,6 +1783,56 @@ describe("Workbench", () => {
     expect(client.apply).not.toHaveBeenCalled();
   });
 
+  it("starts a fresh thread from selected-run local Agent replies", async () => {
+    const agentMessage = vi
+      .fn()
+      .mockResolvedValueOnce({
+        run_id: "run-ready",
+        action: "help",
+        ok: true,
+        reply: "You can start a replacement task.",
+        actions: [
+          {
+            id: "start_new_task",
+            label: "Start new task",
+            kind: "focus_composer",
+            safe: true,
+            reason: "Start over with a new task."
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ run_id: "run-new", status: { run_id: "run-new", status: "PLANNED" } });
+    const client = createClient({ agentMessage });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    const selectedRunComposer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(selectedRunComposer, "help{enter}");
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith("help", {
+        runId: "run-ready",
+        include: { diff: true, review: true },
+        background: true
+      })
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Start new task" }));
+
+    const newTaskComposer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(newTaskComposer, "Build replacement plan{enter}");
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith("Build replacement plan", {
+        include: { plan: true },
+        background: true
+      })
+    );
+    expect(agentMessage).not.toHaveBeenCalledWith("Build replacement plan", expect.objectContaining({ runId: "run-ready" }));
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
   it("runs local setup from the empty state and exposes readiness immediately", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: null,
