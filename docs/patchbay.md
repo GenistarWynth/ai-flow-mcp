@@ -21,7 +21,8 @@ patchbay config profile apply economy # write/fix 走 Reasonix + DeepSeek，适�
 patchbay agent message "apply economy profile" --json # 对话式 Agent 本地应用同一配置
 patchbay agent message "configure reasonix command" --json # 配置 commands.reasonix；可追加 `to <path>`
 patchbay config --set-key models.planner --set-value claude-opus-4-7   # 单键设置
-patchbay doctor                      # 统一检查 config/MCP/Skill 就绪状态
+patchbay doctor                      # 统一检查 config/Skill，就绪检查默认不启动 stdio MCP
+patchbay doctor --probe-mcp          # 需要 tools/list 证据时再探测 MCP
 patchbay config --doctor             # 验证配置
 
 # MCP 注册（可自动执行；失败时返回可复制命令）
@@ -98,7 +99,8 @@ Writer 实现入口：
 
 ```bash
 # CLI
-scripts/patchbay doctor --json            # 统一查看安装、配置、MCP、Skill 是否就绪
+scripts/patchbay doctor --json            # 统一查看安装、配置、Skill 和 MCP 后续动作
+scripts/patchbay doctor --probe-mcp --json # 需要时再验证 MCP initialize/tools-list
 scripts/patchbay context <run_id>          # 推荐：一次性查看 handoff 摘要、门禁、下一步、产物和时间线
 scripts/patchbay events <run_id>           # 展示完整事件日志
 scripts/patchbay events <run_id> --phase plan  # 按阶段筛选
@@ -138,7 +140,7 @@ scripts/patchbay cleanup <run_id>
 
 `--background` is intended for the conversational agent path: planning and approve/continue turns return a pollable `run_id`, write `JOB.json`, and surface progress through `patchbay_status`, `patchbay_context`, and `patchbay_events`. Destructive apply remains foreground-only and still requires explicit confirmation. Explicit local setup/routing prompts such as `patchbay setup`, `patchbay setup for Claude Desktop`, `install patchbay for Gemini CLI`, `patchbay install`, `apply economy profile`, `configure reasonix command`, or `configure reasonix command to <path>` run local setup/config updates without creating a model run. These local setup/readiness/status/profile payloads include `actions[]` entries whose `kind` is currently `local_agent`, `command`, `diagnostic_tab`, `open_run`, or `focus_composer`; clients should render only entries with `safe: true` as direct actions. `status` or `runs` without a `run_id` can return an `open_run` action for the latest run, or `focus_composer` plus readiness diagnostics when no runs exist, but should not render `continue`, `approve`, or `apply` as stateless direct actions. If the user sends `continue`, `approve`, `apply`, `diff`, or `artifact` without a `run_id`, Patchbay returns local guidance instead of starting a new run; when a recent run exists, the payload includes a latest-run reference and an `open_run` action that clients can use before showing any gated action. For view-only prompts such as `diff`, `events`, `logs`, or `artifact`, `requested_view` points desktop clients at the matching diagnostics tab.
 
-Web workbench 使用同一套对话式 Agent 流程。`patchbay_agent` 和 `scripts/patchbay agent message "patchbay setup" --json` / `status --json` / `readiness --json` / `"apply economy profile" --json` / `"configure reasonix command" --json` / `"configure reasonix command to <path>" --json` 可直接返回 setup 结果、最近运行、统一 doctor 报告、经济路由配置结果或 Reasonix 命令配置结果，不创建模型 run；`continue`、`approve`、`apply`、`diff`、`artifact` 这类没有 `run_id` 的消息会返回本地提示。诊断抽屉里的“就绪”页也会调用统一 doctor 检查项目初始化、配置、CLI 入口、Skill 状态和 economy 路由命令状态，展示当前 write/fix 路由，并把 `actions[]` 渲染为安全操作按钮，例如运行 setup、安装 Skill、探测 MCP、刷新 readiness、应用 economy profile 或配置 Reasonix 命令；就绪页的 MCP host 选择器会把目标 host 传入 doctor/setup，setup、doctor 和 `mcp install` 会把 `Claude Desktop`、`claude desktop`、`claude-desktop`、`Claude Code`、`Gemini CLI` 等常见写法规范化为同一个 canonical host。本地对话回复也会把安全的 `command` action 渲染为可复制命令行，MCP/Skill 注册命令和 Reasonix 配置回退命令不必打开诊断页也能直接使用。Overview/效率区域会展示 `routing_evidence`、`economy_health` 和 `agent_activity.health_cards`，区分“已配置 economy”“Reasonix 命令不可执行”“本次运行已实际观察到 economy provider 事件”以及“write/fix 漂移到了非经济 provider”。运行失败时，线程里的失败恢复卡片会读取 `failure_recovery`，展示建议动作和应优先检查的产物，但不会自动执行任何阶段动作。Web 默认跳过 MCP stdio 探测，避免打开页面时启动额外子进程，需要完整 MCP 检查时再运行 `patchbay doctor --host <host> --json` 或 `patchbay mcp doctor`。启动 `patchbay web --port 8765` 后打开 `http://127.0.0.1:8765`。
+Web workbench 使用同一套对话式 Agent 流程。`patchbay_agent` 和 `scripts/patchbay agent message "patchbay setup" --json` / `status --json` / `readiness --json` / `"apply economy profile" --json` / `"configure reasonix command" --json` / `"configure reasonix command to <path>" --json` 可直接返回 setup 结果、最近运行、统一 doctor 报告、经济路由配置结果或 Reasonix 命令配置结果，不创建模型 run；`continue`、`approve`、`apply`、`diff`、`artifact` 这类没有 `run_id` 的消息会返回本地提示。诊断抽屉里的“就绪”页也会调用统一 doctor 检查项目初始化、配置、CLI 入口、Skill 状态和 economy 路由命令状态，展示当前 write/fix 路由，并把 `actions[]` 渲染为安全操作按钮，例如运行 setup、安装 Skill、探测 MCP、刷新 readiness、应用 economy profile 或配置 Reasonix 命令；就绪页的 MCP host 选择器会把目标 host 传入 doctor/setup，setup、doctor 和 `mcp install` 会把 `Claude Desktop`、`claude desktop`、`claude-desktop`、`Claude Code`、`Gemini CLI` 等常见写法规范化为同一个 canonical host。本地对话回复也会把安全的 `command` action 渲染为可复制命令行，MCP/Skill 注册命令和 Reasonix 配置回退命令不必打开诊断页也能直接使用。Overview/效率区域会展示 `routing_evidence`、`economy_health` 和 `agent_activity.health_cards`，区分“已配置 economy”“Reasonix 命令不可执行”“本次运行已实际观察到 economy provider 事件”以及“write/fix 漂移到了非经济 provider”。运行失败时，线程里的失败恢复卡片会读取 `failure_recovery`，展示建议动作和应优先检查的产物，但不会自动执行任何阶段动作。Web 默认跳过 MCP stdio 探测，避免打开页面时启动额外子进程，需要完整 MCP 检查时再运行 `patchbay doctor --host <host> --probe-mcp --json` 或 `patchbay mcp doctor`。启动 `patchbay web --port 8765` 后打开 `http://127.0.0.1:8765`。
 
 mock 模式：
 
@@ -167,7 +169,7 @@ patchbay mcp install gemini         # Gemini CLI
 patchbay mcp doctor                 # 实际启动 server 并验证 tools/list
 ```
 
-优先运行 `patchbay doctor --host <host> --json` 获取完整只读诊断：项目初始化、配置解析、CLI 入口、MCP tools/list、Skill 源和 Codex Skill 安装状态都会汇总到一个结果里，并同时返回 `next_actions`、`recommendations` 和面向该 host 的结构化 `actions[]`，例如具体的 MCP 注册命令。`<host>` 可使用常见自然名称或 canonical id，例如 `Claude Desktop`、`claude desktop`、`claude-desktop`、`Claude Code`、`Gemini CLI`。需要聚焦 MCP 时再运行 `patchbay mcp doctor`。MCP 注册后如果 host 会缓存工具列表，请重启或 reload 该 host；随后运行 `patchbay mcp doctor --json`，或在 host 中确认 `patchbay_agent` 已可见。
+优先运行 `patchbay doctor --host <host> --json` 获取轻量只读诊断：项目初始化、配置解析、CLI 入口、Skill 源和 Codex Skill 安装状态都会汇总到一个结果里，并同时返回 `next_actions`、`recommendations` 和面向该 host 的结构化 `actions[]`，例如具体的 MCP 注册或探测命令。`<host>` 可使用常见自然名称或 canonical id，例如 `Claude Desktop`、`claude desktop`、`claude-desktop`、`Claude Code`、`Gemini CLI`。需要 stdio MCP tools/list 证据时再运行 `patchbay doctor --host <host> --probe-mcp --json` 或 `patchbay mcp doctor`。MCP 注册后如果 host 会缓存工具列表，请重启或 reload 该 host；随后运行 `patchbay mcp doctor --json`，或在 host 中确认 `patchbay_agent` 已可见。
 
 Codex、Claude Code、Gemini 会先尝试自动执行注册命令，CLI 不可用时再返回可复制命令；Claude Desktop 会直接写配置。
 

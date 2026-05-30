@@ -80,7 +80,8 @@ patchbay config     # Interactive wizard — no hand-editing required
 patchbay config profile apply economy  # keep write/fix on Reasonix + DeepSeek
 patchbay agent message "apply economy profile" --json  # same routing change through the conversational Agent
 patchbay agent message "configure reasonix command" --json  # set commands.reasonix; append `to <path>` or use `把 Reasonix 命令设为 <path>`
-patchbay doctor     # Unified config/MCP/Skill readiness checks
+patchbay doctor     # Unified config/Skill readiness checks; skips stdio MCP probing by default
+patchbay doctor --probe-mcp     # Add stdio MCP initialize/tools-list verification when needed
 patchbay config --doctor     # Validate your resolved phase configuration
 patchbay config --set-key models.planner --set-value claude-opus-4-7
 ```
@@ -151,9 +152,9 @@ patchbay mcp install gemini         # Gemini CLI
 codex mcp add patchbay -- python scripts/patchbay_mcp_server.py
 ```
 
-Use the equivalent MCP server registration command for other MCP hosts. Run `patchbay doctor --host <host>` for full readiness checks with concrete structured registration actions for that host, or `patchbay mcp doctor` to focus only on server reachability.
+Use the equivalent MCP server registration command for other MCP hosts. Run `patchbay doctor --host <host>` for lightweight readiness checks with concrete structured registration actions for that host. Add `--probe-mcp` or run `patchbay mcp doctor` only when you specifically need stdio server reachability and tool-list evidence.
 
-`patchbay doctor` is read-only and reports project initialization, phase config validity, CLI shim/installed command availability, MCP reachability/tools, bundled Skill source, and whether the Codex Skill is installed. It returns prose `next_actions`/`recommendations` plus structured `actions[]` for desktop/MCP clients. `patchbay mcp doctor` starts the stdio MCP server, sends `initialize` and `tools/list`, and verifies required tools including `patchbay_agent`, `patchbay_plan`, `patchbay_context`, `patchbay_metrics`, `patchbay_doctor`, `patchbay_install`, `patchbay_skill_install`, and `patchbay_skill_doctor`. For Codex, Claude Code, and Gemini, `mcp install` now tries to register automatically and falls back to the command text if the host CLI is unavailable; Claude Desktop writes its JSON config in place. Host names accept English and common Chinese aliases, such as `Claude Desktop`, `Claude 桌面`, `Claude Code`, `Claude 代码`, `Gemini CLI`, and `Gemini 命令行`.
+`patchbay doctor` is read-only and reports project initialization, phase config validity, CLI shim/installed command availability, bundled Skill source, whether the Codex Skill is installed, and MCP follow-up actions; it skips stdio MCP probing by default so routine readiness checks do not spawn the MCP server. It returns prose `next_actions`/`recommendations` plus structured `actions[]` for desktop/MCP clients. `patchbay doctor --probe-mcp` and `patchbay mcp doctor` start the stdio MCP server, send `initialize` and `tools/list`, and verify required tools including `patchbay_agent`, `patchbay_plan`, `patchbay_context`, `patchbay_metrics`, `patchbay_doctor`, `patchbay_install`, `patchbay_skill_install`, and `patchbay_skill_doctor`. For Codex, Claude Code, and Gemini, `mcp install` now tries to register automatically and falls back to the command text if the host CLI is unavailable; Claude Desktop writes its JSON config in place. Host names accept English and common Chinese aliases, such as `Claude Desktop`, `Claude 桌面`, `Claude Code`, `Claude 代码`, `Gemini CLI`, and `Gemini 命令行`.
 
 After MCP registration, restart or reload the target host if it caches tool lists. Verify with `patchbay mcp doctor --json`, or from the host by checking that `patchbay_agent` is visible.
 

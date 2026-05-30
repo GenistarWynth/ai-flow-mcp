@@ -15,7 +15,7 @@ def run_doctor(
     cwd: Path,
     *,
     root: str | Path | None = None,
-    include_mcp: bool = True,
+    include_mcp: bool = False,
     skill_path: str | Path | None = None,
     host: str = "codex",
 ) -> dict[str, Any]:
@@ -103,7 +103,7 @@ def _mcp_check(root: Path, *, include_mcp: bool) -> dict[str, Any]:
         return {
             "ok": True,
             "skipped": True,
-            "note": "Skipped by --skip-mcp; run `patchbay mcp doctor` for stdio probing.",
+            "note": "Skipped by default; run `patchbay doctor --probe-mcp` or `patchbay mcp doctor` for stdio probing.",
         }
     try:
         result = run_mcp_doctor(root)
@@ -150,7 +150,7 @@ def _next_actions(checks: dict[str, Any], *, host: str) -> list[str]:
     mcp = checks.get("mcp", {})
     if not mcp.get("ok"):
         if mcp.get("skipped"):
-            actions.append(f"Run `patchbay doctor --host {host}` without --skip-mcp before registering a host.")
+            actions.append(f"Run `patchbay doctor --host {host} --probe-mcp --json` before registering a host if you need stdio tool-list evidence.")
         else:
             actions.append(f"Run `patchbay mcp doctor --json`; then re-run `patchbay mcp install {host}` if tools are missing.")
     skill = checks.get("skill", {})
@@ -220,7 +220,7 @@ def _structured_actions(
                 "id": "probe_mcp",
                 "label": "Probe MCP",
                 "kind": "command",
-                "command": f"patchbay doctor --host {host} --json",
+                "command": f"patchbay doctor --host {host} --probe-mcp --json",
                 "host": host,
                 "safe": True,
                 "reason": "Run the stdio MCP probe when the host needs full tool registration evidence.",

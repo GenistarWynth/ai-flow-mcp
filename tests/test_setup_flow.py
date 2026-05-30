@@ -196,7 +196,7 @@ model = "mock"
         self.assertIn("install_skill", actions)
         self.assertEqual(actions["install_skill"]["command"], "patchbay skill install codex")
         self.assertIn("probe_mcp", actions)
-        self.assertEqual(actions["probe_mcp"]["command"], "patchbay doctor --host codex --json")
+        self.assertEqual(actions["probe_mcp"]["command"], "patchbay doctor --host codex --probe-mcp --json")
         self.assertEqual(actions["probe_mcp"]["host"], "codex")
 
     def test_setup_omits_manual_mcp_step_after_successful_registration(self) -> None:

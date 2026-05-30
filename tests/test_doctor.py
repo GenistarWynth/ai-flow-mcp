@@ -32,7 +32,7 @@ class DoctorTest(unittest.TestCase):
         self.assertTrue(result["checks"]["mcp"]["skipped"])
         self.assertTrue(any("patchbay init" in action for action in result["next_actions"]))
         actions = {item["id"]: item for item in result["actions"]}
-        self.assertEqual(actions["probe_mcp"]["command"], "patchbay doctor --host codex --json")
+        self.assertEqual(actions["probe_mcp"]["command"], "patchbay doctor --host codex --probe-mcp --json")
         self.assertEqual(actions["probe_mcp"]["host"], "codex")
 
     def test_doctor_structured_mcp_action_uses_target_host(self) -> None:

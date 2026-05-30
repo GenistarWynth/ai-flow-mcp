@@ -46,16 +46,17 @@ patchbay mcp install claude-desktop
 patchbay mcp install gemini
 ```
 
-Codex, Claude Code, and Gemini try to run the host registration command directly and fall back to printing it if the host CLI is unavailable. Claude Desktop writes its JSON config directly. For full host-aware readiness, prefer `patchbay doctor --host <host> --json`; use `patchbay mcp doctor` only when you specifically need stdio server reachability.
+Codex, Claude Code, and Gemini try to run the host registration command directly and fall back to printing it if the host CLI is unavailable. Claude Desktop writes its JSON config directly. For lightweight host-aware readiness, prefer `patchbay doctor --host <host> --json`; add `--probe-mcp` or use `patchbay mcp doctor` only when you specifically need stdio server reachability and tool-list evidence.
 
 Verify the server:
 
 ```bash
 patchbay doctor
+patchbay doctor --probe-mcp
 patchbay mcp doctor
 ```
 
-`patchbay doctor` is the unified read-only setup check for project initialization, phase config, CLI entry points, MCP tools, bundled Skill source, Codex Skill installation, and economy-route command readiness. `patchbay mcp doctor` focuses on stdio MCP server reachability, sends initialize/tools/list, and checks required tools such as `patchbay_agent`, `patchbay_plan`, `patchbay_context`, `patchbay_metrics`, `patchbay_doctor`, `patchbay_install`, `patchbay_skill_install`, and `patchbay_skill_doctor`.
+`patchbay doctor` is the unified read-only setup check for project initialization, phase config, CLI entry points, bundled Skill source, Codex Skill installation, MCP follow-up actions, and economy-route command readiness. It skips stdio MCP probing by default. `patchbay doctor --probe-mcp` and `patchbay mcp doctor` focus on stdio MCP server reachability, send initialize/tools/list, and check required tools such as `patchbay_agent`, `patchbay_plan`, `patchbay_context`, `patchbay_metrics`, `patchbay_doctor`, `patchbay_install`, `patchbay_skill_install`, and `patchbay_skill_doctor`.
 
 After registration, restart or reload hosts that cache MCP tool lists. Verify that `patchbay_agent` is visible in the host before starting a gated run.
 

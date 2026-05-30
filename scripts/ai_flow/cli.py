@@ -137,10 +137,11 @@ def build_parser() -> argparse.ArgumentParser:
     web.add_argument("--port", type=int, default=0, help="Port to bind; 0 selects a free port.")
     _add_json(web)
 
-    doctor = sub.add_parser("doctor", help="Run unified CLI/config/MCP/Skill readiness checks.")
+    doctor = sub.add_parser("doctor", help="Run unified CLI/config/Skill readiness checks without stdio MCP probing by default.")
     doctor.add_argument("--root", default="", help="Repository root to inspect.")
     doctor.add_argument("--host", default="codex", help="MCP host for structured registration actions.")
-    doctor.add_argument("--skip-mcp", action="store_true", help="Skip stdio MCP server probing.")
+    doctor.add_argument("--skip-mcp", action="store_true", help="Deprecated compatibility flag; doctor skips stdio MCP probing unless --probe-mcp is set.")
+    doctor.add_argument("--probe-mcp", action="store_true", help="Run stdio MCP server probing and verify registered tools.")
     doctor.add_argument("--skill-path", default="", help="Codex skills root to inspect.")
     _add_json(doctor)
 
@@ -412,7 +413,7 @@ def dispatch(args: argparse.Namespace, cwd: Path) -> Any:
         "doctor": lambda a, c: run_doctor(
             c,
             root=getattr(a, "root", "") or None,
-            include_mcp=not bool(getattr(a, "skip_mcp", False)),
+            include_mcp=bool(getattr(a, "probe_mcp", False)) and not bool(getattr(a, "skip_mcp", False)),
             skill_path=getattr(a, "skill_path", "") or None,
             host=getattr(a, "host", "codex"),
         ),

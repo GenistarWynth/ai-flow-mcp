@@ -171,11 +171,12 @@ class CliEntrypointTest(unittest.TestCase):
         from scripts.ai_flow.cli import build_parser
 
         parser = build_parser()
-        doctor = parser.parse_args(["doctor", "--root", "C:/tmp/repo", "--host", "claude-desktop", "--skip-mcp", "--json"])
+        doctor = parser.parse_args(["doctor", "--root", "C:/tmp/repo", "--host", "claude-desktop", "--probe-mcp", "--json"])
         self.assertEqual(doctor.command, "doctor")
         self.assertEqual(doctor.root, "C:/tmp/repo")
         self.assertEqual(doctor.host, "claude-desktop")
-        self.assertTrue(doctor.skip_mcp)
+        self.assertFalse(doctor.skip_mcp)
+        self.assertTrue(doctor.probe_mcp)
 
         setup = parser.parse_args(["setup", "--host", "codex", "--skill-path", "C:/tmp/skills", "--skip-mcp", "--json"])
         self.assertEqual(setup.command, "setup")
@@ -213,6 +214,20 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertEqual(profile.config_command, "profile")
         self.assertEqual(profile.profile_command, "apply")
         self.assertEqual(profile.profile, "economy")
+
+    def test_cli_doctor_skips_stdio_mcp_probe_by_default(self) -> None:
+        from pathlib import Path
+        from unittest import mock
+
+        from scripts.ai_flow import cli
+
+        parser = cli.build_parser()
+        with mock.patch.object(cli, "run_doctor", return_value={"ok": True}) as doctor:
+            cli.dispatch(parser.parse_args(["doctor", "--json"]), Path.cwd())
+            self.assertFalse(doctor.call_args.kwargs["include_mcp"])
+
+            cli.dispatch(parser.parse_args(["doctor", "--probe-mcp", "--json"]), Path.cwd())
+            self.assertTrue(doctor.call_args.kwargs["include_mcp"])
 
 
 if __name__ == "__main__":

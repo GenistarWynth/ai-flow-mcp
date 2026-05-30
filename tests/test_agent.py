@@ -133,6 +133,7 @@ class AgentWorkflowTests(AgentTestCase):
         desktop_actions = {item["id"]: item for item in desktop["actions"]}
         self.assertEqual(desktop_actions["probe_mcp"]["host"], "claude-desktop")
         self.assertIn("--host claude-desktop", desktop_actions["probe_mcp"]["command"])
+        self.assertIn("--probe-mcp", desktop_actions["probe_mcp"]["command"])
         self.assertEqual(gemini["setup_host"], "gemini")
         self.assertEqual(gemini["doctor"]["host"], "gemini")
         self.assertIsNone(desktop["run_id"])
