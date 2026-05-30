@@ -1158,7 +1158,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       const responseHost = setupHostById(hostFromAgentResponse(response) ?? host.id);
       const setupDoctor = response.setup?.doctor ?? response.doctor;
       setReadinessHost(responseHost);
-      if (!selectedRun) setNewTaskReply(response);
+      if (selectedRun) appendLocalAgentReply(response);
+      else setNewTaskReply(response);
       if (setupDoctor) {
         setDoctor(setupDoctor);
       } else {
@@ -1189,7 +1190,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         next_actions: profile.next_actions ?? ["readiness", "start"],
         actions: profile.actions ?? []
       };
-      if (!selectedRun) setNewTaskReply(response);
+      if (selectedRun) appendLocalAgentReply(response);
+      else setNewTaskReply(response);
       const [nextDoctor, nextConfig] = await Promise.all([client.getDoctor({ include_mcp: false, host: readinessHost.id }), client.getConfig()]);
       setDoctor(nextDoctor);
       setConfig(nextConfig);
@@ -1208,7 +1210,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     setProfileInFlight(true);
     try {
       const response = await client.agentMessage(message);
-      if (!selectedRun) setNewTaskReply(response);
+      if (selectedRun) appendLocalAgentReply(response);
+      else setNewTaskReply(response);
       const [nextDoctor, nextConfig] = await Promise.all([client.getDoctor({ include_mcp: false, host: readinessHost.id }), client.getConfig()]);
       setDoctor(nextDoctor);
       setConfig(nextConfig);

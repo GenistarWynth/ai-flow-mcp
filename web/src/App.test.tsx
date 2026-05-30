@@ -1631,6 +1631,10 @@ describe("Workbench", () => {
     await userEvent.click(screen.getByRole("button", { name: "Apply economy profile" }));
 
     await waitFor(() => expect(client.applyConfigProfile).toHaveBeenCalledWith("economy"));
+    expect(await screen.findByText("Economy routing profile applied.")).toBeVisible();
+    expect(
+      await screen.findByText("Economy routing profile is active: write reasonix_cli / deepseek-v4-pro, fix reasonix_cli / deepseek-v4-pro.")
+    ).toBeVisible();
     expect(client.runAction).not.toHaveBeenCalled();
     expect(client.apply).not.toHaveBeenCalled();
   });
