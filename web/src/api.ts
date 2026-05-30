@@ -185,6 +185,22 @@ export type RunMetrics = {
   routing_evidence?: RoutingEvidence;
 };
 
+export type BackgroundJob = {
+  active?: boolean;
+  status?: "running" | "finished" | "failed" | string;
+  kind?: string;
+  phase?: string;
+  action?: string;
+  pid?: number | null;
+  exit_code?: number | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  duration_ms?: number | null;
+  events_path?: string | null;
+  trace_path?: string | null;
+  error?: string | null;
+};
+
 export type RunStatus = {
   run_id: string;
   task?: string;
@@ -201,6 +217,8 @@ export type RunStatus = {
   effective_phase_providers?: Record<string, PhaseProvider>;
   routing_evidence?: RoutingEvidence;
   run_metrics?: RunMetrics;
+  background_job?: BackgroundJob | null;
+  job?: Record<string, unknown>;
 };
 
 export type DoctorCheck = {
@@ -388,6 +406,7 @@ export type AgentActivity = {
   headline?: string;
   tone?: AgentTone;
   current_step?: AgentStep;
+  background_job?: BackgroundJob | null;
   next_action?: AgentAction | null;
   conversation_state?: ConversationState;
   gate_cards?: AgentGateCard[];
@@ -433,6 +452,7 @@ export type AgentResponse = {
   diff?: string | null;
   background?: boolean;
   job?: Record<string, unknown>;
+  background_job?: BackgroundJob | null;
   requires_confirmation?: {
     type?: string;
     required_action?: string;
@@ -461,6 +481,7 @@ export type HandoffContext = {
   current_phase?: string;
   gate_state?: GateState;
   failure_recovery?: FailureRecovery | null;
+  background_job?: BackgroundJob | null;
   run_metrics?: RunMetrics;
   next_actions?: NextAction[];
   provider_trail?: ProviderTrailEntry[];

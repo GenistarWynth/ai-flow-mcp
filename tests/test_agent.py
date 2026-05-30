@@ -1463,6 +1463,9 @@ test = []
         self.assertTrue(response["ok"])
         self.assertTrue(response["background"])
         self.assertEqual(response["job"]["phase"], "plan")
+        self.assertTrue(response["background_job"]["active"])
+        self.assertEqual(response["background_job"]["status"], "running")
+        self.assertEqual(response["background_job"]["phase"], "plan")
         self.assertEqual(response["next_actions"], ["status", "events"])
         self.assertTrue((run_path / "JOB.json").exists())
         self.assertTrue((run_path / "events.jsonl").exists())
@@ -1504,11 +1507,16 @@ test = []
         self.assertTrue(response["background"])
         self.assertEqual(response["job"]["kind"], "agent")
         self.assertEqual(response["job"]["pid"], 9876)
+        self.assertTrue(response["background_job"]["active"])
+        self.assertEqual(response["background_job"]["kind"], "agent")
+        self.assertEqual(response["background_job"]["pid"], 9876)
         self.assertTrue((run_path / "AGENT.lock").exists())
         self.assertTrue((run_path / "JOB.json").exists())
         self.assertTrue(popen.call_args.kwargs["env"]["PATCHBAY_INHERITED_AGENT_LOCK"])
 
     def test_cli_background_agent_approval_completes_in_child_process(self) -> None:
+        from scripts.ai_flow import service
+
         planned = agent_message(self.repo, "background child process")
         run_id = planned["run_id"]
         run_path = self.repo / ".ai" / "runs" / run_id
@@ -1528,7 +1536,16 @@ test = []
         self.wait_for(lambda: not (run_path / "AGENT.lock").exists() and json.loads((run_path / "STATUS.json").read_text(encoding="utf-8"))["status"] == "REVIEWED_PASS")
 
         status = json.loads((run_path / "STATUS.json").read_text(encoding="utf-8"))
+        def completed_job() -> dict | None:
+            payload = json.loads((run_path / "JOB.json").read_text(encoding="utf-8"))
+            return payload if "exit_code" in payload else None
+
+        job = self.wait_for(completed_job)
+        status_payload = service.status(self.repo, run_id)
         self.assertEqual(status["status"], "REVIEWED_PASS")
+        self.assertEqual(job["exit_code"], 0)
+        self.assertEqual(status_payload["background_job"]["status"], "finished")
+        self.assertFalse(status_payload["background_job"]["active"])
         self.assertTrue(status["gate_state"]["ready_to_apply"] if "gate_state" in status else status["tests_passed"])
 
     def test_web_agent_message_endpoint(self) -> None:

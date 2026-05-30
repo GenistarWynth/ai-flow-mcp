@@ -178,9 +178,17 @@ class PublicVisibilityTest(unittest.TestCase):
 
         self.assertEqual(status["status"], "RUNNING")
         self.assertEqual(status["job"]["pid"], 123)
+        self.assertTrue(status["background_job"]["active"])
+        self.assertEqual(status["background_job"]["status"], "running")
+        self.assertEqual(status["background_job"]["phase"], "plan")
+        self.assertEqual(status["background_job"]["pid"], 123)
         self.assertFalse(status["gate_state"]["approved"])
         self.assertEqual(context["status"], "RUNNING")
-        self.assertTrue(any(item["run_id"] == run_id and item["task"] == "pending background task" for item in runs["runs"]))
+        self.assertTrue(context["background_job"]["active"])
+        self.assertTrue(context["agent_activity"]["background_job"]["active"])
+        listed = next(item for item in runs["runs"] if item["run_id"] == run_id)
+        self.assertEqual(listed["task"], "pending background task")
+        self.assertEqual(listed["background_job"]["status"], "running")
 
     def test_finished_background_job_without_status_is_reported_failed(self) -> None:
         from scripts.ai_flow import service
@@ -218,8 +226,15 @@ class PublicVisibilityTest(unittest.TestCase):
         self.assertEqual(status["status"], "FAILED")
         self.assertEqual(status["stage"], "plan")
         self.assertIn("exit code 9", status["error"])
+        self.assertFalse(status["background_job"]["active"])
+        self.assertEqual(status["background_job"]["status"], "failed")
+        self.assertEqual(status["background_job"]["duration_ms"], 1000)
+        self.assertEqual(status["background_job"]["exit_code"], 9)
         self.assertEqual(context["status"], "FAILED")
-        self.assertTrue(any(item["run_id"] == run_id and item["status"] == "FAILED" for item in runs["runs"]))
+        self.assertEqual(context["background_job"]["status"], "failed")
+        listed = next(item for item in runs["runs"] if item["run_id"] == run_id)
+        self.assertEqual(listed["status"], "FAILED")
+        self.assertEqual(listed["background_job"]["duration_ms"], 1000)
 
     def test_background_plan_cli_respects_explicit_run_id_collision(self) -> None:
         run_id = "20260524-background-explicit"
@@ -308,6 +323,8 @@ class PublicVisibilityTest(unittest.TestCase):
         self.assertIn(("plan", "success"), [(event["phase"], event["action"]) for event in events])
 
     def test_background_plan_cli_preserves_job_status_and_events(self) -> None:
+        from scripts.ai_flow import service
+
         completed = run(
             ["python", str(self.script), "plan", "--task", "background durable", "--mock", "--background", "--json"],
             self.repo,
@@ -331,10 +348,19 @@ class PublicVisibilityTest(unittest.TestCase):
         events = self.wait_for(completed_events)
 
         status = json.loads((run_path / "STATUS.json").read_text(encoding="utf-8"))
-        job = json.loads((run_path / "JOB.json").read_text(encoding="utf-8"))
+        def completed_job() -> dict | None:
+            payload = json.loads((run_path / "JOB.json").read_text(encoding="utf-8"))
+            return payload if "exit_code" in payload else None
+
+        job = self.wait_for(completed_job)
+        status_payload = service.status(self.repo, result["run_id"])
         actions = [(event["phase"], event["action"]) for event in events]
         self.assertEqual(status["run_id"], result["run_id"])
         self.assertEqual(job["pid"], result["pid"])
+        self.assertEqual(job["exit_code"], 0)
+        self.assertEqual(status_payload["background_job"]["status"], "finished")
+        self.assertFalse(status_payload["background_job"]["active"])
+        self.assertIsInstance(status_payload["background_job"]["duration_ms"], int)
         self.assertIn(("plan", "start"), actions)
         self.assertIn(("plan", "success"), actions)
         self.assertFalse((run_path / "RUN.lock").exists())

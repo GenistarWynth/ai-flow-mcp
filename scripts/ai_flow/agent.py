@@ -408,7 +408,7 @@ def _start_background_agent(
         action=intent,
         reply="Background agent turn started. Poll status, context, or events for progress.",
         include=include,
-        extra={"background": True, "job": job},
+        extra={"background": True, "job": job, "background_job": service.summarize_background_job(job)},
     )
     response["requires_confirmation"] = None
     response["next_actions"] = ["status", "events"]
@@ -425,9 +425,32 @@ def _background_agent_command(
     max_fix_rounds: int | None,
 ) -> list[str]:
     runner = """
+import json
 import os
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
+
+def exit_code(value):
+    if isinstance(value, int):
+        return value
+    return 0 if value is None else 1
+
+def mark_finished(run_dir, code):
+    job_path = Path(run_dir) / "JOB.json"
+    try:
+        job = json.loads(job_path.read_text(encoding="utf-8"))
+        job["exit_code"] = code
+        job["finished_at"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        job["finished_at_epoch"] = time.time()
+        with job_path.open("w", encoding="utf-8", newline="\\n") as handle:
+            json.dump(job, handle, indent=2, ensure_ascii=False, sort_keys=True)
+            handle.write("\\n")
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
 
 root = Path(os.environ["PATCHBAY_BACKGROUND_ROOT"])
 source_scripts = Path(os.environ.get("PATCHBAY_BACKGROUND_SOURCE_SCRIPTS", ""))
@@ -435,11 +458,22 @@ for candidate in (root / "scripts", source_scripts):
     if candidate.exists() and str(candidate) not in sys.path:
         sys.path.insert(0, str(candidate))
 
+code = 0
 try:
     from ai_flow.cli import main
-    raise SystemExit(main(sys.argv[1:]))
+    result = main(sys.argv[1:])
+    code = exit_code(result)
+    raise SystemExit(result)
+except SystemExit as exc:
+    code = exit_code(exc.code)
+    raise
+except BaseException:
+    code = 1
+    raise
 finally:
     run_dir = os.environ.get("PATCHBAY_BACKGROUND_RUN_DIR")
+    if run_dir:
+        mark_finished(run_dir, code)
     token = os.environ.get("PATCHBAY_AGENT_LOCK_TOKEN")
     if run_dir and token:
         lock_path = Path(run_dir) / "AGENT.lock"
@@ -1941,6 +1975,7 @@ def _background_pending_response(*, action: str, run_id: str, reply: str, job: d
         "error": None,
         "background": True,
         "job": job,
+        "background_job": service.summarize_background_job(job),
     }
 
 

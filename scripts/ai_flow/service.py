@@ -121,6 +121,39 @@ def _job_has_finished(job: dict[str, Any]) -> bool:
     return "exit_code" in job or bool(job.get("finished_at")) or bool(job.get("reaper_error"))
 
 
+def _job_duration_ms(job: dict[str, Any]) -> int | None:
+    started = job.get("started_at_epoch")
+    if not isinstance(started, (int, float)):
+        return None
+    finished = job.get("finished_at_epoch")
+    if not isinstance(finished, (int, float)):
+        finished = time.time() if not _job_has_finished(job) else None
+    if not isinstance(finished, (int, float)):
+        return None
+    return max(0, int((finished - started) * 1000))
+
+
+def _background_job_summary(job: dict[str, Any]) -> dict[str, Any]:
+    finished = _job_has_finished(job)
+    exit_code = job.get("exit_code")
+    failed = bool(job.get("reaper_error")) or (isinstance(exit_code, int) and exit_code != 0)
+    return {
+        "active": not finished,
+        "status": "failed" if failed else "finished" if finished else "running",
+        "kind": job.get("kind") or "phase",
+        "phase": job.get("phase") or "background",
+        "action": job.get("action") or job.get("phase") or "background",
+        "pid": job.get("pid"),
+        "exit_code": exit_code,
+        "started_at": job.get("started_at"),
+        "finished_at": job.get("finished_at"),
+        "duration_ms": _job_duration_ms(job),
+        "events_path": job.get("events_path"),
+        "trace_path": job.get("trace_path"),
+        "error": job.get("reaper_error"),
+    }
+
+
 def _job_status_without_status(root: Path, run_id: str, job: dict[str, Any]) -> dict[str, Any]:
     stage = str(job.get("phase") or "background")
     finished = _job_has_finished(job)
@@ -147,6 +180,7 @@ def _job_status_without_status(root: Path, run_id: str, job: dict[str, Any]) -> 
         "updated_at": job.get("finished_at") or job.get("started_at"),
         "error": job.get("reaper_error") or (detail if finished else None),
         "stage": stage,
+        "background_job": _background_job_summary(job),
         "suggested_next_action": (
             "Inspect events/trace and retry the phase; the background job did not produce durable status."
             if finished
@@ -157,6 +191,10 @@ def _job_status_without_status(root: Path, run_id: str, job: dict[str, Any]) -> 
 
 def _record_job(run_path: Path, data: dict[str, Any]) -> None:
     write_json(_job_path(run_path), data)
+
+
+def summarize_background_job(job: dict[str, Any]) -> dict[str, Any]:
+    return _background_job_summary(job)
 
 
 def _mark_background_job_finished(
@@ -224,9 +262,32 @@ def _patchbay_command(root: Path, phase: str) -> list[str]:
 
 def _background_spawn_command(phase: str, phase_args: list[str]) -> list[str]:
     runner = """
+import json
 import os
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
+
+def exit_code(value):
+    if isinstance(value, int):
+        return value
+    return 0 if value is None else 1
+
+def mark_finished(run_dir, code):
+    job_path = Path(run_dir) / "JOB.json"
+    try:
+        job = json.loads(job_path.read_text(encoding="utf-8"))
+        job["exit_code"] = code
+        job["finished_at"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        job["finished_at_epoch"] = time.time()
+        with job_path.open("w", encoding="utf-8", newline="\\n") as handle:
+            json.dump(job, handle, indent=2, ensure_ascii=False, sort_keys=True)
+            handle.write("\\n")
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
 
 root = Path(os.environ["PATCHBAY_BACKGROUND_ROOT"])
 source_scripts = Path(os.environ.get("PATCHBAY_BACKGROUND_SOURCE_SCRIPTS", ""))
@@ -234,11 +295,22 @@ for candidate in (root / "scripts", source_scripts):
     if candidate.exists() and str(candidate) not in sys.path:
         sys.path.insert(0, str(candidate))
 
+code = 0
 try:
     from ai_flow.cli import main
-    raise SystemExit(main(sys.argv[1:]))
+    result = main(sys.argv[1:])
+    code = exit_code(result)
+    raise SystemExit(result)
+except SystemExit as exc:
+    code = exit_code(exc.code)
+    raise
+except BaseException:
+    code = 1
+    raise
 finally:
     run_dir = os.environ.get("PATCHBAY_BACKGROUND_RUN_DIR")
+    if run_dir:
+        mark_finished(run_dir, code)
     token = os.environ.get("PATCHBAY_LOCK_TOKEN")
     phase = os.environ.get("PATCHBAY_BACKGROUND_PHASE", "")
     if run_dir and token:
@@ -1381,7 +1453,9 @@ def status(cwd: Path, run_id: str) -> dict[str, Any]:
     data["run_metrics"] = run_metrics
     job_path = _job_path(run_path)
     if job_path.exists():
-        data["job"] = read_json(job_path)
+        job = read_json(job_path)
+        data["job"] = job
+        data["background_job"] = _background_job_summary(job)
     return data
 
 
@@ -2176,6 +2250,7 @@ def runs(cwd: Path, *, limit: int = 20) -> dict[str, Any]:
                 "task": data.get("task"),
                 "updated_at": data.get("updated_at"),
                 "run_dir": str(candidate),
+                "background_job": data.get("background_job"),
             }
         )
         if len(items) >= limit:
