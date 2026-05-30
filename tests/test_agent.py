@@ -209,6 +209,20 @@ test = []
         self.assertEqual(resolve_phase(cfg, "fix")["provider"], "reasonix_cli")
         self.assertFalse((self.repo / ".ai" / "runs").exists())
 
+    def test_agent_applies_economy_profile_from_cost_effective_writer_instruction(self) -> None:
+        from scripts.ai_flow.config import load_config, resolve_phase
+
+        response = agent_message(self.repo, "像写手这样的大量简单工作让便宜的模型比如 DeepSeek 去干")
+
+        self.assertEqual(response["action"], "profile_apply")
+        self.assertIsNone(response["run_id"])
+        self.assertTrue(response["routing"]["economy_configured"])
+        self.assertEqual(response["routing"]["phases"]["write"]["configured"]["model"], "deepseek-v4-pro")
+        cfg = load_config(self.repo)
+        self.assertEqual(resolve_phase(cfg, "write")["provider"], "reasonix_cli")
+        self.assertEqual(resolve_phase(cfg, "fix")["model"], "deepseek-v4-pro")
+        self.assertFalse((self.repo / ".ai" / "runs").exists())
+
     def test_agent_can_configure_reasonix_command_without_starting_run(self) -> None:
         from scripts.ai_flow.config import load_config
 

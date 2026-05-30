@@ -653,18 +653,35 @@ def _config_profile_intent(text: str) -> str | None:
         return "profile_apply"
     if _has_any(text, ("查看经济路由", "查看路由配置", "路由状态", "经济路由状态")):
         return "profile_show"
+    chinese_profile_intent = _chinese_economy_profile_intent(text)
+    if chinese_profile_intent:
+        return chinese_profile_intent
     words = _words(text)
     routing_scope = {"cost", "deepseek", "economy", "profile", "reasonix", "route", "routing"}
     if "profile" in words and bool(words & {"show", "status", "read", "inspect"}):
         return "profile_show" if bool(words & routing_scope) else None
     if bool(words & {"deepseek", "economy", "reasonix"}) and bool(words & {"show", "status", "read", "inspect"}):
         return "profile_show"
-    apply_words = {"apply", "enable", "route", "switch", "use"}
-    write_fix_words = {"fix", "implementation", "repair", "write", "writer"}
+    apply_words = {"apply", "assign", "delegate", "enable", "handle", "route", "run", "switch", "use"}
+    write_fix_words = {"bulk", "fix", "implementation", "repair", "routine", "simple", "write", "writer"}
     if bool(words & {"deepseek", "economy", "reasonix"}) and bool(words & apply_words):
         return "profile_apply"
     if bool(words & {"cheap", "cost", "lower", "low", "economy"}) and bool(words & {"model", "models", "routing", "route", "profile"}):
         return "profile_apply" if bool(words & (apply_words | write_fix_words | {"optimize"})) else "profile_show"
+    return None
+
+
+def _chinese_economy_profile_intent(text: str) -> str | None:
+    if not text:
+        return None
+    if not _has_any(text, ("deepseek", "reasonix", "便宜", "低成本", "经济", "省钱", "性价比")):
+        return None
+    if _has_any(text, ("查看", "状态", "检查", "当前", "现在", "只看", "读一下")):
+        return "profile_show"
+    if not _has_any(text, ("写手", "写作", "写代码", "实现", "修复", "简单工作", "简单任务", "大量", "低难度", "便宜模型", "低成本模型")):
+        return None
+    if _has_any(text, ("用", "使用", "让", "交给", "给", "走", "路由", "干", "跑", "配置", "启用", "切到", "换成")):
+        return "profile_apply"
     return None
 
 
