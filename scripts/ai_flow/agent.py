@@ -83,7 +83,7 @@ def agent_message(
     if intent == "runs":
         return _runs_response(root)
     if intent == "reasonix_command_configure":
-        return _reasonix_command_configure_response(root)
+        return _reasonix_command_configure_response(root, text)
     if intent == "profile_apply":
         return _profile_apply_response(root)
     if intent == "profile_show":
@@ -839,7 +839,7 @@ def _help_response() -> dict[str, Any]:
         },
         {
             "name": "reasonix-command",
-            "summary": "Send `configure reasonix command` to set the default Reasonix executable used by the economy write/fix route.",
+            "summary": "Send `configure reasonix command` or `configure reasonix command to <path>` to set the Reasonix executable used by the economy write/fix route.",
         },
         {
             "name": "status",
@@ -1192,13 +1192,15 @@ def _profile_apply_response(root: Path) -> dict[str, Any]:
     )
 
 
-def _reasonix_command_configure_response(root: Path) -> dict[str, Any]:
-    result = run_config_wizard(root, set_key="commands.reasonix", set_value="reasonix")
+def _reasonix_command_configure_response(root: Path, message: str = "") -> dict[str, Any]:
+    command = _reasonix_command_from_message(message)
+    source = "message" if command != "reasonix" else "default"
+    result = run_config_wizard(root, set_key="commands.reasonix", set_value=command)
     profile = run_config_wizard(root, show_profile=True)
     routing = _profile_routing_digest(profile)
     actions = list(profile.get("actions") or [])
     reply = (
-        "Reasonix command configured as `reasonix`. "
+        f"Reasonix command configured as `{command}`. "
         "Patchbay will use it for the Reasonix/DeepSeek economy write/fix route when that profile is active."
     )
     if routing.get("economy_command_ready") is False:
@@ -1212,8 +1214,44 @@ def _reasonix_command_configure_response(root: Path) -> dict[str, Any]:
             "profile": profile,
             "routing": routing,
             "actions": actions,
+            "reasonix_command": {"command": command, "source": source},
         },
     )
+
+
+def _reasonix_command_from_message(message: str) -> str:
+    text = (message or "").strip()
+    patterns = (
+        r"--set-value\s+(.+)$",
+        r"commands\.reasonix\s*=\s*(.+)$",
+        r"\b(?:to|as|at|path|executable)\s+(.+)$",
+        r"\breasonix\s+command\s+(.+)$",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if not match:
+            continue
+        value = _clean_reasonix_command_value(match.group(1))
+        if value:
+            return value
+    return "reasonix"
+
+
+def _clean_reasonix_command_value(value: str) -> str:
+    cleaned = value.strip().rstrip(".,;")
+    cleaned = re.sub(r"^(?:to|as|=)\s+", "", cleaned, flags=re.IGNORECASE).strip()
+    had_wrapping_quotes = len(cleaned) >= 2 and cleaned[0] == cleaned[-1] and cleaned[0] in {"'", '"', "`"}
+    while len(cleaned) >= 2 and cleaned[0] == cleaned[-1] and cleaned[0] in {"'", '"', "`"}:
+        cleaned = cleaned[1:-1].strip()
+    if cleaned.lower() in {"command", "commands.reasonix", "reasonix command"}:
+        return ""
+    if re.search(r"\s", cleaned) and (had_wrapping_quotes or _looks_like_command_path(cleaned)):
+        return f'"{cleaned}"'
+    return cleaned
+
+
+def _looks_like_command_path(value: str) -> bool:
+    return "\\" in value or "/" in value or ":" in value
 
 
 def _profile_show_response(root: Path) -> dict[str, Any]:

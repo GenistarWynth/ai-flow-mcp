@@ -287,7 +287,7 @@ def _tool_schema(name: str) -> dict[str, Any]:
         properties: dict[str, Any] = {
             "message": {
                 "type": "string",
-                "description": "Natural-language task or instruction for the conversational Patchbay Agent. Explicit setup/help/status/readiness/routing prompts are handled locally without starting a model run; setup prompts can name a host such as `patchbay setup for Claude Desktop` or `install patchbay for Gemini CLI`; `apply economy profile` and `configure reasonix command` update local routing configuration; metrics/cost/token prompts require a run_id and return run efficiency evidence; other run-bound prompts without run_id return local guidance instead.",
+                "description": "Natural-language task or instruction for the conversational Patchbay Agent. Explicit setup/help/status/readiness/routing prompts are handled locally without starting a model run; setup prompts can name a host such as `patchbay setup for Claude Desktop` or `install patchbay for Gemini CLI`; `apply economy profile`, `configure reasonix command`, and `configure reasonix command to <path>` update local routing configuration; metrics/cost/token prompts require a run_id and return run efficiency evidence; other run-bound prompts without run_id return local guidance instead.",
             },
             "run_id": {"type": "string", "description": "Existing run id to continue or inspect."},
             "confirmation": {
@@ -431,7 +431,7 @@ def _tool_schema(name: str) -> dict[str, Any]:
         required = ["run_id"]
 
     descriptions: dict[str, str] = {
-        "patchbay_agent": "Primary conversational Patchbay Agent tool. Starts, resumes, advances, applies runs, and returns metrics/cost/token evidence while preserving plan/apply approval gates; explicit setup, help, status, readiness, economy profile, and configure reasonix command prompts return local answers with structured actions[] for safe client follow-ups, setup prompts can target hosts like Claude Desktop or Gemini CLI, and run-bound prompts without run_id return local guidance instead of creating a run.",
+        "patchbay_agent": "Primary conversational Patchbay Agent tool. Starts, resumes, advances, applies runs, and returns metrics/cost/token evidence while preserving plan/apply approval gates; explicit setup, help, status, readiness, economy profile, configure reasonix command, and configure reasonix command to <path> prompts return local answers with structured actions[] for safe client follow-ups, setup prompts can target hosts like Claude Desktop or Gemini CLI, and run-bound prompts without run_id return local guidance instead of creating a run.",
         "patchbay_plan": "Run the planning phase (host-agnostic — provider configurable via [phases.plan] in .ai/patchbay.toml).",
         "patchbay_approve": "Approve the plan so the writer phase can proceed.",
         "patchbay_write": "Run the implementation phase (provider configurable via [phases.write] / [writer].provider).",

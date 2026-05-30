@@ -33,7 +33,7 @@ timeout = 900
 
 旧的 `[models]`、`[commands]` 和 `[writer].provider` 键仍然作为默认值保留。
 
-默认的经济型路由会把大量实现/修复工作交给更便宜的 Reasonix/DeepSeek writer，而把规划和审查留给更强的模型。如果 Reasonix 命令还没配置，就绪检查会先返回 `configure_reasonix_command` 动作；运行 `patchbay agent message "configure reasonix command" --json` 可用默认 `reasonix` 可执行文件补齐配置且不会创建模型 run。需要恢复这套路由时，直接运行 `patchbay config profile apply economy`。
+默认的经济型路由会把大量实现/修复工作交给更便宜的 Reasonix/DeepSeek writer，而把规划和审查留给更强的模型。如果 Reasonix 命令还没配置，就绪检查会先返回 `configure_reasonix_command` 动作；运行 `patchbay agent message "configure reasonix command" --json` 可用默认 `reasonix` 可执行文件补齐配置，也可以用 `patchbay agent message "configure reasonix command to <path>" --json` 写入完整本机路径，两者都不会创建模型 run。需要恢复这套路由时，直接运行 `patchbay config profile apply economy`。
 
 ## 功能概览
 
@@ -83,7 +83,7 @@ patchbay install --host codex   # setup 的别名
 patchbay config     # 交互式向导，无需手动编辑
 patchbay config profile apply economy   # 保持 write/fix 走 Reasonix + DeepSeek
 patchbay agent message "apply economy profile" --json  # 通过对话式 Agent 做同样的路由调整
-patchbay agent message "configure reasonix command" --json  # 配置 commands.reasonix，不创建模型 run
+patchbay agent message "configure reasonix command" --json  # 配置 commands.reasonix；可追加 `to <path>`
 patchbay doctor     # 统一检查 config/MCP/Skill 是否就绪
 patchbay config --doctor     # 验证解析后的阶段配置
 patchbay config --set-key models.planner --set-value claude-opus-4-7
@@ -123,7 +123,7 @@ python scripts/patchbay agent message approve --run-id <run_id> --confirmation p
 python scripts/patchbay agent message continue --run-id <run_id> --background --json
 ```
 
-后台 Agent 会写入 `JOB.json` 并追加 `agent` 事件，同时保留计划批准和 apply 确认门禁。`apply` 仍然只支持前台确认，必须在测试和审查通过后显式执行。`patchbay setup`、`patchbay setup for Claude Desktop`、`install patchbay for Gemini CLI`、`help`、`status`、`runs`、`readiness`、`diagnose`、`patchbay doctor`、`show economy profile`、`apply economy profile` 或 `configure reasonix command` 这类本地查询和配置消息会直接返回 setup 结果、使用提示、最近运行、统一 doctor 报告、路由调整结果或本地命令配置，不会创建模型 run。setup/readiness/status/profile 结果里的 `actions[]` 条目包含 `id`、`label`、`kind`、`safe`、`reason`，以及 `message`、`command`、`host`、`run_id` 或 `tab`；本地运行交接还可能使用 `open_run` 和 `focus_composer`。`continue`、`approve`、`apply`、`diff`、`artifact` 这类依赖现有 run 的消息在没有 `run_id` 时也只会给出本地提示，不会误开新 run。
+后台 Agent 会写入 `JOB.json` 并追加 `agent` 事件，同时保留计划批准和 apply 确认门禁。`apply` 仍然只支持前台确认，必须在测试和审查通过后显式执行。`patchbay setup`、`patchbay setup for Claude Desktop`、`install patchbay for Gemini CLI`、`help`、`status`、`runs`、`readiness`、`diagnose`、`patchbay doctor`、`show economy profile`、`apply economy profile`、`configure reasonix command` 或 `configure reasonix command to <path>` 这类本地查询和配置消息会直接返回 setup 结果、使用提示、最近运行、统一 doctor 报告、路由调整结果或本地命令配置，不会创建模型 run。setup/readiness/status/profile 结果里的 `actions[]` 条目包含 `id`、`label`、`kind`、`safe`、`reason`，以及 `message`、`command`、`host`、`run_id` 或 `tab`；本地运行交接还可能使用 `open_run` 和 `focus_composer`。`continue`、`approve`、`apply`、`diff`、`artifact` 这类依赖现有 run 的消息在没有 `run_id` 时也只会给出本地提示，不会误开新 run。
 
 Web workbench 使用同一套对话式流程，并在诊断抽屉里提供“就绪”页。该页面调用统一 doctor 检查但默认不做 MCP stdio 探测，因此可以在桌面 UI 中看到安装与配置缺口，同时避免打开页面时额外启动子进程。就绪页的 MCP host 选择器会把目标 host 传给 doctor/setup，`Claude Desktop`、`claude desktop`、`claude-desktop` 这类常见写法会统一规范化为具体注册命令。该页面还会显示当前 write/fix 路由画像，并渲染结构化 `actions[]` 来执行安全的 setup、Skill、MCP 探测、刷新、经济路由和 Reasonix 命令配置后续操作。Overview 会展示 `routing_evidence.economy_health` 与 `agent_activity.health_cards`，让桌面端直接看到经济路由是健康、待观测、`command_not_ready`、漂移，还是未配置。
 

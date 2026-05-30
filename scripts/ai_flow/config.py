@@ -182,7 +182,13 @@ def split_command(command: str | list[str] | tuple[str, ...]) -> list[str]:
         return [str(part) for part in command if str(part)]
     if not command:
         return []
-    return shlex.split(command, posix=os.name != "nt")
+    return [_strip_wrapping_quotes(part) for part in shlex.split(command, posix=os.name != "nt")]
+
+
+def _strip_wrapping_quotes(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    return value
 
 
 def configured_worktree_root(root: Path, cfg: dict[str, Any]) -> Path:

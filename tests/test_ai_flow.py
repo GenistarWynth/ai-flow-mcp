@@ -23,7 +23,7 @@ from scripts.ai_flow.adapters.codex_planner import _codex_exec_command
 from scripts.ai_flow.adapters.codex_reviewer import _read_verdict_file
 from scripts.ai_flow.adapters.cli_reviewer import extract_reviewer_output
 from scripts.ai_flow.adapters.reasonix_writer import _acp_command, _preferred_permission_option
-from scripts.ai_flow.config import load_config, resolve_phase
+from scripts.ai_flow.config import load_config, resolve_phase, split_command
 from scripts.ai_flow.errors import AiFlowError, SafetyError, StateError
 from scripts.ai_flow.parsing import parse_planner_output, parse_writer_output
 from scripts.ai_flow.plan_schema import empty_plan
@@ -90,6 +90,12 @@ class AiFlowTestCase(unittest.TestCase):
 
 
 class ParsingTests(unittest.TestCase):
+    def test_split_command_strips_wrapping_quotes_from_executable_path(self) -> None:
+        parts = split_command('"C:\\Program Files\\Reasonix\\reasonix.cmd" --stdio')
+
+        self.assertEqual(parts[0], "C:\\Program Files\\Reasonix\\reasonix.cmd")
+        self.assertEqual(parts[1:], ["--stdio"])
+
     def test_claude_planner_uses_bare_plan_print_mode(self) -> None:
         command = _claude_print_command(["claude"], "plan this", "claude-opus-4-7")
         self.assertEqual(command[:3], ["claude", "-p", "plan this"])
@@ -1315,8 +1321,10 @@ class McpSchemaTests(unittest.TestCase):
         self.assertIn("Claude Desktop", tools["patchbay_agent"])
         self.assertIn("Gemini CLI", tools["patchbay_agent"])
         self.assertIn("configure reasonix command", tools["patchbay_agent"])
+        self.assertIn("configure reasonix command to <path>", tools["patchbay_agent"])
         agent_message_description = tool_items["patchbay_agent"]["inputSchema"]["properties"]["message"]["description"]
         self.assertIn("configure reasonix command", agent_message_description)
+        self.assertIn("configure reasonix command to <path>", agent_message_description)
         self.assertIn("patchbay_doctor", tools)
         self.assertIn("read-only readiness", tools["patchbay_doctor"].lower())
         self.assertIn("actions[]", tools["patchbay_doctor"])

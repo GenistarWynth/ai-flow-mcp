@@ -30,9 +30,11 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("patchbay_agent", result["files"]["SKILL.md"])
         self.assertIn("patchbay setup for Claude Desktop", result["files"]["SKILL.md"])
         self.assertIn("configure reasonix command", result["files"]["SKILL.md"])
+        self.assertIn("configure reasonix command to <path>", result["files"]["SKILL.md"])
         self.assertIn("command_not_ready", result["files"]["SKILL.md"])
         self.assertIn("install patchbay for Gemini CLI", result["files"]["references/install.md"])
         self.assertIn("configure reasonix command", result["files"]["references/install.md"])
+        self.assertIn("configure reasonix command to <path>", result["files"]["references/install.md"])
         self.assertIn("configure_reasonix_command", result["files"]["references/install.md"])
 
     def test_bundled_skill_matches_install_template(self) -> None:

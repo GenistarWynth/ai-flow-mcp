@@ -225,6 +225,23 @@ test = []
         self.assertEqual(load_config(self.repo)["commands"]["reasonix"], "reasonix")
         self.assertFalse((self.repo / ".ai" / "runs").exists())
 
+    def test_agent_can_configure_reasonix_command_with_explicit_path(self) -> None:
+        from scripts.ai_flow.config import load_config
+
+        command_path = self.tempdir / "Reasonix CLI" / "reasonix.cmd"
+        expected_command = f'"{command_path}"'
+        agent_message(self.repo, "apply economy profile")
+        response = agent_message(self.repo, f'configure reasonix command to "{command_path}"')
+
+        self.assertEqual(response["action"], "reasonix_command_configure")
+        self.assertEqual(response["config_update"]["set"]["commands.reasonix"], expected_command)
+        self.assertEqual(response["reasonix_command"]["command"], expected_command)
+        self.assertEqual(response["reasonix_command"]["source"], "message")
+        self.assertEqual(load_config(self.repo)["commands"]["reasonix"], expected_command)
+        self.assertEqual(response["routing"]["phases"]["write"]["command_status"]["command"], expected_command)
+        self.assertEqual(response["routing"]["phases"]["write"]["command_status"]["executable"], str(command_path))
+        self.assertFalse((self.repo / ".ai" / "runs").exists())
+
     def test_agent_doctor_word_in_task_still_starts_plan(self) -> None:
         response = agent_message(self.repo, "build doctor profile workflow")
 
@@ -942,6 +959,19 @@ test = []
         self.assertEqual(response["action"], "reasonix_command_configure")
         self.assertEqual(response["config_update"]["set"]["commands.reasonix"], "reasonix")
         self.assertEqual(load_config(self.repo)["commands"]["reasonix"], "reasonix")
+        self.assertIsNone(response["run_id"])
+
+    def test_cli_agent_configure_reasonix_command_accepts_explicit_path(self) -> None:
+        from scripts.ai_flow.config import load_config
+
+        command_path = self.tempdir / "Reasonix CLI" / "reasonix.cmd"
+        expected_command = f'"{command_path}"'
+        response = self.cli_json("agent", "message", f'configure reasonix command to "{command_path}"')
+
+        self.assertEqual(response["action"], "reasonix_command_configure")
+        self.assertEqual(response["config_update"]["set"]["commands.reasonix"], expected_command)
+        self.assertEqual(response["reasonix_command"]["source"], "message")
+        self.assertEqual(load_config(self.repo)["commands"]["reasonix"], expected_command)
         self.assertIsNone(response["run_id"])
 
     def test_cli_agent_patchbay_setup_runs_setup_without_starting_run(self) -> None:

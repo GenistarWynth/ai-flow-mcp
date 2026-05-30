@@ -30,9 +30,10 @@ python scripts/patchbay agent message "patchbay setup" --json
 python scripts/patchbay agent message "patchbay setup for Claude Desktop" --json
 python scripts/patchbay agent message "install patchbay for Gemini CLI" --json
 python scripts/patchbay agent message "configure reasonix command" --json
+python scripts/patchbay agent message "configure reasonix command to <path>" --json
 ```
 
-Use `configure reasonix command` when readiness reports `economy_health.status = "command_not_ready"` or surfaces the `configure_reasonix_command` action. It sets `commands.reasonix = "reasonix"` without starting a model run; use `patchbay_config_command_set` or `patchbay config --set-key commands.reasonix --set-value <path>` when the executable needs a full path.
+Use `configure reasonix command` when readiness reports `economy_health.status = "command_not_ready"` or surfaces the `configure_reasonix_command` action. It sets `commands.reasonix = "reasonix"` without starting a model run; use `configure reasonix command to <path>`, `patchbay_config_command_set`, or `patchbay config --set-key commands.reasonix --set-value <path>` when the executable needs a full path.
 
 ## MCP
 
