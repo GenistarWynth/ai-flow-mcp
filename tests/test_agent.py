@@ -518,6 +518,20 @@ test = []
         self.assertEqual(agent_message(self.repo, "打开日志")["run_reference"]["requested_view"]["tab"], "Log")
         self.assertEqual(agent_message(self.repo, "看计划产物")["run_reference"]["requested_view"]["tab"], "Artifacts")
 
+    def test_agent_chinese_gate_phrases_without_run_point_to_latest_run(self) -> None:
+        planned = agent_message(self.repo, "latest chinese gate handoff")
+        run_id = planned["run_id"]
+
+        for message in ("继续推进", "确认计划", "应用补丁", "查看成本"):
+            with self.subTest(message=message):
+                response = agent_message(self.repo, message)
+                self.assertEqual(response["action"], "missing_run")
+                self.assertEqual(response["recent_run"]["run_id"], run_id)
+                self.assertEqual(response["run_reference"]["run_id"], run_id)
+                self.assertIn("open latest run", response["next_actions"])
+
+        self.assertEqual(len(list((self.repo / ".ai" / "runs").iterdir())), 1)
+
     def test_agent_review_code_remains_a_new_task(self) -> None:
         response = agent_message(self.repo, "review code quality")
 
@@ -527,6 +541,15 @@ test = []
         approval_task = agent_message(self.repo, "approve user permissions flow")
         self.assertEqual(approval_task["action"], "start")
         self.assertEqual(approval_task["status"]["status"], "PLANNED")
+
+    def test_agent_chinese_task_phrases_with_gate_words_still_start_plan(self) -> None:
+        plan_page = agent_message(self.repo, "实现确认计划页面")
+        patch_button = agent_message(self.repo, "修复应用补丁按钮")
+
+        self.assertEqual(plan_page["action"], "start")
+        self.assertEqual(patch_button["action"], "start")
+        self.assertIsNotNone(plan_page["run_id"])
+        self.assertIsNotNone(patch_button["run_id"])
 
     def test_agent_refuses_approval_without_confirmation(self) -> None:
         planned = agent_message(self.repo, "needs approval")

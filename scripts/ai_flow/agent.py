@@ -56,6 +56,25 @@ TASK_INTENT_WORDS = {
     "update",
     "write",
 }
+CHINESE_TASK_INTENT_WORDS = (
+    "新增",
+    "增加",
+    "实现",
+    "修复",
+    "构建",
+    "创建",
+    "优化",
+    "改进",
+    "重构",
+    "修改",
+    "测试",
+    "编写",
+    "开发",
+    "做一个",
+    "做个",
+    "写一个",
+    "写个",
+)
 
 
 def agent_message(
@@ -605,11 +624,16 @@ def _words(text: str) -> set[str]:
     return set(re.findall(r"[a-z0-9_]+", text))
 
 
+def _has_task_intent(text: str, words: set[str] | None = None) -> bool:
+    token_words = words if words is not None else _words(text)
+    return bool(token_words & TASK_INTENT_WORDS) or _has_any(text, CHINESE_TASK_INTENT_WORDS)
+
+
 def _is_help_intent(text: str) -> bool:
     if text in {"?", "help", "usage", "commands", "帮助", "怎么用"}:
         return True
     words = _words(text)
-    if words & TASK_INTENT_WORDS:
+    if _has_task_intent(text, words):
         return False
     return bool(words & {"help", "usage", "commands"}) and bool(words & {"patchbay", "agent", "command", "commands"})
 
@@ -618,7 +642,7 @@ def _is_runs_intent(text: str) -> bool:
     if text in {"status", "runs", "recent", "recent runs", "list runs", "show runs", "状态", "运行", "最近运行"}:
         return True
     words = _words(text)
-    if words & TASK_INTENT_WORDS:
+    if _has_task_intent(text, words):
         return False
     if "runs" in words:
         return True
@@ -709,7 +733,7 @@ def _is_setup_intent(text: str) -> bool:
     words = _words(text)
     if "patchbay" not in words:
         return False
-    return bool(words & {"install", "installation", "setup"}) and not bool(words & TASK_INTENT_WORDS)
+    return bool(words & {"install", "installation", "setup"}) and not _has_task_intent(text, words)
 
 
 def _setup_host_from_message(text: str) -> str:
@@ -748,8 +772,10 @@ def _is_metrics_intent(text: str) -> bool:
     }:
         return True
     words = _words(text)
-    if words & TASK_INTENT_WORDS:
+    if _has_task_intent(text, words):
         return False
+    if _has_any(text, ("成本", "耗时", "效率", "性价比")) and _has_any(text, ("看", "查看", "显示", "统计", "报告", "读")):
+        return True
     metric_words = {"cost", "costs", "duration", "efficiency", "metrics", "performance", "stats", "statistics", "token", "tokens"}
     scope_words = {"current", "latest", "patchbay", "run", "this", "usage"}
     return bool(words & metric_words) and bool(words & scope_words)
@@ -790,13 +816,15 @@ def _is_run_bound_intent(text: str) -> bool:
         "日志",
     }:
         return True
+    words = _words(text)
+    if _has_task_intent(text, words):
+        return False
+    if _is_chinese_run_bound_request(text):
+        return True
     if _has_any(text, ("补丁", "变更", "差异", "改动", "事件", "跟踪", "轨迹", "日志", "产物", "计划", "审查", "评审")) and _has_any(
         text, ("看", "查看", "打开", "显示", "读", "列出")
     ):
         return True
-    words = _words(text)
-    if words & TASK_INTENT_WORDS:
-        return False
     if words & {"approve", "approved", "confirm"}:
         return bool(words & {"approval", "current", "latest", "patchbay", "plan", "run", "this"})
     if words & {"continue", "resume"}:
@@ -812,13 +840,23 @@ def _is_run_bound_intent(text: str) -> bool:
     return False
 
 
+def _is_chinese_run_bound_request(text: str) -> bool:
+    if _has_any(text, ("继续", "推进", "下一步", "接着", "恢复")):
+        return True
+    if _has_any(text, ("确认", "批准", "同意")) and _has_any(text, ("计划", "方案", "plan")):
+        return True
+    if _has_any(text, ("应用补丁", "应用变更", "应用改动", "应用修改", "套用补丁", "套用变更", "套用改动", "合并补丁")):
+        return True
+    return False
+
+
 def _is_doctor_intent(text: str) -> bool:
     if text in {"doctor", "readiness", "diagnose", "diagnostic", "diagnostics", "诊断"}:
         return True
     if _has_any(text, ("就绪", "安装检查", "配置检查")):
         return True
     words = _words(text)
-    if words & TASK_INTENT_WORDS:
+    if _has_task_intent(text, words):
         return False
     setup_words = {
         "check",
