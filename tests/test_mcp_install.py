@@ -142,9 +142,13 @@ class McpInstallTest(unittest.TestCase):
 
         cases = [
             (" Codex Desktop ", "codex"),
+            ("Codex 桌面", "codex"),
             ("claude code", "claude-code"),
+            ("Claude 代码", "claude-code"),
             ("Claude_Desktop", "claude-desktop"),
+            ("Claude 桌面", "claude-desktop"),
             ("Gemini CLI", "gemini"),
+            ("Gemini 命令行", "gemini"),
         ]
         for host, expected in cases:
             with self.subTest(host=host):

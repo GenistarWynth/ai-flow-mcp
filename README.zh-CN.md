@@ -181,7 +181,7 @@ patchbay mcp install gemini         # Gemini CLI
 codex mcp add patchbay -- python scripts/patchbay_mcp_server.py
 ```
 
-Claude Desktop、Claude Code、Gemini CLI 或其他 MCP host 使用各自等价的 MCP server 注册方式即可。运行 `patchbay doctor --host <host>` 做完整就绪检查并生成该 host 的结构化后续动作，或运行 `patchbay mcp doctor` 只验证服务器是否可达。setup、doctor 和 `mcp install` 会接受常见 host 别名，例如 `Claude Desktop`、`claude desktop`、`claude-desktop`、`Claude Code`、`Gemini CLI`。
+Claude Desktop、Claude Code、Gemini CLI 或其他 MCP host 使用各自等价的 MCP server 注册方式即可。运行 `patchbay doctor --host <host>` 做完整就绪检查并生成该 host 的结构化后续动作，或运行 `patchbay mcp doctor` 只验证服务器是否可达。setup、doctor 和 `mcp install` 会接受常见 host 别名，例如 `Claude Desktop`、`Claude 桌面`、`Claude Code`、`Claude 代码`、`Gemini CLI`、`Gemini 命令行`、`Codex Desktop`、`Codex 桌面`。
 
 `patchbay doctor` 是只读检查，会汇总项目初始化、阶段配置、CLI shim/已安装命令、MCP 可达性和工具列表、内置 Skill 源、Codex Skill 安装状态，以及 economy 路由的 Reasonix 命令可执行状态，并同时返回文字版 `next_actions`/`recommendations` 与结构化 `actions[]`。`patchbay mcp doctor` 会真正启动 stdio MCP server，发送 `initialize` 和 `tools/list`，并检查 `patchbay_agent`、`patchbay_plan`、`patchbay_context`、`patchbay_metrics`、`patchbay_doctor`、`patchbay_install`、`patchbay_skill_install`、`patchbay_skill_doctor` 等核心工具是否存在。Codex、Claude Code、Gemini 的 install 命令会先尝试自动注册，若 host CLI 不可用则回退为可复制的注册命令；Claude Desktop 会直接写入 JSON 配置。
 

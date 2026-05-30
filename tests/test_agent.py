@@ -329,13 +329,17 @@ test = []
             gemini = agent_message(self.repo, "install patchbay for Gemini CLI")
             claude_code = agent_message(self.repo, "patchbay setup --host=Claude Code")
             codex_desktop = agent_message(self.repo, "patchbay setup to Codex Desktop")
+            zh_desktop = agent_message(self.repo, "把 Patchbay 安装到 Claude 桌面")
+            zh_gemini = agent_message(self.repo, "安装到 Gemini 命令行")
 
-        self.assertEqual(calls, ["codex", "claude-desktop", "gemini", "claude-code", "codex"])
+        self.assertEqual(calls, ["codex", "claude-desktop", "gemini", "claude-code", "codex", "claude-desktop", "gemini"])
         self.assertEqual(default["setup_host"], "codex")
         self.assertEqual(desktop["setup_host"], "claude-desktop")
         self.assertEqual(gemini["setup"]["mcp"]["host"], "gemini")
         self.assertEqual(claude_code["setup_host"], "claude-code")
         self.assertEqual(codex_desktop["setup_host"], "codex")
+        self.assertEqual(zh_desktop["setup_host"], "claude-desktop")
+        self.assertEqual(zh_gemini["setup_host"], "gemini")
         desktop_actions = {item["id"]: item for item in desktop["actions"]}
         self.assertEqual(desktop_actions["register_mcp"]["kind"], "command")
         self.assertEqual(desktop_actions["register_mcp"]["command"], "patchbay mcp install claude-desktop")

@@ -728,25 +728,33 @@ def _is_reasonix_command_configure_intent(text: str) -> bool:
 def _is_setup_intent(text: str) -> bool:
     if text in {"setup", "patchbay setup", "setup patchbay", "install patchbay", "patchbay install"}:
         return True
+    words = _words(text)
+    if _has_task_intent(text, words):
+        return False
     if _has_any(text, ("初始化 patchbay", "安装 patchbay")):
         return True
-    words = _words(text)
+    if _has_any(text, ("安装", "初始化", "配置", "接入", "注册")) and _explicit_setup_host_from_message(text):
+        return True
     if "patchbay" not in words:
         return False
-    return bool(words & {"install", "installation", "setup"}) and not _has_task_intent(text, words)
+    return bool(words & {"install", "installation", "setup"})
 
 
 def _setup_host_from_message(text: str) -> str:
+    return _explicit_setup_host_from_message(text) or "codex"
+
+
+def _explicit_setup_host_from_message(text: str) -> str | None:
     normalized = re.sub(r"[\s_]+", " ", text.strip().lower().replace("-", " ").replace("=", " "))
     if not normalized:
-        return "codex"
+        return None
     host_phrases = sorted({_normalize_host_phrase(phrase) for phrase in HOST_ALIASES}, key=len, reverse=True)
     for phrase in host_phrases:
         if re.search(rf"(?:--host\s+|host\s+|for\s+|to\s+)?{re.escape(phrase)}\b", normalized):
             if phrase == "codex" and not re.search(r"(?:--host\s+|host\s+|for\s+|to\s+)codex\b", normalized):
                 continue
             return normalize_mcp_host(phrase)
-    return "codex"
+    return None
 
 
 def _normalize_host_phrase(phrase: str) -> str:

@@ -1319,7 +1319,9 @@ class McpSchemaTests(unittest.TestCase):
         self.assertIn("patchbay_agent", tools)
         self.assertIn("actions[]", tools["patchbay_agent"])
         self.assertIn("Claude Desktop", tools["patchbay_agent"])
+        self.assertIn("Claude 桌面", tools["patchbay_agent"])
         self.assertIn("Gemini CLI", tools["patchbay_agent"])
+        self.assertIn("Gemini 命令行", tools["patchbay_agent"])
         self.assertIn("configure reasonix command", tools["patchbay_agent"])
         self.assertIn("configure reasonix command to <path>", tools["patchbay_agent"])
         agent_message_description = tool_items["patchbay_agent"]["inputSchema"]["properties"]["message"]["description"]
@@ -1390,6 +1392,7 @@ class McpSchemaTests(unittest.TestCase):
 
         agent_schema = tools["patchbay_agent"]["inputSchema"]
         self.assertIn("Claude Desktop", agent_schema["properties"]["message"]["description"])
+        self.assertIn("Claude 桌面", agent_schema["properties"]["message"]["description"])
         self.assertIn("Gemini CLI", agent_schema["properties"]["message"]["description"])
 
     def test_config_profile_apply_schema(self) -> None:
