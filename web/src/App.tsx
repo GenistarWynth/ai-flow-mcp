@@ -1257,6 +1257,17 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
 
   const runHealthAction = async (action: AgentHealthAction) => {
     if (action.safe === false) return;
+    if (action.kind === "open_run" && action.run_id) {
+      setError("");
+      setNewTaskMode(false);
+      setNewTaskReply(null);
+      if (action.tab && diagnosticTabs.has(action.tab as TabName)) {
+        setDiagnosticsOpen(true);
+        setActiveTab(action.tab as TabName);
+      }
+      await loadRuns(action.run_id);
+      return;
+    }
     if (isConfigureReasonixAction(action)) {
       await configureReasonixCommandAction(action.message || "configure reasonix command");
       return;
@@ -1281,6 +1292,29 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const runDoctorAction = async (action: AgentHealthAction) => {
     if (action.safe === false) return;
     const actionHost = setupHostFromAction(action, readinessHost);
+    if (action.kind === "open_run" && action.run_id) {
+      setError("");
+      setNewTaskMode(false);
+      setNewTaskReply(null);
+      if (action.tab && diagnosticTabs.has(action.tab as TabName)) {
+        setDiagnosticsOpen(true);
+        setActiveTab(action.tab as TabName);
+      }
+      await loadRuns(action.run_id);
+      return;
+    }
+    if (action.kind === "focus_composer" || action.id === "start_new_task") {
+      setDiagnosticsOpen(true);
+      setActiveTab("Trace");
+      startNewTask();
+      composerRef.current?.focus();
+      return;
+    }
+    if (action.kind === "diagnostic_tab" && action.tab && diagnosticTabs.has(action.tab as TabName)) {
+      setDiagnosticsOpen(true);
+      setActiveTab(action.tab as TabName);
+      return;
+    }
     if (isConfigureReasonixAction(action)) {
       await configureReasonixCommandAction(action.message || "configure reasonix command");
       return;

@@ -721,6 +721,116 @@ describe("Workbench", () => {
     expect(client.runAction).not.toHaveBeenCalled();
   });
 
+  it("runs generic structured readiness actions without advancing gates", async () => {
+    const getDoctor = vi.fn().mockResolvedValue({
+      ok: true,
+      root: "C:/repo",
+      checks: {
+        repo: { ok: true },
+        config: { ok: true },
+        mcp: { ok: true, skipped: true },
+        skill: { ok: true }
+      },
+      actions: [
+        {
+          id: "inspect_readiness_trace",
+          label: "Inspect readiness trace",
+          kind: "diagnostic_tab",
+          tab: "Trace",
+          safe: true,
+          reason: "Open local readiness timeline."
+        },
+        {
+          id: "open_fix_run",
+          label: "Open fix run",
+          kind: "open_run",
+          run_id: "run-fix",
+          tab: "Log",
+          safe: true,
+          reason: "Open the run that needs repair."
+        },
+        {
+          id: "start_new_task",
+          label: "Start replacement task",
+          kind: "focus_composer",
+          safe: true,
+          reason: "Start over with a narrower task."
+        }
+      ]
+    });
+    const getStatus = vi.fn().mockImplementation((runId: string) =>
+      Promise.resolve(
+        runId === "run-fix"
+          ? {
+              run_id: "run-fix",
+              task: "Needs fix",
+              status: "REVIEWED_CHANGES_REQUESTED",
+              current_phase: "fix",
+              gate_state: { approved: true, tests_passed: true, review_result: "CHANGES_REQUESTED", ready_to_apply: false },
+              next_commands: ["fix"],
+              artifacts: ["writer.log"],
+              effective_phase_providers: {}
+            }
+          : {
+              run_id: "run-ready",
+              task: "Ship dashboard",
+              status: "REVIEWED_PASS",
+              current_phase: "apply",
+              tests_passed: true,
+              review_result: "PASS",
+              gate_state: { approved: true, tests_passed: true, review_result: "PASS", ready_to_apply: true },
+              next_commands: ["apply"],
+              artifacts: ["PLAN.md"],
+              effective_phase_providers: {}
+            }
+      )
+    );
+    const getContext = vi.fn().mockImplementation((runId: string) =>
+      Promise.resolve(
+        runId === "run-fix"
+          ? {
+              ...plannedContext,
+              run_id: "run-fix",
+              status: "REVIEWED_CHANGES_REQUESTED",
+              current_phase: "fix",
+              agent_activity: {
+                ...plannedContext.agent_activity,
+                conversation_state: {
+                  ...plannedContext.agent_activity?.conversation_state,
+                  task: "Needs fix",
+                  status: "REVIEWED_CHANGES_REQUESTED",
+                  phase: "fix"
+                }
+              }
+            }
+          : readyContext
+      )
+    );
+    const client = createClient({ getDoctor, getStatus, getContext });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+
+    await userEvent.click(within(details).getByRole("button", { name: "Inspect readiness trace" }));
+    expect(screen.getByRole("tab", { name: "活动" })).toHaveAttribute("aria-selected", "true");
+
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+    await userEvent.click(within(details).getByRole("button", { name: "Open fix run" }));
+    expect(await screen.findByRole("heading", { name: "Needs fix" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "日志" })).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(getContext).toHaveBeenCalledWith("run-fix"));
+
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+    await userEvent.click(within(details).getByRole("button", { name: "Start replacement task" }));
+    expect(await screen.findByRole("heading", { name: "新任务" })).toBeInTheDocument();
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
   it("filters the run list by search and status", async () => {
     const client = createClient();
 
