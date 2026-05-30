@@ -972,6 +972,72 @@ describe("Workbench", () => {
     expect(client.apply).not.toHaveBeenCalled();
   });
 
+  it("opens requested diagnostics from run-bound agent replies", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: "run-ready",
+      action: "artifact",
+      ok: true,
+      reply: "Requested run logs.",
+      requested_view: { tab: "Log", reason: "The prompt asked for run logs." },
+      actions: [
+        {
+          id: "open_log",
+          label: "Open Log",
+          kind: "diagnostic_tab",
+          tab: "Log",
+          safe: true,
+          reason: "Open the requested run diagnostic view."
+        }
+      ]
+    });
+    const initialStatus = {
+      run_id: "run-ready",
+      task: "Ship dashboard",
+      status: "REVIEWED_PASS",
+      current_phase: "apply",
+      tests_passed: true,
+      review_result: "PASS",
+      gate_state: { approved: true, tests_passed: true, review_result: "PASS", ready_to_apply: true },
+      run_metrics: readyContext.run_metrics,
+      next_commands: ["apply"],
+      artifacts: ["PLAN.md"],
+      effective_phase_providers: {}
+    };
+    const refreshedStatus = {
+      ...initialStatus,
+      artifacts: ["writer.log", "PLAN.md"]
+    };
+    const getArtifact = vi
+      .fn()
+      .mockResolvedValueOnce({ text: "old plan text" })
+      .mockResolvedValueOnce({ text: "writer log text" });
+    const client = createClient({
+      agentMessage,
+      getStatus: vi.fn().mockResolvedValueOnce(initialStatus).mockResolvedValue(refreshedStatus),
+      getArtifact
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await userEvent.type(screen.getByLabelText("给 Patchbay Agent 输入消息"), "查看失败原因");
+    await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith("查看失败原因", {
+        runId: "run-ready",
+        include: { diff: true, review: true },
+        background: true
+      })
+    );
+    await waitFor(() => expect(screen.getByRole("tab", { name: "日志" })).toHaveAttribute("aria-selected", "true"));
+    expect(screen.getByRole("button", { name: "诊断" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("writer log text")).toBeVisible();
+    expect(getArtifact).toHaveBeenLastCalledWith("run-ready", "writer.log", { tail: 80 });
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
   it("opens localized diagnostic next-actions from missing-run replies", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: null,

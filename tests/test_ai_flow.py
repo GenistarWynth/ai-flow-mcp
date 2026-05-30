@@ -1318,6 +1318,8 @@ class McpSchemaTests(unittest.TestCase):
         self.assertIn("actions", tools["patchbay_context"])
         self.assertIn("patchbay_agent", tools)
         self.assertIn("actions[]", tools["patchbay_agent"])
+        self.assertIn("requested_view", tools["patchbay_agent"])
+        self.assertIn("diagnostic_tab", tools["patchbay_agent"])
         self.assertIn("Claude Desktop", tools["patchbay_agent"])
         self.assertIn("Claude 桌面", tools["patchbay_agent"])
         self.assertIn("Gemini CLI", tools["patchbay_agent"])
@@ -1338,6 +1340,8 @@ class McpSchemaTests(unittest.TestCase):
         self.assertIn("配置 Reasonix 命令", tools["patchbay_agent"])
         self.assertIn("把 Reasonix 命令设为 <path>", tools["patchbay_agent"])
         agent_message_description = tool_items["patchbay_agent"]["inputSchema"]["properties"]["message"]["description"]
+        self.assertIn("requested_view", agent_message_description)
+        self.assertIn("diagnostic_tab", agent_message_description)
         self.assertIn("Patchbay 怎么用", agent_message_description)
         self.assertIn("使用说明", agent_message_description)
         self.assertIn("查看最近运行", agent_message_description)

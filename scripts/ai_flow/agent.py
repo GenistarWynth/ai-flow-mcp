@@ -217,7 +217,14 @@ def agent_message(
         return _with_autopilot_error(response, autopilot)
 
     if intent == "diff":
-        return _agent_response(root, run_id, action="diff", reply="Current final diff.", include=_merge_include(include, {"diff": True}))
+        return _agent_response(
+            root,
+            run_id,
+            action="diff",
+            reply="Current final diff.",
+            include=_merge_include(include, {"diff": True}),
+            extra=_run_view_response_extra(text, default_tab="Diff"),
+        )
 
     if intent == "artifact":
         return _agent_response(
@@ -226,9 +233,17 @@ def agent_message(
             action="artifact",
             reply="Requested run artifacts.",
             include=_merge_include(include, {"plan": True, "review": True}),
+            extra=_run_view_response_extra(text, default_tab="Artifacts"),
         )
 
-    return agent_status(root, run_id, since=int((include or {}).get("events_since", 0) or 0), include=include)
+    return _agent_response(
+        root,
+        run_id,
+        action="status",
+        reply=_reply_for_status(service.status(root, run_id)),
+        include=_merge_include(include, {"events_since": int((include or {}).get("events_since", 0) or 0)}),
+        extra=_run_view_response_extra(text),
+    )
 
 
 def _start_background_agent(
@@ -611,11 +626,11 @@ def _classify_intent(message: str, *, has_run: bool, confirmation: str) -> str:
         return "approve_and_run"
     if _has_any(text, ("continue", "go on", "resume", "next", "继续", "推进", "下一步")):
         return "continue"
-    if _has_any(text, ("diff", "patch", "补丁", "变更")):
+    if _has_any(text, ("diff", "patch", "补丁", "变更", "差异", "改动")):
         return "diff"
     if _is_metrics_intent(text):
         return "metrics"
-    if _has_any(text, ("artifact", "plan", "review", "log", "产物", "计划", "日志")):
+    if _has_any(text, ("artifact", "plan", "review", "log", "logs", "产物", "计划", "审查", "评审", "日志", "失败", "错误", "报错", "原因", "为什么")):
         return "artifact"
     return "status"
 
@@ -1254,11 +1269,35 @@ def _missing_run_requested_view(text: str) -> dict[str, Any] | None:
         return {"tab": "Diff", "reason": "The prompt asked for the run diff or patch."}
     if words & {"events", "trace"} or _has_any(normalized, ("事件", "跟踪", "轨迹", "trace")):
         return {"tab": "Trace", "reason": "The prompt asked for run events or trace."}
-    if words & {"error", "errors", "fail", "failed", "failure", "log", "logs"} or _has_any(normalized, ("失败", "错误", "报错", "原因", "日志", "log")):
+    if words & {"error", "errors", "fail", "failed", "failure", "log", "logs"} or _has_any(normalized, ("失败", "错误", "报错", "原因", "为什么", "日志", "log")):
         return {"tab": "Log", "reason": "The prompt asked for run logs."}
     if words & {"artifact", "artifacts", "plan", "review"} or _has_any(normalized, ("产物", "计划", "审查", "评审")):
         return {"tab": "Artifacts", "reason": "The prompt asked for run artifacts."}
     return None
+
+
+def _run_view_response_extra(text: str, *, default_tab: str | None = None) -> dict[str, Any]:
+    requested_view = _missing_run_requested_view(text)
+    if requested_view is None and default_tab:
+        requested_view = {"tab": default_tab, "reason": f"The prompt asked for the run {default_tab.lower()} view."}
+    if not requested_view:
+        return {}
+    tab = str(requested_view.get("tab") or "")
+    if not tab:
+        return {"requested_view": requested_view}
+    return {
+        "requested_view": requested_view,
+        "actions": [
+            {
+                "id": f"open_{tab.lower()}",
+                "label": f"Open {tab}",
+                "kind": "diagnostic_tab",
+                "tab": tab,
+                "safe": True,
+                "reason": str(requested_view.get("reason") or "Open the requested run diagnostic view."),
+            }
+        ],
+    }
 
 
 def _doctor_response(root: Path) -> dict[str, Any]:

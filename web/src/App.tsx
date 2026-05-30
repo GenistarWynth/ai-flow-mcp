@@ -286,6 +286,21 @@ function requestedTabFromLocalReply(text: string): RunReferenceView["tab"] | nul
   return null;
 }
 
+function requestedTabFromAgentResponse(response?: AgentResponse | null): TabName | null {
+  for (const action of response?.actions ?? []) {
+    if (action.kind !== "diagnostic_tab" || !action.tab) continue;
+    if (diagnosticTabs.has(action.tab as TabName)) return action.tab as TabName;
+  }
+  const requestedView = response?.requested_view ?? response?.run_reference?.requested_view;
+  const tab = requestedView?.tab;
+  if (tab && diagnosticTabs.has(tab as TabName)) return tab as TabName;
+  return null;
+}
+
+function previewArtifactName(status?: RunStatus | null) {
+  return status?.artifacts?.find((name) => name.endsWith(".log") || name.endsWith(".md")) ?? null;
+}
+
 function mapLocalReplyAction(raw: string): LocalReplyAction | null {
   const text = raw.toLowerCase();
   const requestedTab = requestedTabFromLocalReply(text);
@@ -889,7 +904,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       setSelectedMessage(nextContext.agent_activity?.messages?.[0] ?? null);
       setDiff(nextDiff.text ?? nextDiff.diff ?? "");
       setConfig(nextConfig);
-      const firstArtifact = nextStatus.artifacts?.find((name) => name.endsWith(".log") || name.endsWith(".md"));
+      const firstArtifact = previewArtifactName(nextStatus);
       if (firstArtifact) {
         const artifact = await client.getArtifact(selectedRun, firstArtifact, { tail: 80 });
         if (!cancelled) setArtifactText(artifact.text);
@@ -993,8 +1008,9 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
 
   const refreshRun = async (runId: string, agentResponse?: AgentResponse) => {
     await loadRuns(runId);
-    if (agentResponse?.status) setStatus(agentResponse.status);
-    else setStatus(await client.getStatus(runId));
+    const requestedTab = requestedTabFromAgentResponse(agentResponse);
+    const nextStatus = agentResponse?.status ?? (await client.getStatus(runId));
+    setStatus(nextStatus);
     if (agentResponse?.context) {
       setContext(agentResponse.context);
       setTrace(agentResponse.context.timeline ?? []);
@@ -1005,10 +1021,21 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }
     const nextDiff = await client.getDiff(runId);
     setDiff(nextDiff.text ?? nextDiff.diff ?? "");
+    const firstArtifact = previewArtifactName(nextStatus);
+    if (firstArtifact) {
+      const artifact = await client.getArtifact(runId, firstArtifact, { tail: 80 });
+      setArtifactText(artifact.text);
+    } else {
+      setArtifactText("");
+    }
     patchRunSummary(runId, {
-      status: agentResponse?.context?.status ?? agentResponse?.status?.status,
-      task: agentResponse?.context?.agent_activity?.conversation_state?.task ?? agentResponse?.status?.task
+      status: agentResponse?.context?.status ?? nextStatus.status,
+      task: agentResponse?.context?.agent_activity?.conversation_state?.task ?? nextStatus.task
     });
+    if (requestedTab) {
+      setDiagnosticsOpen(true);
+      setActiveTab(requestedTab);
+    }
   };
 
   const runAction = async (action: string) => {

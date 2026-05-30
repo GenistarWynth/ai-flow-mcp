@@ -673,6 +673,29 @@ test = []
         self.assertEqual(agent_message(self.repo, "为什么失败")["run_reference"]["requested_view"]["tab"], "Log")
         self.assertEqual(agent_message(self.repo, "why did it fail")["run_reference"]["requested_view"]["tab"], "Log")
 
+    def test_agent_run_bound_view_prompts_return_diagnostic_actions(self) -> None:
+        planned = agent_message(self.repo, "selected run diagnostics")
+        run_id = planned["run_id"]
+
+        cases = [
+            ("diff", "Diff", "diff"),
+            ("events", "Trace", "status"),
+            ("查看失败原因", "Log", "artifact"),
+            ("查看计划产物", "Artifacts", "artifact"),
+        ]
+        for message, tab, expected_action in cases:
+            with self.subTest(message=message):
+                response = agent_message(self.repo, message, run_id=run_id)
+
+                self.assertEqual(response["action"], expected_action)
+                self.assertEqual(response["requested_view"]["tab"], tab)
+                self.assertEqual(response["actions"][0]["kind"], "diagnostic_tab")
+                self.assertEqual(response["actions"][0]["tab"], tab)
+                self.assertTrue(response["actions"][0]["safe"])
+                self.assertFalse((self.repo / ".ai" / "runs" / run_id / "APPROVAL.json").exists())
+
+        self.assertEqual(len(list((self.repo / ".ai" / "runs").iterdir())), 1)
+
     def test_agent_chinese_gate_phrases_without_run_point_to_latest_run(self) -> None:
         planned = agent_message(self.repo, "latest chinese gate handoff")
         run_id = planned["run_id"]
