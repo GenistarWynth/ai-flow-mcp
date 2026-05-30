@@ -756,7 +756,31 @@ def _is_reasonix_command_configure_intent(text: str) -> bool:
 
 
 def _is_setup_intent(text: str) -> bool:
-    if text in {"setup", "patchbay setup", "setup patchbay", "install patchbay", "patchbay install"}:
+    if text in {
+        "setup",
+        "patchbay setup",
+        "setup patchbay",
+        "install patchbay",
+        "patchbay install",
+        "install skill",
+        "install codex skill",
+        "install patchbay skill",
+        "patchbay skill install",
+        "mcp install",
+        "install mcp",
+        "setup mcp",
+        "register mcp",
+        "configure mcp",
+        "安装 skill",
+        "安装 codex skill",
+        "安装 patchbay skill",
+        "安装 codex 技能",
+        "安装 patchbay 技能",
+        "注册 mcp",
+        "安装 mcp",
+        "配置 mcp",
+        "接入 mcp",
+    }:
         return True
     words = _words(text)
     if _has_task_intent(text, words):
@@ -764,6 +788,10 @@ def _is_setup_intent(text: str) -> bool:
     if _has_any(text, ("初始化 patchbay", "安装 patchbay", "配置 patchbay", "设置 patchbay", "帮助我配置 patchbay", "帮我配置 patchbay")):
         return True
     if _has_any(text, ("安装", "初始化", "配置", "接入", "注册")) and _explicit_setup_host_from_message(text):
+        return True
+    if bool(words & {"configure", "install", "register", "setup"}) and bool(words & {"mcp", "skill"}) and _explicit_setup_host_from_message(text):
+        return True
+    if bool(words & {"configure", "install", "register", "setup"}) and "patchbay" in words and bool(words & {"mcp", "skill"}):
         return True
     if "patchbay" not in words:
         return False

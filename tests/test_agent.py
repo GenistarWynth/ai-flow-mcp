@@ -441,8 +441,27 @@ test = []
             codex_desktop = agent_message(self.repo, "patchbay setup to Codex Desktop")
             zh_desktop = agent_message(self.repo, "把 Patchbay 安装到 Claude 桌面")
             zh_gemini = agent_message(self.repo, "安装到 Gemini 命令行")
+            codex_skill = agent_message(self.repo, "install Codex Skill")
+            desktop_mcp = agent_message(self.repo, "register MCP for Claude Desktop")
+            zh_codex_skill = agent_message(self.repo, "安装 Codex Skill")
+            zh_gemini_mcp = agent_message(self.repo, "注册 MCP 到 Gemini 命令行")
 
-        self.assertEqual(calls, ["codex", "claude-desktop", "gemini", "claude-code", "codex", "claude-desktop", "gemini"])
+        self.assertEqual(
+            calls,
+            [
+                "codex",
+                "claude-desktop",
+                "gemini",
+                "claude-code",
+                "codex",
+                "claude-desktop",
+                "gemini",
+                "codex",
+                "claude-desktop",
+                "codex",
+                "gemini",
+            ],
+        )
         self.assertEqual(default["setup_host"], "codex")
         self.assertEqual(desktop["setup_host"], "claude-desktop")
         self.assertEqual(gemini["setup"]["mcp"]["host"], "gemini")
@@ -450,6 +469,10 @@ test = []
         self.assertEqual(codex_desktop["setup_host"], "codex")
         self.assertEqual(zh_desktop["setup_host"], "claude-desktop")
         self.assertEqual(zh_gemini["setup_host"], "gemini")
+        self.assertEqual(codex_skill["setup_host"], "codex")
+        self.assertEqual(desktop_mcp["setup_host"], "claude-desktop")
+        self.assertEqual(zh_codex_skill["setup_host"], "codex")
+        self.assertEqual(zh_gemini_mcp["setup_host"], "gemini")
         desktop_actions = {item["id"]: item for item in desktop["actions"]}
         self.assertEqual(desktop_actions["register_mcp"]["kind"], "command")
         self.assertEqual(desktop_actions["register_mcp"]["command"], "patchbay mcp install claude-desktop")
