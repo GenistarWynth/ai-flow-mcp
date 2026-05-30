@@ -1833,6 +1833,72 @@ describe("Workbench", () => {
     expect(client.apply).not.toHaveBeenCalled();
   });
 
+  it("appends selected-run status actions to the active thread", async () => {
+    const agentMessage = vi
+      .fn()
+      .mockResolvedValueOnce({
+        run_id: "run-ready",
+        action: "help",
+        ok: true,
+        reply: "Status action available.",
+        actions: [
+          {
+            id: "show_status",
+            label: "Show status",
+            kind: "local_agent",
+            message: "status",
+            safe: true,
+            reason: "Show the current run status."
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        run_id: "run-ready",
+        action: "status",
+        ok: true,
+        reply: "Current run status: reviewed pass.",
+        status: {
+          run_id: "run-ready",
+          task: "Ship dashboard",
+          status: "REVIEWED_PASS",
+          current_phase: "apply",
+          tests_passed: true,
+          review_result: "PASS",
+          gate_state: { approved: true, tests_passed: true, review_result: "PASS", ready_to_apply: true },
+          next_commands: ["apply"],
+          artifacts: ["PLAN.md"],
+          effective_phase_providers: {}
+        }
+      });
+    const client = createClient({ agentMessage });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(composer, "help{enter}");
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith("help", {
+        runId: "run-ready",
+        include: { diff: true, review: true },
+        background: true
+      })
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Show status" }));
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith("status", {
+        runId: "run-ready",
+        include: { diff: true, review: true },
+        background: true
+      })
+    );
+    expect(await screen.findByText("Current run status: reviewed pass.")).toBeVisible();
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
   it("runs local setup from the empty state and exposes readiness immediately", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: null,

@@ -1331,9 +1331,19 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     if (action.id === "runs") {
       setError("");
       try {
-        const response = await client.agentMessage("status");
-        setNewTaskReply(response);
-        await loadRuns();
+        if (selectedRun) {
+          const response = await client.agentMessage(action.message || "status", {
+            runId: selectedRun,
+            include: { diff: true, review: true },
+            background: true
+          });
+          appendLocalAgentReply(response);
+          await refreshRun(selectedRun, response);
+        } else {
+          const response = await client.agentMessage(action.message || "status");
+          setNewTaskReply(response);
+          await loadRuns();
+        }
       } catch (err) {
         setError(String(err));
       }
