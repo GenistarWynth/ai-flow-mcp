@@ -630,20 +630,40 @@ def _has_task_intent(text: str, words: set[str] | None = None) -> bool:
 
 
 def _is_help_intent(text: str) -> bool:
-    if text in {"?", "help", "usage", "commands", "帮助", "怎么用"}:
+    if text in {"?", "help", "usage", "commands", "帮助", "怎么用", "如何使用", "使用说明", "新手引导", "入门"}:
         return True
     words = _words(text)
     if _has_task_intent(text, words):
         return False
+    if _has_any(text, ("怎么用", "如何使用", "使用说明", "使用文档", "新手引导", "入门", "帮我使用")):
+        return True
     return bool(words & {"help", "usage", "commands"}) and bool(words & {"patchbay", "agent", "command", "commands"})
 
 
 def _is_runs_intent(text: str) -> bool:
-    if text in {"status", "runs", "recent", "recent runs", "list runs", "show runs", "状态", "运行", "最近运行"}:
+    if text in {
+        "status",
+        "runs",
+        "recent",
+        "recent runs",
+        "list runs",
+        "show runs",
+        "状态",
+        "运行",
+        "最近运行",
+        "查看运行",
+        "查看最近运行",
+        "打开最近运行",
+        "最近任务",
+        "任务列表",
+        "运行列表",
+    }:
         return True
     words = _words(text)
     if _has_task_intent(text, words):
         return False
+    if _has_any(text, ("查看运行", "查看最近运行", "打开最近运行", "显示运行", "列出运行", "运行列表", "最近任务", "任务列表")):
+        return True
     if "runs" in words:
         return True
     if "status" in words:
@@ -741,12 +761,14 @@ def _is_setup_intent(text: str) -> bool:
     words = _words(text)
     if _has_task_intent(text, words):
         return False
-    if _has_any(text, ("初始化 patchbay", "安装 patchbay")):
+    if _has_any(text, ("初始化 patchbay", "安装 patchbay", "配置 patchbay", "设置 patchbay", "帮助我配置 patchbay", "帮我配置 patchbay")):
         return True
     if _has_any(text, ("安装", "初始化", "配置", "接入", "注册")) and _explicit_setup_host_from_message(text):
         return True
     if "patchbay" not in words:
         return False
+    if _has_any(text, ("帮助我配置", "帮我配置", "配置", "设置", "初始化", "接入")):
+        return True
     return bool(words & {"install", "installation", "setup"})
 
 
@@ -843,6 +865,8 @@ def _is_run_bound_intent(text: str) -> bool:
         text, ("看", "查看", "打开", "显示", "读", "列出")
     ):
         return True
+    if _has_any(text, ("失败", "错误", "报错", "失败原因", "错误原因")) and _has_any(text, ("看", "查看", "打开", "显示", "读", "为什么", "原因")):
+        return True
     if words & {"approve", "approved", "confirm"}:
         return bool(words & {"approval", "current", "latest", "patchbay", "plan", "run", "this"})
     if words & {"continue", "resume"}:
@@ -853,6 +877,8 @@ def _is_run_bound_intent(text: str) -> bool:
         return bool(words & {"phase", "run", "step"})
     if words & {"artifact", "diff", "events", "log", "logs", "patch", "trace"}:
         return bool(words & {"current", "get", "last", "latest", "open", "run", "show", "this", "view"})
+    if words & {"error", "errors", "fail", "failed", "failure"}:
+        return bool(words & {"current", "did", "inspect", "last", "latest", "open", "reason", "run", "show", "this", "view", "what", "why"})
     if "review" in words:
         return bool(words & {"current", "get", "last", "latest", "open", "run", "show", "this", "view"})
     return False
@@ -1200,7 +1226,7 @@ def _missing_run_requested_view(text: str) -> dict[str, Any] | None:
         return {"tab": "Diff", "reason": "The prompt asked for the run diff or patch."}
     if words & {"events", "trace"} or _has_any(normalized, ("事件", "跟踪", "轨迹", "trace")):
         return {"tab": "Trace", "reason": "The prompt asked for run events or trace."}
-    if words & {"log", "logs"} or _has_any(normalized, ("日志", "log")):
+    if words & {"error", "errors", "fail", "failed", "failure", "log", "logs"} or _has_any(normalized, ("失败", "错误", "报错", "原因", "日志", "log")):
         return {"tab": "Log", "reason": "The prompt asked for run logs."}
     if words & {"artifact", "artifacts", "plan", "review"} or _has_any(normalized, ("产物", "计划", "审查", "评审")):
         return {"tab": "Artifacts", "reason": "The prompt asked for run artifacts."}

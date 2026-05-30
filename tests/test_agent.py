@@ -349,6 +349,17 @@ test = []
         self.assertTrue(all(item["safe"] for item in actions.values()))
         self.assertFalse((self.repo / ".ai" / "runs").exists())
 
+    def test_agent_chinese_help_prompts_return_help_without_starting_run(self) -> None:
+        for message in ("Patchbay 怎么用", "如何使用 Patchbay", "使用说明", "新手引导"):
+            with self.subTest(message=message):
+                response = agent_message(self.repo, message)
+
+                self.assertEqual(response["action"], "help")
+                self.assertIsNone(response["run_id"])
+                self.assertIn("capabilities", response)
+
+        self.assertFalse((self.repo / ".ai" / "runs").exists())
+
     def test_agent_patchbay_setup_runs_local_setup_without_starting_run(self) -> None:
         codex_home = self.tempdir / "codex-home"
 
@@ -362,6 +373,40 @@ test = []
         self.assertTrue((codex_home / "skills" / "patchbay" / "SKILL.md").exists())
         runs_path = self.repo / ".ai" / "runs"
         self.assertFalse(runs_path.exists() and any(runs_path.iterdir()))
+
+    def test_agent_chinese_setup_help_runs_local_setup_without_starting_run(self) -> None:
+        import scripts.ai_flow.agent as agent_module
+
+        calls: list[str] = []
+
+        def fake_setup(root: Path, *, host: str = "codex", **_: object) -> dict[str, object]:
+            calls.append(host)
+            return {
+                "ok": True,
+                "root": str(root),
+                "mcp": {"host": host, "command": f"patchbay mcp install {host}", "executed": False},
+                "doctor": {"ok": True},
+                "next_actions": ["readiness", "start"],
+                "actions": [
+                    {
+                        "id": "open_readiness",
+                        "label": "Open readiness",
+                        "kind": "local_agent",
+                        "message": "readiness",
+                        "safe": True,
+                        "reason": "Run read-only setup diagnostics.",
+                    }
+                ],
+            }
+
+        with mock.patch.object(agent_module, "run_setup", side_effect=fake_setup):
+            default = agent_message(self.repo, "帮我配置 Patchbay")
+            desktop = agent_message(self.repo, "帮助我配置 Patchbay 到 Claude 桌面")
+
+        self.assertEqual(calls, ["codex", "claude-desktop"])
+        self.assertEqual(default["action"], "setup")
+        self.assertEqual(desktop["setup_host"], "claude-desktop")
+        self.assertFalse((self.repo / ".ai" / "runs").exists())
 
     def test_agent_setup_message_can_target_mcp_host(self) -> None:
         import scripts.ai_flow.agent as agent_module
@@ -454,6 +499,21 @@ test = []
         self.assertNotIn("approve", response["next_actions"])
         self.assertNotIn("apply", response["next_actions"])
         self.assertEqual(len(list((self.repo / ".ai" / "runs").iterdir())), 0)
+
+    def test_agent_chinese_runs_prompts_list_runs_without_planning(self) -> None:
+        planned = agent_message(self.repo, "localized handoff target")
+
+        for message in ("查看运行", "查看最近运行", "打开最近运行", "最近任务", "任务列表"):
+            with self.subTest(message=message):
+                response = agent_message(self.repo, message)
+
+                self.assertEqual(response["action"], "runs")
+                self.assertEqual(response["recent_run"]["run_id"], planned["run_id"])
+                self.assertEqual(response["runs"]["count"], 1)
+                actions = {item["id"]: item for item in response["actions"]}
+                self.assertEqual(actions["open_latest_run"]["run_id"], planned["run_id"])
+
+        self.assertEqual(len(list((self.repo / ".ai" / "runs").iterdir())), 1)
 
     def test_agent_status_word_in_task_still_starts_plan(self) -> None:
         response = agent_message(self.repo, "add status page")
@@ -586,6 +646,9 @@ test = []
         self.assertEqual(agent_message(self.repo, "查看事件轨迹")["run_reference"]["requested_view"]["tab"], "Trace")
         self.assertEqual(agent_message(self.repo, "打开日志")["run_reference"]["requested_view"]["tab"], "Log")
         self.assertEqual(agent_message(self.repo, "看计划产物")["run_reference"]["requested_view"]["tab"], "Artifacts")
+        self.assertEqual(agent_message(self.repo, "查看失败原因")["run_reference"]["requested_view"]["tab"], "Log")
+        self.assertEqual(agent_message(self.repo, "为什么失败")["run_reference"]["requested_view"]["tab"], "Log")
+        self.assertEqual(agent_message(self.repo, "why did it fail")["run_reference"]["requested_view"]["tab"], "Log")
 
     def test_agent_chinese_gate_phrases_without_run_point_to_latest_run(self) -> None:
         planned = agent_message(self.repo, "latest chinese gate handoff")
