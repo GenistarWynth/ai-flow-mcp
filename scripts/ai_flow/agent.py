@@ -776,6 +776,9 @@ def _config_profile_intent(text: str) -> str | None:
         "show routing profile",
     }:
         return "profile_show"
+    words = _words(text)
+    if _is_routing_show_query(text, words):
+        return "profile_show"
     if text in {
         "apply economy profile",
         "enable economy profile",
@@ -791,7 +794,6 @@ def _config_profile_intent(text: str) -> str | None:
     chinese_profile_intent = _chinese_economy_profile_intent(text)
     if chinese_profile_intent:
         return chinese_profile_intent
-    words = _words(text)
     routing_scope = {"cost", "deepseek", "economy", "profile", "reasonix", "route", "routing"}
     if "profile" in words and bool(words & {"show", "status", "read", "inspect"}):
         return "profile_show" if bool(words & routing_scope) else None
@@ -804,6 +806,41 @@ def _config_profile_intent(text: str) -> str | None:
     if bool(words & {"cheap", "cost", "lower", "low", "economy"}) and bool(words & {"model", "models", "routing", "route", "profile"}):
         return "profile_apply" if bool(words & (apply_words | write_fix_words | {"optimize"})) else "profile_show"
     return None
+
+
+def _is_routing_show_query(text: str, words: set[str]) -> bool:
+    question_words = {"are", "can", "current", "do", "does", "how", "is", "should", "status", "what", "which", "who", "will"}
+    work_words = {"fix", "implementation", "repair", "write", "writer"}
+    model_words = {"model", "models", "provider", "providers"}
+    economy_words = {"cheap", "cheaper", "cost", "deepseek", "economy", "low", "lower", "reasonix"}
+    has_question_shape = "?" in text or "？" in text or bool(words & question_words)
+    if has_question_shape and bool(words & model_words) and bool(words & (work_words | {"phase", "phases", "profile", "route", "routing"})):
+        return True
+    if has_question_shape and bool(words & work_words) and bool(words & economy_words):
+        return True
+    if has_question_shape and bool(words & {"profile", "route", "routing"}) and bool(words & (economy_words | model_words)):
+        return True
+    if bool(words & {"profile", "route", "routing"}) and bool(words & {"active", "configured", "current", "read", "show", "status", "using"}):
+        return True
+    chinese_model_query = _has_any(
+        text,
+        (
+            "什么模型",
+            "哪个模型",
+            "哪种模型",
+            "什么 provider",
+            "哪个 provider",
+            "当前模型",
+            "现在模型",
+            "模型状态",
+            "当前路由",
+            "现在路由",
+            "路由状态",
+        ),
+    )
+    if chinese_model_query and _has_any(text, ("写手", "写代码", "实现", "修复", "路由", "模型", "provider", "便宜", "低成本", "deepseek", "reasonix")):
+        return True
+    return False
 
 
 def _chinese_economy_profile_intent(text: str) -> str | None:
@@ -1062,7 +1099,7 @@ def _help_response() -> dict[str, Any]:
         },
         {
             "name": "economy-profile",
-            "summary": "Send `apply economy profile` to route high-volume write/fix work to Reasonix/DeepSeek without starting a run.",
+            "summary": "Send `show economy profile` or ask `what model will write/fix use` for a read-only routing check; send `apply economy profile` to route high-volume write/fix work to Reasonix/DeepSeek without starting a run.",
         },
         {
             "name": "reasonix-command",

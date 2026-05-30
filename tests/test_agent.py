@@ -234,6 +234,37 @@ test = []
         self.assertEqual(resolve_phase(cfg, "fix")["provider"], "reasonix_cli")
         self.assertFalse((self.repo / ".ai" / "runs").exists())
 
+    def test_agent_routing_questions_show_profile_without_mutating_config(self) -> None:
+        from scripts.ai_flow.config import load_config, resolve_phase
+
+        for message in ("is writer using cheap model?", "what model will write and fix use?", "which provider handles implementation?", "can I use economy routing?"):
+            with self.subTest(message=message):
+                response = agent_message(self.repo, message)
+
+                self.assertEqual(response["action"], "profile_show")
+                self.assertIsNone(response["run_id"])
+                self.assertFalse(response["routing"]["economy_configured"])
+                self.assertIn("Economy routing profile is not active", response["reply"])
+
+        cfg = load_config(self.repo)
+        self.assertEqual(resolve_phase(cfg, "write")["provider"], "mock")
+        self.assertEqual(resolve_phase(cfg, "fix")["provider"], "mock")
+        self.assertFalse((self.repo / ".ai" / "runs").exists())
+
+    def test_agent_routing_question_with_run_does_not_apply_patch_or_profile(self) -> None:
+        from scripts.ai_flow.config import load_config, resolve_phase
+
+        planned = agent_message(self.repo, "build routing question target")
+        run_id = planned["run_id"]
+
+        response = agent_message(self.repo, "is writer using cheap model?", run_id=run_id)
+
+        self.assertEqual(response["action"], "profile_show")
+        self.assertIsNone(response["run_id"])
+        cfg = load_config(self.repo)
+        self.assertEqual(resolve_phase(cfg, "write")["provider"], "mock")
+        self.assertFalse((self.repo / ".ai" / "runs" / run_id / "APPROVAL.json").exists())
+
     def test_agent_applies_economy_profile_from_cost_effective_writer_instruction(self) -> None:
         from scripts.ai_flow.config import load_config, resolve_phase
 
