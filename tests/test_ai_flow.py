@@ -1324,9 +1324,13 @@ class McpSchemaTests(unittest.TestCase):
         self.assertIn("Gemini 命令行", tools["patchbay_agent"])
         self.assertIn("configure reasonix command", tools["patchbay_agent"])
         self.assertIn("configure reasonix command to <path>", tools["patchbay_agent"])
+        self.assertIn("配置 Reasonix 命令", tools["patchbay_agent"])
+        self.assertIn("把 Reasonix 命令设为 <path>", tools["patchbay_agent"])
         agent_message_description = tool_items["patchbay_agent"]["inputSchema"]["properties"]["message"]["description"]
         self.assertIn("configure reasonix command", agent_message_description)
         self.assertIn("configure reasonix command to <path>", agent_message_description)
+        self.assertIn("配置 Reasonix 命令", agent_message_description)
+        self.assertIn("把 Reasonix 命令设为 <path>", agent_message_description)
         self.assertIn("patchbay_doctor", tools)
         self.assertIn("read-only readiness", tools["patchbay_doctor"].lower())
         self.assertIn("actions[]", tools["patchbay_doctor"])

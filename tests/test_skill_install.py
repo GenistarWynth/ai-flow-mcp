@@ -31,6 +31,8 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("patchbay setup for Claude Desktop", result["files"]["SKILL.md"])
         self.assertIn("configure reasonix command", result["files"]["SKILL.md"])
         self.assertIn("configure reasonix command to <path>", result["files"]["SKILL.md"])
+        self.assertIn("配置 Reasonix 命令", result["files"]["SKILL.md"])
+        self.assertIn("把 Reasonix 命令设为 <path>", result["files"]["SKILL.md"])
         self.assertIn("command_not_ready", result["files"]["SKILL.md"])
         self.assertIn("install patchbay for Gemini CLI", result["files"]["references/install.md"])
         self.assertIn("configure reasonix command", result["files"]["references/install.md"])
