@@ -107,6 +107,8 @@ def agent_message(
         return _profile_apply_response(root)
     if intent == "profile_show":
         return _profile_show_response(root)
+    if intent == "next_step":
+        return _next_step_response(root, run_id=run_id, include=include)
     if intent == "missing_run":
         return _missing_run_response(root, text)
     if intent == "setup":
@@ -612,6 +614,8 @@ def _classify_intent(message: str, *, has_run: bool, confirmation: str) -> str:
         return "help"
     if _is_setup_intent(text):
         return "setup"
+    if _is_next_step_query(text):
+        return "next_step"
     if _is_metrics_intent(text):
         return "metrics" if has_run else "missing_run"
     if not has_run:
@@ -684,6 +688,36 @@ def _is_runs_intent(text: str) -> bool:
     if "status" in words:
         return bool(words & {"agent", "latest", "list", "patchbay", "recent", "run", "runs", "show", "current"})
     return "recent" in words and bool(words & {"run", "runs"})
+
+
+def _is_next_step_query(text: str) -> bool:
+    if not text:
+        return False
+    if text in {
+        "next",
+        "next step",
+        "what next",
+        "what's next",
+        "what should i do next",
+        "what do i do next",
+        "what now",
+        "now what",
+        "下一步",
+        "下一步是什么",
+        "接下来",
+        "接下来做什么",
+        "现在该干什么",
+        "现在做什么",
+        "下一步该做什么",
+        "后续怎么做",
+    }:
+        return True
+    words = _words(text)
+    if _has_task_intent(text, words):
+        return False
+    if "next" in words and bool(words & {"do", "now", "should", "step", "what"}):
+        return True
+    return _has_any(text, ("下一步", "接下来做什么", "现在该干什么", "现在做什么", "后续怎么做"))
 
 
 def _config_profile_intent(text: str) -> str | None:
@@ -1138,6 +1172,76 @@ def _runs_response(root: Path) -> dict[str, Any]:
         reply=reply,
         next_actions=next_actions,
         extra={"runs": report, "recent_run": recent[0] if recent else None, "actions": actions},
+    )
+
+
+def _next_step_response(root: Path, *, run_id: str | None, include: dict[str, Any] | None = None) -> dict[str, Any]:
+    if run_id:
+        current = service.status(root, run_id)
+        return _agent_response(
+            root,
+            run_id,
+            action="next_step",
+            reply=_next_step_reply(run_id, current),
+            include=include,
+            extra={"actions": _next_step_actions(run_id, current, include_open_run=False)},
+        )
+
+    report = service.runs(root, limit=5)
+    recent = list(report.get("runs") or [])
+    if not recent:
+        return _stateless_response(
+            action="next_step",
+            reply="No Patchbay runs found. Send a task to start with a plan, or send readiness to check setup.",
+            next_actions=["start", "readiness"],
+            extra={
+                "runs": report,
+                "recent_run": None,
+                "actions": [
+                    {
+                        "id": "start_new_task",
+                        "label": "Start new task",
+                        "kind": "focus_composer",
+                        "safe": True,
+                        "reason": "Focus the composer so a new Patchbay plan can be started.",
+                    },
+                    {
+                        "id": "open_readiness",
+                        "label": "Open readiness",
+                        "kind": "local_agent",
+                        "message": "readiness",
+                        "safe": True,
+                        "reason": "Run read-only setup diagnostics before starting work.",
+                    },
+                ],
+            },
+        )
+
+    latest = recent[0]
+    latest_run_id = str(latest.get("run_id") or "")
+    current = service.status(root, latest_run_id) if latest_run_id else dict(latest)
+    next_actions = _dedupe_strings(["open latest run", *_next_actions_for_status(current), "readiness"])
+    run_reference = {
+        "run_id": latest.get("run_id"),
+        "status": latest.get("status") or current.get("status"),
+        "task": latest.get("task"),
+        "updated_at": latest.get("updated_at"),
+        "suggested_message": "open latest run",
+        "safe_actions": ["open_run", "status", "events"],
+        "next_actions": _next_actions_for_status(current),
+    }
+    return _stateless_response(
+        action="next_step",
+        reply=_next_step_reply(latest_run_id, current)
+        + " Open that run before taking any gated action from a stateless client.",
+        next_actions=next_actions,
+        extra={
+            "runs": report,
+            "recent_run": latest,
+            "run_reference": run_reference,
+            "latest_status": current,
+            "actions": _next_step_actions(latest_run_id, current, include_open_run=True),
+        },
     )
 
 
@@ -1764,6 +1868,85 @@ def _next_actions_for_status(status_data: dict[str, Any]) -> list[str]:
     if status_value == APPLIED:
         return ["status", "events"]
     return ["status", "events"]
+
+
+def _next_step_reply(run_id: str, status_data: dict[str, Any]) -> str:
+    status_value = str(status_data.get("status") or "unknown")
+    if status_value == PLANNED:
+        return f"Run {run_id} is waiting for explicit plan approval. Review the plan, then approve before implementation starts."
+    if status_data.get("gate_state", {}).get("ready_to_apply"):
+        return f"Run {run_id} passed tests and review. Apply is available, but still requires explicit apply confirmation."
+    if status_value in {APPROVED, IMPLEMENTED, TESTED, REVIEWED_CHANGES_REQUESTED}:
+        return f"Run {run_id} is {status_value}. `continue` can run the next safe phase for the selected run."
+    if status_value in {IMPLEMENTING, TESTING, REVIEWING, FIXING}:
+        return f"Run {run_id} is currently running {status_data.get('current_phase') or status_value}. Poll status, context, or events."
+    if status_value == FAILED:
+        recovery = status_data.get("failure_recovery") or _failure_recovery_summary(status_data)
+        return f"Run {run_id} failed. {recovery.get('suggested_next_action') or 'Inspect artifacts and events before retrying.'}"
+    if status_value == APPLIED:
+        return f"Run {run_id} has already been applied. Inspect status/events or clean up the isolated worktree."
+    return f"Run {run_id} is {status_value}. Inspect status/events before choosing another action."
+
+
+def _next_step_actions(run_id: str, status_data: dict[str, Any], *, include_open_run: bool) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]] = []
+    if include_open_run:
+        actions.append(
+            {
+                "id": "open_latest_run",
+                "label": "Open latest run",
+                "kind": "open_run",
+                "run_id": run_id,
+                "safe": True,
+                "reason": "Open the latest Patchbay run before choosing any gated action.",
+            }
+        )
+    actions.append(
+        {
+            "id": "open_trace",
+            "label": "Open activity",
+            "kind": "diagnostic_tab",
+            "tab": "Trace",
+            "safe": True,
+            "reason": "Inspect the run timeline and provider activity before taking the next step.",
+        }
+    )
+    status_value = str(status_data.get("status") or "")
+    if status_value == PLANNED:
+        actions.append(
+            {
+                "id": "open_plan",
+                "label": "Open plan",
+                "kind": "diagnostic_tab",
+                "tab": "Artifacts",
+                "safe": True,
+                "reason": "Review PLAN.md before giving explicit approval.",
+            }
+        )
+    if status_data.get("gate_state", {}).get("ready_to_apply"):
+        actions.append(
+            {
+                "id": "open_diff",
+                "label": "Open diff",
+                "kind": "diagnostic_tab",
+                "tab": "Diff",
+                "safe": True,
+                "reason": "Inspect the final patch before explicit apply confirmation.",
+            }
+        )
+    if status_value == FAILED:
+        actions.extend(list((status_data.get("failure_recovery") or {}).get("actions") or []))
+    actions.append(
+        {
+            "id": "open_readiness",
+            "label": "Open readiness",
+            "kind": "local_agent",
+            "message": "readiness",
+            "safe": True,
+            "reason": "Run read-only setup diagnostics if the next step is blocked by local setup.",
+        }
+    )
+    return actions
 
 
 def _reply_for_status(status_data: dict[str, Any]) -> str:

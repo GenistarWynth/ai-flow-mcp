@@ -538,6 +538,46 @@ test = []
         self.assertNotIn("apply", response["next_actions"])
         self.assertEqual(len(list((self.repo / ".ai" / "runs").iterdir())), 0)
 
+    def test_agent_next_step_without_run_points_to_latest_run_without_advancing(self) -> None:
+        planned = agent_message(self.repo, "build handoff target for next-step testing")
+        run_id = planned["run_id"]
+
+        response = agent_message(self.repo, "what should I do next?")
+
+        self.assertEqual(response["action"], "next_step")
+        self.assertTrue(response["ok"])
+        self.assertIsNone(response["run_id"])
+        self.assertEqual(response["recent_run"]["run_id"], run_id)
+        self.assertEqual(response["run_reference"]["run_id"], run_id)
+        self.assertEqual(response["run_reference"]["status"], "PLANNED")
+        self.assertEqual(response["run_reference"]["next_actions"], ["approve_and_run", "status", "events", "artifact"])
+        self.assertEqual(response["latest_status"]["status"], "PLANNED")
+        actions = {item["id"]: item for item in response["actions"]}
+        self.assertEqual(actions["open_latest_run"]["kind"], "open_run")
+        self.assertEqual(actions["open_latest_run"]["run_id"], run_id)
+        self.assertEqual(actions["open_plan"]["tab"], "Artifacts")
+        self.assertEqual(actions["open_readiness"]["message"], "readiness")
+        self.assertIn("open latest run", response["next_actions"])
+        self.assertIn("approve_and_run", response["next_actions"])
+        self.assertFalse((self.repo / ".ai" / "runs" / run_id / "APPROVAL.json").exists())
+
+    def test_agent_next_step_with_run_reports_gate_without_advancing(self) -> None:
+        planned = agent_message(self.repo, "build selected flow for next-step testing")
+        run_id = planned["run_id"]
+
+        for message in ("next step", "现在该干什么", "下一步是什么"):
+            with self.subTest(message=message):
+                response = agent_message(self.repo, message, run_id=run_id)
+
+                self.assertEqual(response["action"], "next_step")
+                self.assertEqual(response["run_id"], run_id)
+                self.assertEqual(response["status"]["status"], "PLANNED")
+                self.assertEqual(response["requires_confirmation"]["confirmation"], "plan_approved")
+                actions = {item["id"]: item for item in response["actions"]}
+                self.assertEqual(actions["open_plan"]["tab"], "Artifacts")
+                self.assertEqual(actions["open_trace"]["tab"], "Trace")
+                self.assertFalse((self.repo / ".ai" / "runs" / run_id / "APPROVAL.json").exists())
+
     def test_agent_chinese_runs_prompts_list_runs_without_planning(self) -> None:
         planned = agent_message(self.repo, "localized handoff target")
 
@@ -1012,6 +1052,35 @@ test = []
         self.assertEqual(actions["open_latest_run"]["run_id"], planned["run_id"])
         self.assertTrue(actions["open_latest_run"]["safe"])
         self.assertNotIn("continue", payload["next_actions"])
+
+    def test_mcp_patchbay_agent_next_step_is_safe_handoff_without_run_id(self) -> None:
+        from scripts.ai_flow import mcp_server
+
+        planned = agent_message(self.repo, "build mcp next-step target")
+        original_root = mcp_server.ROOT
+        try:
+            mcp_server.ROOT = self.repo
+            response = mcp_server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {"name": "patchbay_agent", "arguments": {"message": "what should I do next"}},
+                }
+            )
+        finally:
+            mcp_server.ROOT = original_root
+
+        payload = json.loads(response["result"]["content"][0]["text"])
+        self.assertEqual(payload["action"], "next_step")
+        self.assertIsNone(payload["run_id"])
+        self.assertEqual(payload["recent_run"]["run_id"], planned["run_id"])
+        self.assertEqual(payload["run_reference"]["next_actions"], ["approve_and_run", "status", "events", "artifact"])
+        actions = {item["id"]: item for item in payload["actions"]}
+        self.assertEqual(actions["open_latest_run"]["kind"], "open_run")
+        self.assertEqual(actions["open_latest_run"]["run_id"], planned["run_id"])
+        self.assertNotIn("approve", payload["next_actions"])
+        self.assertFalse((self.repo / ".ai" / "runs" / planned["run_id"] / "APPROVAL.json").exists())
 
     def test_mcp_patchbay_agent_can_return_metrics_for_run(self) -> None:
         from scripts.ai_flow import mcp_server
