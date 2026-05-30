@@ -331,6 +331,49 @@ class PublicVisibilityTest(unittest.TestCase):
         run_path = self.repo / ".ai" / "runs" / run_id
         self.assertEqual(result["pid"], 5432)
         self.assertEqual(result["exit_code"], 2)
+        self.assertIn("finished_at", result)
+        self.assertFalse((run_path / "RUN.lock").exists())
+
+    def test_background_process_reaper_records_exit_and_releases_lock(self) -> None:
+        from scripts.ai_flow import service
+
+        run_id = "20260524-background-reaper"
+        run_path = self.repo / ".ai" / "runs" / run_id
+        run_path.mkdir(parents=True)
+        service._acquire_lock(run_path, "plan", token="reaper-token")
+        service._record_job(
+            run_path,
+            {
+                "background": True,
+                "phase": "plan",
+                "pid": 8765,
+                "run_id": run_id,
+                "started_at": "2026-05-24T00:00:00+00:00",
+                "started_at_epoch": 0,
+            },
+        )
+
+        class FakeProcess:
+            pid = 8765
+
+            def wait(self):
+                return 7
+
+        service._track_background_process(
+            FakeProcess(),
+            run_path,
+            on_exit=lambda _exit_code: service._release_lock(run_path, token="reaper-token"),
+        )
+
+        job = self.wait_for(
+            lambda: (
+                json.loads((run_path / "JOB.json").read_text(encoding="utf-8"))
+                if "finished_at" in (run_path / "JOB.json").read_text(encoding="utf-8")
+                else None
+            )
+        )
+        self.assertEqual(job["exit_code"], 7)
+        self.assertIn("finished_at", job)
         self.assertFalse((run_path / "RUN.lock").exists())
 
     def test_events_follow_json_returns_json_payload(self) -> None:

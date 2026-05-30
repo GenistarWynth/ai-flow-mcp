@@ -393,7 +393,15 @@ def _start_background_agent(
     if early_exit is not None:
         _release_agent_lock(run_path, token=lock_token)
         job["exit_code"] = early_exit
+        job["finished_at"] = now_iso()
+        job["finished_at_epoch"] = time.time()
     service._record_job(run_path, job)
+    if early_exit is None:
+        service._track_background_process(
+            process,
+            run_path,
+            on_exit=lambda _exit_code: _release_agent_lock(run_path, token=lock_token),
+        )
     response = _agent_response(
         root,
         run_id,

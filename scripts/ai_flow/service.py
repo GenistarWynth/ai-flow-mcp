@@ -7,10 +7,11 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from . import git_utils
 from .adapters import (
@@ -118,6 +119,59 @@ def _job_path(run_path: Path) -> Path:
 
 def _record_job(run_path: Path, data: dict[str, Any]) -> None:
     write_json(_job_path(run_path), data)
+
+
+def _mark_background_job_finished(
+    run_path: Path,
+    *,
+    exit_code: int | None = None,
+    error: str | None = None,
+) -> None:
+    job_path = _job_path(run_path)
+    if not job_path.exists():
+        return
+    try:
+        job = read_json(job_path)
+    except Exception:
+        return
+    if exit_code is not None:
+        job["exit_code"] = exit_code
+    if error:
+        job["reaper_error"] = error
+    job["finished_at"] = now_iso()
+    job["finished_at_epoch"] = time.time()
+    _record_job(run_path, job)
+
+
+def _track_background_process(
+    process: Any,
+    run_path: Path,
+    *,
+    on_exit: Callable[[int | None], None] | None = None,
+) -> None:
+    wait = getattr(process, "wait", None)
+    if not callable(wait):
+        return
+
+    def reap() -> None:
+        exit_code: int | None = None
+        try:
+            exit_code = wait()
+        except Exception as exc:
+            _mark_background_job_finished(run_path, error=str(exc))
+            return
+        try:
+            if on_exit:
+                on_exit(exit_code)
+        finally:
+            _mark_background_job_finished(run_path, exit_code=exit_code)
+
+    thread = threading.Thread(
+        target=reap,
+        name=f"patchbay-background-reaper-{getattr(process, 'pid', 'unknown')}",
+        daemon=True,
+    )
+    thread.start()
 
 
 def _patchbay_command(root: Path, phase: str) -> list[str]:
@@ -285,8 +339,16 @@ def start_background_phase(
     if early_exit is not None and parent_holds_lock:
         _release_lock(run_path, token=lock_token)
         job_data["exit_code"] = early_exit
+        job_data["finished_at"] = now_iso()
+        job_data["finished_at_epoch"] = time.time()
         parent_holds_lock = False
     _record_job(run_path, job_data)
+    if early_exit is None:
+        _track_background_process(
+            process,
+            run_path,
+            on_exit=lambda _exit_code: _release_lock(run_path, token=lock_token),
+        )
     return job_data
 
 
