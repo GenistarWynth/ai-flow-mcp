@@ -287,7 +287,7 @@ def _tool_schema(name: str) -> dict[str, Any]:
         properties: dict[str, Any] = {
             "message": {
                 "type": "string",
-                "description": "Natural-language task or instruction for the conversational Patchbay Agent. Explicit setup/help/status/readiness prompts are handled locally without starting a model run; setup prompts can name a host such as `patchbay setup for Claude Desktop` or `install patchbay for Gemini CLI`; metrics/cost/token prompts require a run_id and return run efficiency evidence; other run-bound prompts without run_id return local guidance instead.",
+                "description": "Natural-language task or instruction for the conversational Patchbay Agent. Explicit setup/help/status/readiness/routing prompts are handled locally without starting a model run; setup prompts can name a host such as `patchbay setup for Claude Desktop` or `install patchbay for Gemini CLI`; `apply economy profile` and `configure reasonix command` update local routing configuration; metrics/cost/token prompts require a run_id and return run efficiency evidence; other run-bound prompts without run_id return local guidance instead.",
             },
             "run_id": {"type": "string", "description": "Existing run id to continue or inspect."},
             "confirmation": {
@@ -431,7 +431,7 @@ def _tool_schema(name: str) -> dict[str, Any]:
         required = ["run_id"]
 
     descriptions: dict[str, str] = {
-        "patchbay_agent": "Primary conversational Patchbay Agent tool. Starts, resumes, advances, applies runs, and returns metrics/cost/token evidence while preserving plan/apply approval gates; explicit setup, help, status, and readiness prompts return local answers with structured actions[] for safe client follow-ups, setup prompts can target hosts like Claude Desktop or Gemini CLI, and run-bound prompts without run_id return local guidance instead of creating a run.",
+        "patchbay_agent": "Primary conversational Patchbay Agent tool. Starts, resumes, advances, applies runs, and returns metrics/cost/token evidence while preserving plan/apply approval gates; explicit setup, help, status, readiness, economy profile, and configure reasonix command prompts return local answers with structured actions[] for safe client follow-ups, setup prompts can target hosts like Claude Desktop or Gemini CLI, and run-bound prompts without run_id return local guidance instead of creating a run.",
         "patchbay_plan": "Run the planning phase (host-agnostic — provider configurable via [phases.plan] in .ai/patchbay.toml).",
         "patchbay_approve": "Approve the plan so the writer phase can proceed.",
         "patchbay_write": "Run the implementation phase (provider configurable via [phases.write] / [writer].provider).",
@@ -440,7 +440,7 @@ def _tool_schema(name: str) -> dict[str, Any]:
         "patchbay_fix": "Run the fix phase after a CHANGES_REQUESTED review (provider defaults to write).",
         "patchbay_status": "Return current run status and artifacts, including latest cross-phase event.",
         "patchbay_context": "Return the unified handoff digest for resuming a run across MCP hosts, CLI sessions, and the web workbench, including agent_activity.health_cards with safe local/diagnostic actions.",
-        "patchbay_metrics": "Return only run_metrics efficiency evidence: phase durations, attempts, event/trace counts, provider usage, known cost/token fields, routing_evidence.economy_health, and top-level actions[] mirrored from routing_evidence.actions[] for safe local_agent or diagnostic_tab routing follow-ups.",
+        "patchbay_metrics": "Return only run_metrics efficiency evidence: phase durations, attempts, event/trace counts, provider usage, known cost/token fields, routing_evidence.economy_health including command_not_ready, and top-level actions[] mirrored from routing_evidence.actions[] for safe local_agent or diagnostic_tab routing follow-ups such as configure_reasonix_command.",
         "patchbay_doctor": "Run unified read-only readiness checks for CLI shims, config, MCP reachability/tools, bundled Skill source, and Skill installation state; returns next_actions, recommendations, and structured actions[], with host-aware concrete MCP registration actions.",
         "patchbay_setup": "Initialize Patchbay project files, create local config, install the Codex Skill, return MCP registration guidance, include a doctor summary, and expose structured actions[] for safe follow-ups.",
         "patchbay_install": "Alias for patchbay_setup: initialize Patchbay project files, create local config, install the Codex Skill, register MCP when possible, include a doctor summary, and expose structured actions[].",
@@ -455,8 +455,8 @@ def _tool_schema(name: str) -> dict[str, Any]:
         "patchbay_config_phase_set": "Set a phase provider/model/command key without hand-editing TOML.",
         "patchbay_config_command_set": "Set a command alias in .ai/patchbay.toml.",
         "patchbay_config_test_add": "Add a test command to both allowlist and phase config.",
-        "patchbay_config_profile_apply": "Apply a recommended routing profile; economy keeps expensive thinking in plan/review and routes write/fix work to Reasonix/DeepSeek, returning structured actions[] for safe readiness/start follow-ups.",
-        "patchbay_config_profile_show": "Show whether the current write/fix routing matches the economy profile and return structured actions[] for safe apply/readiness/start follow-ups.",
+        "patchbay_config_profile_apply": "Apply a recommended routing profile; economy keeps expensive thinking in plan/review and routes write/fix work to Reasonix/DeepSeek, returning structured actions[] for safe readiness/start/configure_reasonix_command follow-ups.",
+        "patchbay_config_profile_show": "Show whether the current write/fix routing matches the economy profile and return structured actions[] for safe apply/readiness/start/configure_reasonix_command follow-ups.",
         "patchbay_config_provider_add_cli": "Add a custom CLI provider block under [providers.<id>].",
         "patchbay_diff": "Return the current FINAL.diff for the run.",
         "patchbay_apply": "Apply the reviewed patch to the original repository (no LLM executor).",

@@ -1289,7 +1289,8 @@ class McpSchemaTests(unittest.TestCase):
     def test_tool_list_includes_updated_descriptions(self) -> None:
         from scripts.ai_flow.mcp_server import handle
         tools_response = handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
-        tools = {tool["name"]: tool["description"] for tool in tools_response["result"]["tools"]}
+        tool_items = {tool["name"]: tool for tool in tools_response["result"]["tools"]}
+        tools = {name: tool["description"] for name, tool in tool_items.items()}
 
         # Canonical tools should have non-trivial descriptions
         self.assertIn("patchbay_plan", tools)
@@ -1301,9 +1302,11 @@ class McpSchemaTests(unittest.TestCase):
         self.assertIn("patchbay_metrics", tools)
         self.assertIn("run_metrics", tools["patchbay_metrics"])
         self.assertIn("economy_health", tools["patchbay_metrics"])
+        self.assertIn("command_not_ready", tools["patchbay_metrics"])
         self.assertIn("actions[]", tools["patchbay_metrics"])
         self.assertIn("routing_evidence.actions[]", tools["patchbay_metrics"])
         self.assertIn("diagnostic_tab", tools["patchbay_metrics"])
+        self.assertIn("configure_reasonix_command", tools["patchbay_metrics"])
         self.assertIn("patchbay_context", tools)
         self.assertIn("health_cards", tools["patchbay_context"])
         self.assertIn("actions", tools["patchbay_context"])
@@ -1311,6 +1314,9 @@ class McpSchemaTests(unittest.TestCase):
         self.assertIn("actions[]", tools["patchbay_agent"])
         self.assertIn("Claude Desktop", tools["patchbay_agent"])
         self.assertIn("Gemini CLI", tools["patchbay_agent"])
+        self.assertIn("configure reasonix command", tools["patchbay_agent"])
+        agent_message_description = tool_items["patchbay_agent"]["inputSchema"]["properties"]["message"]["description"]
+        self.assertIn("configure reasonix command", agent_message_description)
         self.assertIn("patchbay_doctor", tools)
         self.assertIn("read-only readiness", tools["patchbay_doctor"].lower())
         self.assertIn("actions[]", tools["patchbay_doctor"])
@@ -1323,6 +1329,9 @@ class McpSchemaTests(unittest.TestCase):
         self.assertIn("actions[]", tools["patchbay_install"])
         self.assertIn("patchbay_config_profile_apply", tools)
         self.assertIn("economy", tools["patchbay_config_profile_apply"].lower())
+        self.assertIn("configure_reasonix_command", tools["patchbay_config_profile_apply"])
+        self.assertIn("patchbay_config_profile_show", tools)
+        self.assertIn("configure_reasonix_command", tools["patchbay_config_profile_show"])
 
         # Legacy aliases should still exist and mention alias status
         self.assertIn("ai_flow_plan", tools)

@@ -29,7 +29,10 @@ The conversational agent entry point accepts the same explicit local setup inten
 python scripts/patchbay agent message "patchbay setup" --json
 python scripts/patchbay agent message "patchbay setup for Claude Desktop" --json
 python scripts/patchbay agent message "install patchbay for Gemini CLI" --json
+python scripts/patchbay agent message "configure reasonix command" --json
 ```
+
+Use `configure reasonix command` when readiness reports `economy_health.status = "command_not_ready"` or surfaces the `configure_reasonix_command` action. It sets `commands.reasonix = "reasonix"` without starting a model run; use `patchbay_config_command_set` or `patchbay config --set-key commands.reasonix --set-value <path>` when the executable needs a full path.
 
 ## MCP
 
@@ -51,7 +54,7 @@ patchbay doctor
 patchbay mcp doctor
 ```
 
-`patchbay doctor` is the unified read-only setup check for project initialization, phase config, CLI entry points, MCP tools, bundled Skill source, and Codex Skill installation. `patchbay mcp doctor` focuses on stdio MCP server reachability, sends initialize/tools/list, and checks required tools such as `patchbay_agent`, `patchbay_plan`, `patchbay_context`, `patchbay_metrics`, `patchbay_doctor`, `patchbay_install`, `patchbay_skill_install`, and `patchbay_skill_doctor`.
+`patchbay doctor` is the unified read-only setup check for project initialization, phase config, CLI entry points, MCP tools, bundled Skill source, Codex Skill installation, and economy-route command readiness. `patchbay mcp doctor` focuses on stdio MCP server reachability, sends initialize/tools/list, and checks required tools such as `patchbay_agent`, `patchbay_plan`, `patchbay_context`, `patchbay_metrics`, `patchbay_doctor`, `patchbay_install`, `patchbay_skill_install`, and `patchbay_skill_doctor`.
 
 After registration, restart or reload hosts that cache MCP tool lists. Verify that `patchbay_agent` is visible in the host before starting a gated run.
 

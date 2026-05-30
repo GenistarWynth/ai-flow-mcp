@@ -29,7 +29,24 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("references/install.md", result["files"])
         self.assertIn("patchbay_agent", result["files"]["SKILL.md"])
         self.assertIn("patchbay setup for Claude Desktop", result["files"]["SKILL.md"])
+        self.assertIn("configure reasonix command", result["files"]["SKILL.md"])
+        self.assertIn("command_not_ready", result["files"]["SKILL.md"])
         self.assertIn("install patchbay for Gemini CLI", result["files"]["references/install.md"])
+        self.assertIn("configure reasonix command", result["files"]["references/install.md"])
+        self.assertIn("configure_reasonix_command", result["files"]["references/install.md"])
+
+    def test_bundled_skill_matches_install_template(self) -> None:
+        template_root = PROJECT_ROOT / "scripts" / "ai_flow" / "skill_templates" / "patchbay"
+        bundled_root = PROJECT_ROOT / "skills" / "patchbay"
+        for relative in (
+            Path("SKILL.md"),
+            Path("references/install.md"),
+        ):
+            self.assertEqual(
+                (template_root / relative).read_text(encoding="utf-8"),
+                (bundled_root / relative).read_text(encoding="utf-8"),
+                f"{relative.as_posix()} drifted between the install template and bundled skill",
+            )
 
     def test_package_data_includes_skill_template_bundle(self) -> None:
         data = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
