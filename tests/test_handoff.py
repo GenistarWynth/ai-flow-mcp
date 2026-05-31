@@ -391,6 +391,12 @@ class HandoffContextTest(unittest.TestCase):
         self.assertEqual(tiers["economy"]["cost"]["cost_percent"], 20.0)
         self.assertEqual(tiers["supervision"]["token_usage"]["total_tokens"], 1000)
         self.assertEqual(tiers["supervision"]["cost"]["estimated_total"], 0.2)
+        context = self.cli_json("context", run_id)
+        cards = {card["key"]: card for card in context["agent_activity"]["health_cards"]}
+        self.assertEqual(cards["economy_load"]["status"], "tracked")
+        self.assertIn("1000 tokens (50.0%)", cards["economy_load"]["detail"])
+        self.assertIn("USD 0.05 (20.0%)", cards["economy_load"]["detail"])
+        self.assertIn("3.0s", cards["economy_load"]["detail"])
 
     def test_metrics_exposes_not_configured_economy_health(self) -> None:
         (self.repo / ".ai" / "patchbay.toml").write_text(

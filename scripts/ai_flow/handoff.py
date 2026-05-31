@@ -430,27 +430,94 @@ def _health_cards(status_data: dict[str, Any]) -> list[dict[str, Any]]:
     run_metrics = status_data.get("run_metrics") if isinstance(status_data.get("run_metrics"), dict) else {}
     routing = run_metrics.get("routing_evidence") if isinstance(run_metrics.get("routing_evidence"), dict) else {}
     health = routing.get("economy_health") if isinstance(routing.get("economy_health"), dict) else {}
-    if not health:
-        return []
+    cards: list[dict[str, Any]] = []
     status = str(health.get("status") or "unknown")
     severity = str(health.get("severity") or "")
     coverage = routing.get("coverage") if isinstance(routing.get("coverage"), dict) else {}
     percent = coverage.get("observed_economy_percent")
     actions = routing.get("actions") if isinstance(routing.get("actions"), list) else []
     action = next((item for item in actions if isinstance(item, dict) and item.get("safe") is not False), None)
-    return [
-        {
-            "key": "economy_route",
-            "label": "Economy route",
-            "status": status,
-            "tone": _health_tone(status, severity),
-            "detail": str(health.get("summary") or routing.get("summary") or ""),
-            "recommendation": str(health.get("recommendation") or ""),
-            "next_action": str(health.get("next_action") or ""),
-            "action": action or _health_action(health),
-            "coverage_percent": percent if isinstance(percent, (int, float)) else None,
-        }
-    ]
+    if health:
+        cards.append(
+            {
+                "key": "economy_route",
+                "label": "Economy route",
+                "status": status,
+                "tone": _health_tone(status, severity),
+                "detail": str(health.get("summary") or routing.get("summary") or ""),
+                "recommendation": str(health.get("recommendation") or ""),
+                "next_action": str(health.get("next_action") or ""),
+                "action": action or _health_action(health),
+                "coverage_percent": percent if isinstance(percent, (int, float)) else None,
+            }
+        )
+    economy_load = _economy_load_health_card(run_metrics)
+    if economy_load:
+        cards.append(economy_load)
+    return cards
+
+
+def _economy_load_health_card(run_metrics: dict[str, Any]) -> dict[str, Any] | None:
+    tier_usage = run_metrics.get("tier_usage") if isinstance(run_metrics.get("tier_usage"), dict) else {}
+    economy = tier_usage.get("economy") if isinstance(tier_usage.get("economy"), dict) else {}
+    if not economy:
+        return None
+
+    signals: list[str] = []
+    token_usage = economy.get("token_usage") if isinstance(economy.get("token_usage"), dict) else {}
+    if token_usage.get("known"):
+        signals.append(
+            f"{_format_metric_number(token_usage.get('total_tokens'))} tokens"
+            f"{_format_percent_suffix(token_usage.get('token_percent'))}"
+        )
+
+    cost = economy.get("cost") if isinstance(economy.get("cost"), dict) else {}
+    if cost.get("known"):
+        signals.append(
+            f"{cost.get('currency') or 'USD'} {_format_metric_number(cost.get('estimated_total'))}"
+            f"{_format_percent_suffix(cost.get('cost_percent'))}"
+        )
+
+    if economy.get("duration_known"):
+        signals.append(
+            f"{_format_duration_ms(economy.get('duration_ms'))}"
+            f"{_format_percent_suffix(economy.get('duration_percent'))}"
+        )
+
+    if not signals:
+        return None
+    return {
+        "key": "economy_load",
+        "label": "Economy load",
+        "status": "tracked",
+        "tone": "ready",
+        "detail": f"Economy write/fix consumed {', '.join(signals)}.",
+        "recommendation": "Compare this with routing evidence to confirm write/fix work stayed on the configured economy provider.",
+        "next_action": "",
+        "action": None,
+    }
+
+
+def _format_metric_number(value: Any) -> str:
+    if isinstance(value, float):
+        return str(round(value, 6)).rstrip("0").rstrip(".")
+    if isinstance(value, int):
+        return str(value)
+    return "unknown"
+
+
+def _format_percent_suffix(value: Any) -> str:
+    if isinstance(value, (int, float)):
+        return f" ({round(float(value), 1)}%)"
+    return ""
+
+
+def _format_duration_ms(value: Any) -> str:
+    if not isinstance(value, (int, float)):
+        return "unknown"
+    if value < 1000:
+        return f"{int(value)}ms"
+    return f"{round(float(value) / 1000, 1)}s"
 
 
 def _health_action(health: dict[str, Any]) -> dict[str, Any] | None:
