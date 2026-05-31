@@ -340,11 +340,12 @@ function mapStructuredLocalReplyAction(action: AgentHealthAction): LocalReplyAct
       message: "open latest run",
       icon: "search",
       runId: action.run_id,
-      tab: action.tab
+      tab: action.tab,
+      reason: action.reason
     };
   }
   if (action.kind === "focus_composer" || action.id === "start_new_task") {
-    return { id: "start", label: action.label || "开始任务", message: "start", icon: "play" };
+    return { id: "start", label: action.label || "开始任务", message: "start", icon: "play", reason: action.reason };
   }
   if (action.kind === "diagnostic_tab" && action.tab && diagnosticTabs.has(action.tab as TabName)) {
     return {
@@ -352,7 +353,8 @@ function mapStructuredLocalReplyAction(action: AgentHealthAction): LocalReplyAct
       label: action.label || `Open ${action.tab}`,
       message: "diagnostic_tab",
       icon: "search",
-      tab: action.tab
+      tab: action.tab,
+      reason: action.reason
     };
   }
   if (action.kind === "local_agent" && action.message) {
@@ -360,7 +362,8 @@ function mapStructuredLocalReplyAction(action: AgentHealthAction): LocalReplyAct
     return {
       ...(mapped ?? { id: action.id, label: action.label, message: action.message, icon: "play" as const }),
       label: action.label || mapped?.label || action.message,
-      host: action.host ?? mapped?.host
+      host: action.host ?? mapped?.host,
+      reason: action.reason ?? mapped?.reason
     };
   }
   return null;
@@ -2414,6 +2417,7 @@ function HealthCardGrid({
                 type="button"
                 onClick={() => onAction?.(action)}
                 disabled={!onAction || (action.kind !== "diagnostic_tab" && actionBusy)}
+                title={action.reason}
               >
                 {action.kind === "diagnostic_tab" ? <Search size={13} /> : <Settings size={13} />}
                 {action.label}
@@ -2476,6 +2480,7 @@ function LocalAgentResponseDetails({
               type="button"
               key={action.id}
               aria-label={action.label}
+              title={action.reason}
               onClick={() => onAction?.(action)}
               disabled={!onAction || actionBusy}
             >
@@ -2794,6 +2799,7 @@ function DoctorActionButtons({
           <button
             type="button"
             key={action.id || action.label}
+            title={action.reason}
             onClick={() => onAction?.(action)}
             disabled={!onAction || setupBusy || (action.id === "apply_economy_profile" && profileBusy)}
           >

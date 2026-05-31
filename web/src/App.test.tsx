@@ -2615,6 +2615,55 @@ describe("Workbench", () => {
     expect(client.apply).not.toHaveBeenCalled();
   });
 
+  it("runs structured host readiness help actions", async () => {
+    const getDoctor = vi.fn().mockResolvedValue({
+      ok: true,
+      host: "claude-desktop",
+      root: "C:/repo",
+      checks: { repo: { ok: true }, config: { ok: true }, mcp: { ok: true } },
+      next_actions: []
+    });
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: "run-ready",
+      action: "help",
+      ok: true,
+      reply: "Readiness shortcuts available.",
+      actions: [
+        {
+          id: "readiness_claude_desktop",
+          label: "Check Claude Desktop readiness",
+          kind: "local_agent",
+          message: "readiness for claude-desktop",
+          host: "claude-desktop",
+          safe: true,
+          reason: "Run read-only Patchbay readiness checks for Claude Desktop MCP registration."
+        }
+      ]
+    });
+    const client = createClient({ agentMessage, getDoctor });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(composer, "help{enter}");
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith("help", {
+        runId: "run-ready",
+        include: { diff: true, review: true },
+        background: true
+      })
+    );
+    const actionButton = await screen.findByRole("button", { name: "Check Claude Desktop readiness" });
+    expect(actionButton).toHaveAttribute("title", "Run read-only Patchbay readiness checks for Claude Desktop MCP registration.");
+    await userEvent.click(actionButton);
+
+    await waitFor(() => expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "claude-desktop" }));
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
   it("runs local setup from the empty state and exposes readiness immediately", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: null,
