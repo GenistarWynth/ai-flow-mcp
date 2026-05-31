@@ -25,6 +25,7 @@ import {
   AgentHealthAction,
   AgentHealthCard,
   AgentMessage,
+  BackgroundJob,
   ConfigProfileStatus,
   createPatchbayClient,
   DoctorReport,
@@ -374,6 +375,39 @@ function compactDuration(ms?: number | null) {
   return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
 }
 
+function backgroundJobTone(job?: BackgroundJob | null) {
+  if (!job) return "idle";
+  if (job.status === "failed" || (typeof job.exit_code === "number" && job.exit_code !== 0)) return "failed";
+  if (job.active || job.status === "running") return "running";
+  if (job.status === "finished") return "success";
+  return "idle";
+}
+
+function backgroundJobStatusLabel(job?: BackgroundJob | null) {
+  const tone = backgroundJobTone(job);
+  if (tone === "failed") return "后台失败";
+  if (tone === "running") return "后台运行中";
+  if (tone === "success") return "后台完成";
+  return "后台任务";
+}
+
+function backgroundJobTitle(job?: BackgroundJob | null) {
+  if (!job) return "";
+  const phase = phaseLabel(job.phase ?? job.action);
+  return `${backgroundJobStatusLabel(job)} · ${phase}`;
+}
+
+function backgroundJobDetail(job?: BackgroundJob | null) {
+  if (!job) return "";
+  const details = [
+    job.kind,
+    job.pid ? `pid ${job.pid}` : null,
+    typeof job.duration_ms === "number" ? compactDuration(job.duration_ms) : null,
+    typeof job.exit_code === "number" ? `exit ${job.exit_code}` : null
+  ].filter(Boolean);
+  return details.join(" · ");
+}
+
 function compactNumber(value?: number | null) {
   if (value === undefined || value === null) return "待上报";
   if (value < 1000) return String(value);
@@ -493,6 +527,7 @@ function fallbackActivity(context: HandoffContext | null, status: RunStatus | nu
         ? `Patchbay Agent 正在执行${phaseLabel(currentPhase)}阶段。`
         : `Patchbay Agent 当前处于${phaseLabel(currentPhase)}阶段。`,
     tone: failed ? "failed" : busy ? "running" : nextAction ? "ready" : "idle",
+    background_job: context?.background_job ?? status?.background_job ?? null,
     current_step: {
       phase: currentPhase,
       label: phaseLabel(currentPhase),
@@ -952,13 +987,15 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
               ...current,
               status: nextContext.status ?? current.status,
               current_phase: nextContext.current_phase ?? current.current_phase,
-              gate_state: nextContext.gate_state ?? current.gate_state
+              gate_state: nextContext.gate_state ?? current.gate_state,
+              background_job: nextContext.background_job ?? nextContext.agent_activity?.background_job ?? current.background_job
             }
           : current
       );
       patchRunSummary(selectedRun, {
         status: nextContext.status,
-        task: nextContext.agent_activity?.conversation_state?.task
+        task: nextContext.agent_activity?.conversation_state?.task,
+        background_job: nextContext.background_job ?? nextContext.agent_activity?.background_job
       });
       appendTimelineEntries(nextContext.timeline ?? [], nextContext.cursors?.event, since);
     }
@@ -1000,12 +1037,13 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const activeContext = context?.run_id === selectedRun ? context : null;
   const activeStatus = status?.run_id === selectedRun ? status : null;
   const activity = activeContext?.agent_activity ?? fallbackActivity(activeContext, activeStatus);
+  const backgroundJob = activeContext?.background_job ?? activity.background_job ?? activeStatus?.background_job ?? selectedSummary?.background_job ?? null;
   const conversationState = activity.conversation_state;
   const gateState = activeContext?.gate_state ?? activeStatus?.gate_state ?? {};
   const loadedStatus = activeContext?.status ?? activeStatus?.status;
   const currentStatus = activeContext?.status ?? activeStatus?.status ?? selectedSummary?.status;
   const currentPhase = activeContext?.current_phase ?? activeStatus?.current_phase ?? "";
-  const runBusy = isBusyStatus(currentStatus);
+  const runBusy = isBusyStatus(currentStatus) || Boolean(backgroundJob?.active);
   const interactionBusy = submitting || actionInFlight || runBusy;
   const readyToApply = Boolean(gateState.ready_to_apply && (activeContext?.status ?? activeStatus?.status) === "REVIEWED_PASS");
   const messages = dedupeMessages(activity.messages ?? []);
@@ -1056,7 +1094,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }
     patchRunSummary(runId, {
       status: agentResponse?.context?.status ?? nextStatus.status,
-      task: agentResponse?.context?.agent_activity?.conversation_state?.task ?? nextStatus.task
+      task: agentResponse?.context?.agent_activity?.conversation_state?.task ?? nextStatus.task,
+      background_job: agentResponse?.context?.background_job ?? agentResponse?.context?.agent_activity?.background_job ?? nextStatus.background_job
     });
     if (requestedTab) {
       setDiagnosticsOpen(true);
@@ -1503,6 +1542,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                 <span>{statusLabel(run.status)}</span>
                 <span>{run.run_id}</span>
               </span>
+              <BackgroundJobBadge job={run.background_job} />
             </button>
           ))}
         </div>
@@ -1574,6 +1614,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                 body={conversationState?.next_step ?? activity.current_step?.summary}
                 tone={activity.tone}
               />
+              <BackgroundJobCard job={backgroundJob} />
               {messages.map((message) => (
                 <AgentEventBubble key={message.id} message={message} selected={selectedMessage?.id === message.id} onSelect={() => setSelectedMessage(message)} />
               ))}
@@ -1742,6 +1783,37 @@ function AgentEventBubble({ message, selected, onSelect }: { message: AgentMessa
         <small>{message.status_label ?? statusLabel(message.status)}</small>
       </div>
     </button>
+  );
+}
+
+function BackgroundJobBadge({ job }: { job?: BackgroundJob | null }) {
+  if (!job) return null;
+  const tone = backgroundJobTone(job);
+  const detail = backgroundJobDetail(job);
+  const Icon = tone === "failed" ? AlertTriangle : tone === "success" ? Check : RefreshCw;
+  return (
+    <span className={`background-job-badge tone-${tone}`} aria-label="Background job status">
+      <Icon size={12} />
+      <span>{backgroundJobTitle(job)}</span>
+      {detail ? <small>{detail}</small> : null}
+    </span>
+  );
+}
+
+function BackgroundJobCard({ job }: { job?: BackgroundJob | null }) {
+  if (!job) return null;
+  const tone = backgroundJobTone(job);
+  const detail = backgroundJobDetail(job);
+  const Icon = tone === "failed" ? AlertTriangle : tone === "success" ? Check : RefreshCw;
+  return (
+    <div className={`background-job-card tone-${tone}`} aria-label="Background job status">
+      <Icon size={16} />
+      <div>
+        <strong>{backgroundJobTitle(job)}</strong>
+        {detail ? <span>{detail}</span> : null}
+        {job.error ? <p>{job.error}</p> : null}
+      </div>
+    </div>
   );
 }
 
@@ -2553,8 +2625,15 @@ function DetailPanel({
     const routing = metrics?.routing_evidence ?? status?.routing_evidence;
     const effectiveProviders = status?.effective_phase_providers ?? {};
     const hasStrategy = phaseStrategyEntries(undefined, routing, effectiveProviders).length > 0;
+    const backgroundJob = context?.background_job ?? activity.background_job ?? status?.background_job ?? null;
     return (
       <div className="overview-panel">
+        {backgroundJob ? (
+          <section>
+            <h2>后台任务</h2>
+            <BackgroundJobCard job={backgroundJob} />
+          </section>
+        ) : null}
         {hasStrategy ? (
           <section>
             <h2>路由策略</h2>

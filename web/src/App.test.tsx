@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { Workbench } from "./App";
-import type { HandoffContext, PatchbayClient } from "./api";
+import type { BackgroundJob, HandoffContext, PatchbayClient } from "./api";
 
 const readyContext: HandoffContext = {
   run_id: "run-ready",
@@ -2676,11 +2676,22 @@ describe("Workbench", () => {
   });
 
   it("treats background jobs as first-class running state", async () => {
+    const backgroundJob: BackgroundJob = {
+      active: true,
+      status: "running",
+      kind: "agent",
+      phase: "write",
+      action: "continue",
+      pid: 4321,
+      duration_ms: 1500,
+      started_at: "2026-05-24T10:03:00Z"
+    };
     const runningContext: HandoffContext = {
       ...plannedContext,
       run_id: "run-ready",
       status: "RUNNING",
       current_phase: "write",
+      background_job: backgroundJob,
       next_actions: [],
       timeline: [
         {
@@ -2697,6 +2708,7 @@ describe("Workbench", () => {
         ...plannedContext.agent_activity!,
         headline: "Patchbay Agent 正在执行实现阶段。",
         tone: "running",
+        background_job: backgroundJob,
         current_step: { phase: "write", label: "实现", status: "RUNNING", status_label: "运行中", summary: "后台任务正在运行，状态会自动刷新。" },
         next_action: null,
         conversation_state: {
@@ -2727,13 +2739,14 @@ describe("Workbench", () => {
     };
     const client = createClient({
       listRuns: vi.fn().mockResolvedValue({
-        runs: [{ run_id: "run-ready", task: "Background implementation", status: "APPROVED" }]
+        runs: [{ run_id: "run-ready", task: "Background implementation", status: "APPROVED", background_job: backgroundJob }]
       }),
       getStatus: vi.fn().mockResolvedValue({
         run_id: "run-ready",
         task: "Background implementation",
         status: "RUNNING",
         current_phase: "write",
+        background_job: backgroundJob,
         gate_state: { approved: true, tests_passed: false, review_result: null, ready_to_apply: false },
         next_commands: [],
         artifacts: [],
@@ -2745,6 +2758,10 @@ describe("Workbench", () => {
     render(<Workbench client={client} />);
 
     expect(await screen.findByText("Patchbay Agent 正在执行实现阶段。")).toBeInTheDocument();
+    expect(screen.getAllByLabelText("Background job status")).toHaveLength(2);
+    expect(screen.getAllByText(/后台运行中/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/pid 4321/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/1.5s/).length).toBeGreaterThan(0);
     expect(screen.getByText("后台任务运行中")).toBeInTheDocument();
     expect(screen.getByText("运行中 · 实现")).toBeInTheDocument();
     expect(screen.getByLabelText("给 Patchbay Agent 输入消息")).toBeDisabled();

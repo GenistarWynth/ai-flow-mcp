@@ -4,6 +4,7 @@ export type RunSummary = {
   task?: string;
   updated_at?: string;
   run_dir?: string;
+  background_job?: BackgroundJob | null;
 };
 
 export type GateState = {

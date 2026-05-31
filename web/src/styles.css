@@ -54,6 +54,30 @@ textarea { resize: none; }
 .run-task { min-width: 0; color: #172033; font-weight: 720; overflow-wrap: anywhere; }
 .run-meta { display: flex; justify-content: space-between; gap: 10px; min-width: 0; }
 .run-meta span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.background-job-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid #d9dee6;
+  border-radius: 8px;
+  padding: 4px 6px;
+  color: #344255;
+  background: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+}
+.background-job-badge span, .background-job-badge small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.background-job-badge small { color: #647083; font-weight: 700; }
+.background-job-badge.tone-running { border-color: #ddd6fe; color: #5b21b6; background: #f5f3ff; }
+.background-job-badge.tone-success { border-color: #b7e4c7; color: #166534; background: #f1fbf6; }
+.background-job-badge.tone-failed { border-color: #f0b6b2; color: #b42318; background: #fff8f7; }
 
 .center {
   display: grid;
@@ -425,6 +449,30 @@ textarea { resize: none; }
 .tone-blocked .bubble-body { border-left-color: #d97706; }
 .tone-failed .bubble-body { border-left-color: #b42318; }
 .tone-idle .bubble-body { border-left-color: #98a2b3; }
+
+.background-job-card {
+  justify-self: start;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  width: min(760px, 100%);
+  border: 1px solid #d9dee6;
+  border-left: 4px solid #98a2b3;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #ffffff;
+}
+.background-job-card.tone-running { border-left-color: #7c3aed; background: #fbfaff; }
+.background-job-card.tone-success { border-left-color: #168a54; background: #f7fdf9; }
+.background-job-card.tone-failed { border-left-color: #b42318; background: #fff8f7; }
+.background-job-card strong, .background-job-card span {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.background-job-card span { margin-top: 3px; color: #647083; font-size: 12px; }
+.background-job-card p { margin: 6px 0 0; color: #b42318; font-size: 12px; overflow-wrap: anywhere; }
 
 .next-card {
   justify-self: start;
