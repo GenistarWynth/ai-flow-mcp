@@ -320,6 +320,24 @@ function requestedTabFromAgentResponse(response?: AgentResponse | null): TabName
   return null;
 }
 
+function requestedDisplayTabFromAgentResponse(response?: AgentResponse | null): TabName | null {
+  const requestedView = response?.requested_view ?? response?.run_reference?.requested_view;
+  if (requestedView?.tab === "Overview") return "Overview";
+  return requestedTabFromAgentResponse(response);
+}
+
+function isRunStatusPayload(status: AgentResponse["status"], runId: string): status is RunStatus {
+  if (!status || status.run_id !== runId) return false;
+  return Boolean(status.task || status.gate_state || status.next_commands || status.artifacts || "tests_passed" in status || "review_result" in status);
+}
+
+function isLatestRunReadOnlyResponse(response: AgentResponse): response is AgentResponse & { run_id: string } {
+  if (!response.run_id) return false;
+  if (!new Set(["artifact", "diff", "metrics", "status"]).has(response.action ?? "")) return false;
+  if (response.recent_run?.run_id === response.run_id || response.run_reference?.run_id === response.run_id) return true;
+  return (response.actions ?? []).some((action) => action.kind === "open_run" && action.run_id === response.run_id && action.safe !== false);
+}
+
 function previewArtifactName(status?: RunStatus | null) {
   return status?.artifacts?.find((name) => name.endsWith(".log") || name.endsWith(".md")) ?? null;
 }
@@ -1124,8 +1142,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
 
   const refreshRun = async (runId: string, agentResponse?: AgentResponse) => {
     await loadRuns(runId);
-    const requestedTab = requestedTabFromAgentResponse(agentResponse);
-    const nextStatus = agentResponse?.status ?? (await client.getStatus(runId));
+    const requestedTab = requestedDisplayTabFromAgentResponse(agentResponse);
+    const nextStatus = isRunStatusPayload(agentResponse?.status, runId) ? agentResponse.status : await client.getStatus(runId);
     setStatus(nextStatus);
     if (agentResponse?.context) {
       setContext(agentResponse.context);
@@ -1235,21 +1253,21 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }
   };
 
-  const appendLocalMessage = (body: string) => {
+  const appendLocalMessage = (body: string, targetRunKey = runKey) => {
     const timestamp = new Date().toISOString();
     setLocalMessages((current) => ({
       ...current,
-      [runKey]: [...(current[runKey] ?? []), { id: `local-${Date.now()}`, body, timestamp }]
+      [targetRunKey]: [...(current[targetRunKey] ?? []), { id: `local-${Date.now()}`, body, timestamp }]
     }));
   };
 
-  const appendLocalAgentReply = (response: AgentResponse) => {
+  const appendLocalAgentReply = (response: AgentResponse, targetRunKey = runKey) => {
     const body = response.reply || response.action || "Patchbay Agent returned a local response.";
     const timestamp = new Date().toISOString();
     setLocalMessages((current) => ({
       ...current,
-      [runKey]: [
-        ...(current[runKey] ?? []),
+      [targetRunKey]: [
+        ...(current[targetRunKey] ?? []),
         { id: `local-agent-${Date.now()}`, role: "assistant", body, timestamp, response }
       ]
     }));
@@ -1500,6 +1518,13 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         const created = await client.agentMessage(text, { include: { plan: true }, background: true });
         setComposer("");
         setNewTaskReply(null);
+        if (isLatestRunReadOnlyResponse(created)) {
+          appendLocalMessage(text, created.run_id);
+          appendLocalAgentReply(created, created.run_id);
+          setNewTaskMode(false);
+          await refreshRun(created.run_id, created);
+          return;
+        }
         if (!created.run_id) {
           appendLocalMessage(text);
           setNewTaskMode(true);
@@ -2206,7 +2231,7 @@ function LocalAgentResponseDetails({
 }) {
   if (!response) return null;
   const commands = localReplyCommandActions(response);
-  const suggestions = localReplyActions(response);
+  const suggestions = localReplyActions(response).filter((action) => !(response.run_id && action.id === "open-latest-run" && action.runId === response.run_id));
   const hasPanels = Boolean(
     response.gate_diagnosis ||
       response.setup ||

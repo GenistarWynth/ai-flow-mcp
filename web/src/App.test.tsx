@@ -1151,6 +1151,134 @@ describe("Workbench", () => {
     expect(client.cleanup).not.toHaveBeenCalled();
   });
 
+  it("opens latest-run read-only replies directly from the new-task composer", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: "run-ready",
+      action: "diff",
+      ok: true,
+      reply: "Latest run run-ready diff view.",
+      recent_run: { run_id: "run-ready", task: "Approve a plan", status: "PLANNED" },
+      run_reference: {
+        run_id: "run-ready",
+        task: "Approve a plan",
+        status: "PLANNED",
+        requested_view: { tab: "Diff", reason: "The prompt asked for the run diff or patch." }
+      },
+      requested_view: { tab: "Diff", reason: "The prompt asked for the run diff or patch." },
+      actions: [
+        {
+          id: "open_latest_run",
+          label: "Open latest run",
+          kind: "open_run",
+          run_id: "run-ready",
+          tab: "Diff",
+          safe: true,
+          reason: "Open the latest Patchbay run that supplied this read-only view."
+        }
+      ]
+    });
+    const client = createClient({
+      listRuns: vi
+        .fn()
+        .mockResolvedValueOnce({ runs: [] })
+        .mockResolvedValue({ runs: [{ run_id: "run-ready", task: "Approve a plan", status: "PLANNED" }] }),
+      agentMessage,
+      getStatus: vi.fn().mockResolvedValue({
+        run_id: "run-ready",
+        task: "Approve a plan",
+        status: "PLANNED",
+        current_phase: "plan",
+        gate_state: { approved: false, tests_passed: false, review_result: null, ready_to_apply: false },
+        next_commands: ["approve"],
+        artifacts: [],
+        effective_phase_providers: {}
+      }),
+      getContext: vi.fn().mockResolvedValue({ ...plannedContext, run_id: "run-ready" })
+    });
+
+    render(<Workbench client={client} />);
+
+    await waitFor(() => expect(client.listRuns).toHaveBeenCalled());
+    const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(composer, "diff{enter}");
+
+    expect(await screen.findByRole("heading", { name: "Approve a plan" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "差异" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("diff --git a/web b/web")).toBeVisible();
+    expect(screen.getByText("Latest run run-ready diff view.")).toBeVisible();
+    expect(screen.queryByRole("button", { name: /open latest run/i })).not.toBeInTheDocument();
+    expect(agentMessage).toHaveBeenCalledWith("diff", { include: { plan: true }, background: true });
+    expect(client.getStatus).toHaveBeenCalledWith("run-ready");
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
+  it("loads real run status when opening latest metrics replies", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: "run-ready",
+      action: "metrics",
+      ok: true,
+      reply: "Latest run run-ready metrics: tokens known.",
+      status: {
+        run_id: "run-ready",
+        status: "PLANNED",
+        current_phase: "plan",
+        run_metrics: { token_usage: { known: true, total_tokens: 1234 } }
+      },
+      recent_run: { run_id: "run-ready", task: "Approve a plan", status: "PLANNED" },
+      run_reference: {
+        run_id: "run-ready",
+        task: "Approve a plan",
+        status: "PLANNED",
+        requested_view: { tab: "Overview", reason: "The prompt asked for latest run efficiency metrics." }
+      },
+      requested_view: { tab: "Overview", reason: "The prompt asked for latest run efficiency metrics." },
+      actions: [
+        {
+          id: "open_latest_run",
+          label: "Open latest run",
+          kind: "open_run",
+          run_id: "run-ready",
+          tab: "Overview",
+          safe: true,
+          reason: "Open the latest Patchbay run that supplied these read-only metrics."
+        }
+      ]
+    });
+    const getStatus = vi.fn().mockResolvedValue({
+      run_id: "run-ready",
+      task: "Approve a plan",
+      status: "PLANNED",
+      current_phase: "plan",
+      gate_state: { approved: false, tests_passed: false, review_result: null, ready_to_apply: false },
+      next_commands: ["approve"],
+      artifacts: [],
+      effective_phase_providers: {}
+    });
+    const client = createClient({
+      listRuns: vi
+        .fn()
+        .mockResolvedValueOnce({ runs: [] })
+        .mockResolvedValue({ runs: [{ run_id: "run-ready", task: "Approve a plan", status: "PLANNED" }] }),
+      agentMessage,
+      getStatus,
+      getContext: vi.fn().mockResolvedValue({ ...plannedContext, run_id: "run-ready" })
+    });
+
+    render(<Workbench client={client} />);
+
+    await waitFor(() => expect(client.listRuns).toHaveBeenCalled());
+    const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(composer, "metrics{enter}");
+
+    expect(await screen.findByRole("heading", { name: "Approve a plan" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "状态" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("Latest run run-ready metrics: tokens known.")).toBeVisible();
+    expect(getStatus).toHaveBeenCalledWith("run-ready");
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
   it("uses structured missing-run actions without parsing next-action prose", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: null,
