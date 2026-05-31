@@ -701,6 +701,23 @@ test = []
         self.assertIn("needs an existing run_id", response["reply"])
         self.assertEqual(len(list((self.repo / ".ai" / "runs").iterdir())), 0)
 
+    def test_agent_metrics_without_run_reads_latest_run(self) -> None:
+        planned = agent_message(self.repo, "build latest run target")
+
+        response = agent_message(self.repo, "metrics")
+
+        self.assertEqual(response["action"], "metrics")
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["run_id"], planned["run_id"])
+        self.assertEqual(response["metrics"]["run_id"], planned["run_id"])
+        self.assertEqual(response["recent_run"]["run_id"], planned["run_id"])
+        self.assertEqual(response["run_reference"]["run_id"], planned["run_id"])
+        self.assertEqual(response["requested_view"]["tab"], "Overview")
+        self.assertIn("Latest run", response["reply"])
+        actions = {item["id"]: item for item in response["actions"]}
+        self.assertEqual(actions["open_latest_run"]["run_id"], planned["run_id"])
+        self.assertEqual(len(list((self.repo / ".ai" / "runs").iterdir())), 1)
+
     def test_agent_metrics_with_run_returns_efficiency_digest(self) -> None:
         planned = agent_message(self.repo, "metrics target")
 
@@ -848,13 +865,17 @@ test = []
         planned = agent_message(self.repo, "latest chinese gate handoff")
         run_id = planned["run_id"]
 
-        for message in ("继续推进", "确认计划", "应用补丁", "查看成本"):
+        for message in ("继续推进", "确认计划", "应用补丁"):
             with self.subTest(message=message):
                 response = agent_message(self.repo, message)
                 self.assertEqual(response["action"], "missing_run")
                 self.assertEqual(response["recent_run"]["run_id"], run_id)
                 self.assertEqual(response["run_reference"]["run_id"], run_id)
                 self.assertIn("open latest run", response["next_actions"])
+        metrics = agent_message(self.repo, "查看成本")
+        self.assertEqual(metrics["action"], "metrics")
+        self.assertEqual(metrics["run_id"], run_id)
+        self.assertEqual(metrics["recent_run"]["run_id"], run_id)
 
         self.assertEqual(len(list((self.repo / ".ai" / "runs").iterdir())), 1)
 
@@ -1572,6 +1593,16 @@ model = "cheap-model"
         self.assertEqual(response["action"], "metrics")
         self.assertEqual(response["metrics"]["run_id"], planned["run_id"])
         self.assertIn("run_metrics", response["metrics"])
+
+    def test_cli_agent_metrics_without_run_reads_latest_run(self) -> None:
+        planned = agent_message(self.repo, "build cli latest run target")
+
+        response = self.cli_json("agent", "message", "cost")
+
+        self.assertEqual(response["action"], "metrics")
+        self.assertEqual(response["run_id"], planned["run_id"])
+        self.assertEqual(response["metrics"]["run_id"], planned["run_id"])
+        self.assertEqual(response["recent_run"]["run_id"], planned["run_id"])
 
     def test_cli_agent_continue_without_run_returns_local_guidance(self) -> None:
         response = self.cli_json("agent", "message", "continue")

@@ -115,6 +115,8 @@ def agent_message(
         return _missing_run_response(root, text)
     if intent == "setup":
         return _setup_response(root, text)
+    if intent == "metrics_latest":
+        return _latest_metrics_response(root, text)
     if intent == "metrics":
         assert run_id is not None
         return _metrics_response(root, run_id)
@@ -695,7 +697,7 @@ def _classify_intent(message: str, *, has_run: bool, confirmation: str) -> str:
     if _is_gate_status_query(text):
         return "gate_status"
     if _is_metrics_intent(text):
-        return "metrics" if has_run else "missing_run"
+        return "metrics" if has_run else "metrics_latest"
     if not has_run:
         if _is_runs_intent(text):
             return "runs"
@@ -1194,7 +1196,7 @@ def _help_response(root: Path) -> dict[str, Any]:
         },
         {
             "name": "metrics",
-            "summary": "Send `metrics`, `cost`, or `tokens` with a run_id to inspect run efficiency evidence.",
+            "summary": "Send `metrics`, `cost`, or `tokens` to inspect the latest run, or include a run_id to inspect a specific run's efficiency evidence.",
         },
         {
             "name": "continue",
@@ -1541,6 +1543,47 @@ def _metrics_response(root: Path, run_id: str) -> dict[str, Any]:
         "error": None,
         "metrics": metrics_payload,
     }
+
+
+def _latest_metrics_response(root: Path, text: str) -> dict[str, Any]:
+    report = service.runs(root, limit=5)
+    recent = list(report.get("runs") or [])
+    if not recent:
+        return _missing_run_response(root, text)
+    latest = recent[0]
+    latest_run_id = str(latest.get("run_id") or "")
+    response = _metrics_response(root, latest_run_id)
+    requested_view = {"tab": "Overview", "reason": "The prompt asked for latest run efficiency metrics."}
+    open_action = {
+        "id": "open_latest_run",
+        "label": "Open latest run",
+        "kind": "open_run",
+        "run_id": latest_run_id,
+        "tab": "Overview",
+        "safe": True,
+        "reason": "Open the latest Patchbay run that supplied these read-only metrics.",
+    }
+    actions = [open_action, *list(response.get("actions") or [])]
+    response.update(
+        {
+            "reply": response["reply"].replace(f"Run {latest_run_id} metrics:", f"Latest run {latest_run_id} metrics:", 1),
+            "next_actions": ["open latest run", "status", "continue", "readiness"],
+            "actions": actions,
+            "recent_run": latest,
+            "run_reference": {
+                "run_id": latest_run_id,
+                "status": latest.get("status"),
+                "task": latest.get("task"),
+                "updated_at": latest.get("updated_at"),
+                "suggested_message": "open latest run",
+                "safe_actions": ["open_run", "status", "events"],
+                "requested_view": requested_view,
+            },
+            "requested_view": requested_view,
+            "runs": report,
+        }
+    )
+    return response
 
 
 def _missing_run_response(root: Path, text: str) -> dict[str, Any]:
