@@ -1546,7 +1546,12 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       return;
     }
     const targetRun = action.run_id || selectedRun;
-    if (action.kind === "local_agent" && action.message && ["events", "status"].includes(action.message) && targetRun) {
+    if (action.kind === "local_agent" && action.message && ["context", "events", "status"].includes(action.message) && targetRun) {
+      if (action.message === "context") {
+        await loadContextNow(targetRun);
+        await loadRuns(targetRun);
+        return;
+      }
       if (action.message === "events") {
         setDiagnosticsOpen(true);
         setActiveTab("Trace");
@@ -2115,7 +2120,7 @@ function BackgroundJobCard({
           <div className="background-job-actions">
             {actions.map((action) => (
               <button type="button" onClick={() => onAction?.(action)} aria-label={action.label} disabled={!onAction} key={action.id || action.label}>
-                {action.kind === "diagnostic_tab" || action.kind === "open_run" ? <Search size={13} /> : <RefreshCw size={13} />}
+                {action.kind === "diagnostic_tab" || action.kind === "open_run" ? <Search size={13} /> : action.message === "context" ? <FileText size={13} /> : <RefreshCw size={13} />}
                 {action.label}
               </button>
             ))}

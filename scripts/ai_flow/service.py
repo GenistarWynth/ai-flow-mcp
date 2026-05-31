@@ -143,7 +143,7 @@ def _background_job_summary(job: dict[str, Any]) -> dict[str, Any]:
     run_id = str(job.get("run_id") or "")
     actions = list(job.get("actions") or [])
     if not actions and run_id and run_id != "pending":
-        actions = _background_followup_actions(run_id)
+        actions = background_followup_actions(run_id)
     return {
         "active": not finished,
         "status": "failed" if failed else "finished" if finished else "running",
@@ -162,7 +162,7 @@ def _background_job_summary(job: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _background_followup_actions(run_id: str) -> list[dict[str, Any]]:
+def background_followup_actions(run_id: str) -> list[dict[str, Any]]:
     return [
         {
             "id": "open_background_run",
@@ -190,6 +190,15 @@ def _background_followup_actions(run_id: str) -> list[dict[str, Any]]:
             "message": "status",
             "safe": True,
             "reason": "Refresh this background run without approving, continuing, or applying changes.",
+        },
+        {
+            "id": "poll_context",
+            "label": "Poll context",
+            "kind": "local_agent",
+            "run_id": run_id,
+            "message": "context",
+            "safe": True,
+            "reason": "Refresh the latest handoff context for this background run.",
         },
         {
             "id": "poll_events",
@@ -462,7 +471,7 @@ def start_background_phase(
     env["PATCHBAY_BACKGROUND_SOURCE_SCRIPTS"] = str(Path(__file__).resolve().parents[1])
     if phase == "plan" and run_id:
         env[RESERVED_RUN_ENV] = run_id
-    background_actions = _background_followup_actions(str(run_id or "pending"))
+    background_actions = background_followup_actions(str(run_id or "pending"))
     pending_job = {
         "background": True,
         "phase": phase,

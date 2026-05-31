@@ -1929,18 +1929,21 @@ model = "cheap-model"
         self.assertEqual(actions["open_background_run"]["run_id"], run_id)
         self.assertEqual(actions["open_trace"]["tab"], "Trace")
         self.assertEqual(actions["poll_status"]["message"], "status")
+        self.assertEqual(actions["poll_context"]["message"], "context")
         self.assertEqual(actions["poll_events"]["message"], "events")
         self.assertTrue(all(item["safe"] for item in response["actions"]))
         background_actions = {item["id"]: item for item in response["background_job"]["actions"]}
         self.assertEqual(background_actions["open_background_run"]["run_id"], run_id)
         self.assertEqual(background_actions["open_trace"]["tab"], "Trace")
         self.assertEqual(background_actions["poll_status"]["message"], "status")
+        self.assertEqual(background_actions["poll_context"]["message"], "context")
         self.assertEqual(background_actions["poll_events"]["message"], "events")
         status_actions = {item["id"]: item for item in service.status(self.repo, run_id)["background_job"]["actions"]}
         self.assertEqual(status_actions["open_background_run"]["run_id"], run_id)
         self.assertEqual(status_actions["open_trace"]["tab"], "Trace")
         job_actions = {item["id"]: item for item in json.loads((run_path / "JOB.json").read_text(encoding="utf-8"))["actions"]}
         self.assertEqual(job_actions["poll_status"]["message"], "status")
+        self.assertEqual(job_actions["poll_context"]["message"], "context")
         self.assertEqual(job_actions["poll_events"]["message"], "events")
         self.assertNotIn("approve", {item.get("message") for item in response["actions"]})
         self.assertNotIn("apply", {item.get("message") for item in response["actions"]})
@@ -1994,18 +1997,22 @@ model = "cheap-model"
         self.assertEqual(actions["open_background_run"]["run_id"], run_id)
         self.assertEqual(actions["open_trace"]["tab"], "Trace")
         self.assertEqual(actions["poll_status"]["message"], "status")
+        self.assertEqual(actions["poll_context"]["message"], "context")
         self.assertTrue(all(item["safe"] for item in response["actions"]))
         background_actions = {item["id"]: item for item in response["background_job"]["actions"]}
         self.assertEqual(background_actions["open_background_run"]["run_id"], run_id)
         self.assertEqual(background_actions["open_trace"]["tab"], "Trace")
         self.assertEqual(background_actions["poll_status"]["message"], "status")
+        self.assertEqual(background_actions["poll_context"]["message"], "context")
         self.assertEqual(background_actions["poll_events"]["message"], "events")
         status_actions = {item["id"]: item for item in service.status(self.repo, run_id)["background_job"]["actions"]}
         self.assertEqual(status_actions["open_background_run"]["run_id"], run_id)
+        self.assertEqual(status_actions["poll_context"]["message"], "context")
         self.assertEqual(status_actions["poll_events"]["message"], "events")
         job_actions = {item["id"]: item for item in json.loads((run_path / "JOB.json").read_text(encoding="utf-8"))["actions"]}
         self.assertEqual(job_actions["open_trace"]["tab"], "Trace")
         self.assertEqual(job_actions["poll_status"]["message"], "status")
+        self.assertEqual(job_actions["poll_context"]["message"], "context")
         self.assertNotIn("approve", {item.get("message") for item in response["actions"]})
         self.assertNotIn("apply", {item.get("message") for item in response["actions"]})
         self.assertNotIn("continue", {item.get("message") for item in response["actions"]})
@@ -2048,6 +2055,7 @@ model = "cheap-model"
         status_actions = {item["id"]: item for item in status_payload["background_job"]["actions"]}
         self.assertEqual(status_actions["open_background_run"]["run_id"], run_id)
         self.assertEqual(status_actions["poll_status"]["message"], "status")
+        self.assertEqual(status_actions["poll_context"]["message"], "context")
         self.assertEqual(status_actions["poll_events"]["message"], "events")
         self.assertTrue(status["gate_state"]["ready_to_apply"] if "gate_state" in status else status["tests_passed"])
 

@@ -3592,6 +3592,24 @@ describe("Workbench", () => {
           message: "status",
           safe: true,
           reason: "Refresh this background run without approving, continuing, or applying changes."
+        },
+        {
+          id: "poll_context",
+          label: "Poll context",
+          kind: "local_agent",
+          run_id: "run-ready",
+          message: "context",
+          safe: true,
+          reason: "Refresh the latest handoff context for this background run."
+        },
+        {
+          id: "poll_events",
+          label: "Poll events",
+          kind: "local_agent",
+          run_id: "run-ready",
+          message: "events",
+          safe: true,
+          reason: "Read the background run event stream without advancing any phase."
         }
       ]
     };
@@ -3673,11 +3691,17 @@ describe("Workbench", () => {
     expect(screen.getByRole("button", { name: "Open background run" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open activity" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Poll status" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Poll context" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Poll events" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Open activity" }));
     expect(screen.getByRole("tab", { selected: true })).toBeInTheDocument();
     const statusCalls = vi.mocked(client.getStatus).mock.calls.length;
     await userEvent.click(screen.getByRole("button", { name: "Poll status" }));
     await waitFor(() => expect(client.getStatus).toHaveBeenCalledTimes(statusCalls + 1));
+    const contextCalls = vi.mocked(client.getContext).mock.calls.length;
+    await userEvent.click(screen.getByRole("button", { name: "Poll context" }));
+    await waitFor(() => expect(client.getContext).toHaveBeenCalledTimes(contextCalls + 1));
+    expect(screen.getByRole("heading", { name: "Background implementation" })).toBeInTheDocument();
     expect(screen.getAllByText(/1.5s/).length).toBeGreaterThan(0);
     expect(screen.getByText("后台任务运行中")).toBeInTheDocument();
     expect(screen.getByText("运行中 · 实现")).toBeInTheDocument();

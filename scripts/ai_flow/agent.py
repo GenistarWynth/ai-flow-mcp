@@ -361,7 +361,7 @@ def _start_background_agent(
         max_fix_rounds=max_fix_rounds,
     )
     job_started = time.time()
-    background_actions = _background_followup_actions(run_id)
+    background_actions = service.background_followup_actions(run_id)
     pending_job = {
         "background": True,
         "kind": "agent",
@@ -2623,47 +2623,6 @@ def _error_response(message: str, *, action: str) -> dict[str, Any]:
     }
 
 
-def _background_followup_actions(run_id: str) -> list[dict[str, Any]]:
-    return [
-        {
-            "id": "open_background_run",
-            "label": "Open background run",
-            "kind": "open_run",
-            "run_id": run_id,
-            "tab": "Overview",
-            "safe": True,
-            "reason": "Open the run that owns this background job without advancing any gate.",
-        },
-        {
-            "id": "open_trace",
-            "label": "Open activity",
-            "kind": "diagnostic_tab",
-            "run_id": run_id,
-            "tab": "Trace",
-            "safe": True,
-            "reason": "Inspect queued/running background agent events and provider activity.",
-        },
-        {
-            "id": "poll_status",
-            "label": "Poll status",
-            "kind": "local_agent",
-            "run_id": run_id,
-            "message": "status",
-            "safe": True,
-            "reason": "Refresh this background run without approving, continuing, or applying changes.",
-        },
-        {
-            "id": "poll_events",
-            "label": "Poll events",
-            "kind": "local_agent",
-            "run_id": run_id,
-            "message": "events",
-            "safe": True,
-            "reason": "Read the background run event stream without advancing any phase.",
-        },
-    ]
-
-
 def _background_pending_response(*, action: str, run_id: str, reply: str, job: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": SCHEMA_VERSION,
@@ -2682,7 +2641,7 @@ def _background_pending_response(*, action: str, run_id: str, reply: str, job: d
         "background": True,
         "job": job,
         "background_job": service.summarize_background_job(job),
-        "actions": _background_followup_actions(run_id),
+        "actions": service.background_followup_actions(run_id),
     }
 
 
