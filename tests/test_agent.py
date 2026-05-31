@@ -224,6 +224,7 @@ test = []
         self.assertEqual(applied["routing"]["phases"]["write"]["configured"]["model"], "deepseek-v4-pro")
         self.assertEqual(applied["routing"]["phases"]["write"]["command_status"]["status"], "missing_config")
         self.assertIn("commands.reasonix", applied["reply"])
+        self.assertEqual(applied["routing"]["command_not_ready_phases"], ["write", "fix"])
         applied_actions = {item["id"]: item for item in applied["actions"]}
         self.assertEqual(applied_actions["open_readiness"]["message"], "readiness")
         self.assertEqual(applied_actions["configure_reasonix_command"]["kind"], "local_agent")
@@ -234,6 +235,13 @@ test = []
         self.assertEqual(resolve_phase(cfg, "write")["model"], "deepseek-v4-pro")
         self.assertEqual(resolve_phase(cfg, "fix")["provider"], "reasonix_cli")
         self.assertFalse((self.repo / ".ai" / "runs").exists())
+
+        shown_ready_gap = agent_message(self.repo, "is writer using cheap model?")
+        self.assertEqual(shown_ready_gap["action"], "profile_show")
+        self.assertTrue(shown_ready_gap["routing"]["economy_configured"])
+        self.assertFalse(shown_ready_gap["routing"]["economy_command_ready"])
+        self.assertEqual(shown_ready_gap["routing"]["command_not_ready_phases"], ["write", "fix"])
+        self.assertIn("cannot execute until `commands.reasonix`", shown_ready_gap["reply"])
 
     def test_agent_routing_questions_show_profile_without_mutating_config(self) -> None:
         from scripts.ai_flow.config import load_config, resolve_phase

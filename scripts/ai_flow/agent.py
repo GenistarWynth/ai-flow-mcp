@@ -1648,6 +1648,13 @@ def _profile_routing_digest(profile_result: dict[str, Any]) -> dict[str, Any]:
     fix = _phase_route_snapshot(economy.get("fix") if isinstance(economy.get("fix"), dict) else {})
     economy_active = bool(economy.get("matches"))
     command_status = economy.get("command_status") if isinstance(economy.get("command_status"), dict) else {}
+    command_not_ready = [
+        phase
+        for phase in ("write", "fix")
+        if isinstance(command_status.get(phase), dict)
+        and command_status[phase].get("required")
+        and command_status[phase].get("ready") is False
+    ]
     command_ready = economy.get("command_ready")
     recommendation = str(status.get("recommendation") or profile_result.get("recommendation") or "")
     return {
@@ -1655,6 +1662,7 @@ def _profile_routing_digest(profile_result: dict[str, Any]) -> dict[str, Any]:
         "target": {"provider": service.ECONOMY_PROVIDER, "model": service.ECONOMY_MODEL},
         "economy_configured": economy_active,
         "economy_command_ready": bool(command_ready) if command_ready is not None else None,
+        "command_not_ready_phases": command_not_ready,
         "phase_strategy": status.get("phase_strategy") or {},
         "phases": {
             "write": {
@@ -1812,6 +1820,9 @@ def _profile_show_response(root: Path) -> dict[str, Any]:
     reply = str(routing["summary"])
     if not routing.get("economy_configured"):
         reply += " " + str(result.get("recommendation") or "Run `patchbay config profile apply economy`.")
+    elif routing.get("economy_command_ready") is False:
+        phases = "/".join(routing.get("command_not_ready_phases") or ["write", "fix"])
+        reply += f" The economy route is configured, but {phases} cannot execute until `commands.reasonix` points to a runnable Reasonix CLI."
     return _stateless_response(
         action="profile_show",
         reply=reply,
