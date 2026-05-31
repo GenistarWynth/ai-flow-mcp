@@ -27,7 +27,7 @@ def run_reasonix_writer(
     env: dict[str, str] | None = None,
     phase: str = "write",
 ) -> str:
-    command = _acp_command(config, cwd, log_path, command_key=command_key)
+    command = _acp_command(config, cwd, log_path, command_key=command_key, phase=phase)
     transcript = _run_acp(command=command, prompt=_agent_prompt(prompt), cwd=cwd, log_path=log_path, timeout=timeout, env=env, phase=phase)
     return "\n".join(
         [
@@ -42,12 +42,12 @@ def run_reasonix_writer(
     ) + "\n"
 
 
-def _acp_command(config: dict, cwd: Path, log_path: Path, *, command_key: str = "reasonix") -> list[str]:
+def _acp_command(config: dict, cwd: Path, log_path: Path, *, command_key: str = "reasonix", phase: str = "write") -> list[str]:
     configured = split_command(config.get("commands", {}).get(command_key, ""))
     if not configured:
         raise AiFlowError(
             f"{command_key} command is not configured.",
-            stage="write",
+            stage=phase,
             suggested_next_action=(
                 f"Set commands.{command_key} in .ai/patchbay.toml to your Reasonix executable "
                 f"(reasonix or reasonix.cmd). Or explicitly configure "
@@ -108,11 +108,11 @@ def _run_acp(*, command: list[str], prompt: str, cwd: Path, log_path: Path, time
     except FileNotFoundError as exc:
         raise AiFlowError(
             f"Reasonix ACP command was not found: {command[0]}",
-            stage="write",
+            stage=phase,
             suggested_next_action="Check [commands].reasonix in .ai/patchbay.toml.",
         ) from exc
 
-    client = _JsonRpcClient(proc, log_path, trace)
+    client = _JsonRpcClient(proc, log_path, trace, phase=phase)
     try:
         init = client.request(
             "initialize",
@@ -138,7 +138,7 @@ def _run_acp(*, command: list[str], prompt: str, cwd: Path, log_path: Path, time
         if exit_code not in (0, None):
             raise AiFlowError(
                 f"Reasonix ACP exited with code {exit_code}.",
-                stage="write",
+                stage=phase,
                 suggested_next_action="Inspect writer.log and Reasonix transcript.",
             )
         transcript = "\n".join(
@@ -246,14 +246,15 @@ class _TraceRecorder:
 
 
 class _JsonRpcClient:
-    def __init__(self, proc: subprocess.Popen[str], log_path: Path, trace: _TraceRecorder) -> None:
+    def __init__(self, proc: subprocess.Popen[str], log_path: Path, trace: _TraceRecorder, *, phase: str = "write") -> None:
         if proc.stdin is None or proc.stdout is None:
-            raise AiFlowError("Reasonix ACP stdio pipes were not created.", stage="write")
+            raise AiFlowError("Reasonix ACP stdio pipes were not created.", stage=phase)
         self.proc = proc
         self.stdin = proc.stdin
         self.stdout = proc.stdout
         self.log_path = log_path
         self.trace = trace
+        self.phase = phase
         self.next_id = 1
         self.responses: dict[int, dict[str, Any]] = {}
         self.updates: list[str] = []
@@ -278,14 +279,14 @@ class _JsonRpcClient:
                     if "error" in response:
                         raise AiFlowError(
                             f"Reasonix ACP {method} failed: {response['error']}",
-                            stage="write",
+                            stage=self.phase,
                             suggested_next_action="Inspect writer.log and Reasonix transcript.",
                         )
                     return response.get("result")
             time.sleep(0.05)
         raise AiFlowError(
             f"Reasonix ACP timed out waiting for {method}.",
-            stage="write",
+            stage=self.phase,
             suggested_next_action="Inspect writer.log and reduce task ambiguity.",
         )
 
@@ -346,7 +347,7 @@ class _JsonRpcClient:
     def _raise_process_error(self, method: str) -> None:
         raise AiFlowError(
             f"Reasonix ACP exited before responding to {method} (exit code {self.proc.returncode}).",
-            stage="write",
+            stage=self.phase,
             suggested_next_action="Inspect writer.log and Reasonix transcript.",
         )
 

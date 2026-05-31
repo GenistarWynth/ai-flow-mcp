@@ -178,6 +178,22 @@ class TraceTest(unittest.TestCase):
         self.assertEqual(captured["phase"], "fix")
         self.assertEqual(list_trace(self.tmp)[0]["phase"], "fix")
 
+    def test_reasonix_writer_reports_fix_stage_for_command_errors(self) -> None:
+        from scripts.ai_flow.adapters import run_reasonix_writer
+        from scripts.ai_flow.errors import AiFlowError
+
+        with self.assertRaises(AiFlowError) as captured:
+            run_reasonix_writer(
+                prompt="repair",
+                config={"commands": {"reasonix": ""}},
+                cwd=self.tmp,
+                log_path=self.tmp / "writer.log",
+                phase="fix",
+            )
+
+        self.assertEqual(captured.exception.stage, "fix")
+        self.assertIn("reasonix command is not configured", str(captured.exception))
+
     def test_service_trace_returns_entries_and_total(self) -> None:
         from scripts.ai_flow.trace import append_trace
 
