@@ -30,6 +30,7 @@ export type GateDiagnosis = {
   review_result?: string | null;
   blockers?: GateDiagnosisCheck[];
   checks?: GateDiagnosisCheck[];
+  next_action?: AgentHealthAction | null;
 };
 
 export type FailureRecovery = {
@@ -405,6 +406,11 @@ export type AgentHealthAction = {
   run_id?: string;
   safe?: boolean;
   reason?: string;
+  requires_confirmation?: {
+    type?: string;
+    required_action?: string;
+    confirmation?: "plan_approved" | "apply_approved";
+  } | null;
 };
 
 export type AgentHealthCard = AgentGateCard & {

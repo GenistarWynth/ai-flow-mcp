@@ -355,6 +355,39 @@ textarea { resize: none; }
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
+.gate-diagnosis-next {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(217, 119, 6, 0.22);
+  border-radius: 8px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+.gate-diagnosis-next span {
+  grid-column: 1 / -1;
+  color: #92400e;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.gate-diagnosis-next strong {
+  min-width: 0;
+  color: #172033;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.gate-diagnosis-next em {
+  color: #647083;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  text-align: right;
+}
+.gate-diagnosis-next p {
+  grid-column: 1 / -1;
+}
 .gate-diagnosis-checks {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

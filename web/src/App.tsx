@@ -2440,8 +2440,14 @@ function GateDiagnosisCard({ diagnosis }: { diagnosis?: GateDiagnosis | null }) 
   if (!diagnosis) return null;
   const checks = diagnosis.checks?.length ? diagnosis.checks : diagnosis.blockers ?? [];
   const blockers = diagnosis.blockers?.filter((check) => check.ok === false) ?? [];
+  const nextAction = diagnosis.next_action;
   const ready = Boolean(diagnosis.ready_to_apply);
   const status = diagnosis.status || "unknown";
+  const nextActionTone = nextAction?.requires_confirmation
+    ? "需要显式确认"
+    : nextAction?.safe === false
+      ? "需手动执行"
+      : "安全后续";
   return (
     <div className={`gate-diagnosis-card ${ready ? "ready" : "blocked"}`} aria-label="Gate diagnosis">
       <div className="gate-diagnosis-head">
@@ -2456,6 +2462,14 @@ function GateDiagnosisCard({ diagnosis }: { diagnosis?: GateDiagnosis | null }) 
             ? `Apply 仍被 ${blockers.length} 项检查阻塞。`
             : "Apply 尚未标记为可执行，请查看状态和事件证据。"}
       </p>
+      {nextAction ? (
+        <div className="gate-diagnosis-next">
+          <span>下一步动作</span>
+          <strong>{nextAction.label || nextAction.id}</strong>
+          <em>{nextActionTone}</em>
+          {nextAction.reason ? <p>{nextAction.reason}</p> : null}
+        </div>
+      ) : null}
       {checks.length ? (
         <div className="gate-diagnosis-checks">
           {checks.map((check) => {

@@ -2795,13 +2795,115 @@ def _gate_diagnosis(status_data: dict[str, Any]) -> dict[str, Any]:
         },
     ]
     blockers = [item for item in checks if not item["ok"]]
-    return {
+    diagnosis = {
         "status": status_value,
         "ready_to_apply": bool(gate.get("ready_to_apply")),
         "tests_status": tests_status,
         "review_result": review_result,
         "blockers": blockers,
         "checks": checks,
+    }
+    diagnosis["next_action"] = _gate_next_action(status_data, diagnosis)
+    return diagnosis
+
+
+def _gate_next_action(status_data: dict[str, Any], diagnosis: dict[str, Any]) -> dict[str, Any]:
+    blocker = status_data.get("blocked_next_action") if isinstance(status_data.get("blocked_next_action"), dict) else None
+    if blocker:
+        action = dict(blocker.get("action") or {}) if isinstance(blocker.get("action"), dict) else {}
+        action.setdefault("id", "unblock_provider_command")
+        action.setdefault("label", "Fix provider command")
+        action.setdefault("kind", "local_agent")
+        action.setdefault("safe", True)
+        action.setdefault("reason", blocker.get("message") or blocker.get("suggested_next_action") or "Repair the blocked provider command.")
+        return action
+
+    status_value = str(status_data.get("status") or "unknown")
+    if diagnosis.get("ready_to_apply"):
+        return {
+            "id": "apply",
+            "label": "Apply reviewed diff",
+            "kind": "local_agent",
+            "message": "apply",
+            "safe": False,
+            "requires_confirmation": _confirmation("apply_approval", "apply", APPLY_CONFIRMATION),
+            "reason": "Tests and review passed; apply still requires explicit confirmation.",
+        }
+    if status_value == PLANNED:
+        return {
+            "id": "approve_and_run",
+            "label": "Approve plan",
+            "kind": "local_agent",
+            "message": "approve",
+            "safe": False,
+            "requires_confirmation": _confirmation("plan_approval", "approve_and_run", PLAN_CONFIRMATION),
+            "reason": "Plan approval is required before write/test/review phases can run.",
+        }
+    if status_value == REVIEWED_PASS and not status_data.get("tests_passed"):
+        tests_status = str(diagnosis.get("tests_status") or "unknown")
+        return {
+            "id": "open_readiness",
+            "label": "Configure tests",
+            "kind": "local_agent",
+            "message": "readiness",
+            "safe": True,
+            "reason": f"Tests are not passing yet (tests_status={tests_status}); configure tests or adjust the apply-without-tests policy.",
+        }
+    if status_value in {APPROVED, IMPLEMENTED, TESTED, REVIEWED_CHANGES_REQUESTED}:
+        labels = {
+            APPROVED: "Continue to write",
+            IMPLEMENTED: "Continue to test",
+            TESTED: "Continue to review",
+            REVIEWED_CHANGES_REQUESTED: "Continue to fix",
+        }
+        reasons = {
+            APPROVED: "Run the writer phase in the isolated Patchbay worktree.",
+            IMPLEMENTED: "Run configured tests to create apply-gate evidence.",
+            TESTED: "Run review so the apply gate can verify PASS.",
+            REVIEWED_CHANGES_REQUESTED: "Run a fix/test/review loop before apply is allowed.",
+        }
+        return {
+            "id": "continue",
+            "label": labels.get(status_value, "Continue run"),
+            "kind": "local_agent",
+            "message": "continue",
+            "safe": False,
+            "reason": reasons.get(status_value, "Run the next Patchbay phase for the selected run."),
+        }
+    if status_value == FAILED:
+        return {
+            "id": "inspect_failure",
+            "label": "Inspect failure",
+            "kind": "diagnostic_tab",
+            "tab": "Trace",
+            "safe": True,
+            "reason": "Inspect events and artifacts before retrying or starting a replacement task.",
+        }
+    if status_value == APPLIED:
+        return {
+            "id": "inspect_status",
+            "label": "Inspect applied run",
+            "kind": "local_agent",
+            "message": "status",
+            "safe": True,
+            "reason": "Run has already been applied; inspect status/events or clean up the isolated worktree.",
+        }
+    if status_value in {IMPLEMENTING, TESTING, REVIEWING, FIXING}:
+        return {
+            "id": "poll_status",
+            "label": "Poll status",
+            "kind": "local_agent",
+            "message": "status",
+            "safe": True,
+            "reason": "A phase is running; poll status, context, or events.",
+        }
+    return {
+        "id": "inspect_status",
+        "label": "Inspect status",
+        "kind": "local_agent",
+        "message": "status",
+        "safe": True,
+        "reason": "Inspect status and events before choosing another action.",
     }
 
 

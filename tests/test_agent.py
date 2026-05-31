@@ -776,6 +776,9 @@ test = []
         self.assertEqual(response["run_id"], run_id)
         self.assertEqual(response["status"]["status"], "PLANNED")
         self.assertFalse(response["gate_diagnosis"]["ready_to_apply"])
+        self.assertEqual(response["gate_diagnosis"]["next_action"]["id"], "approve_and_run")
+        self.assertFalse(response["gate_diagnosis"]["next_action"]["safe"])
+        self.assertEqual(response["gate_diagnosis"]["next_action"]["requires_confirmation"]["confirmation"], PLAN_CONFIRMATION)
         blocker_keys = [item["key"] for item in response["gate_diagnosis"]["blockers"]]
         self.assertIn("approval", blocker_keys)
         self.assertIn("tests", blocker_keys)
@@ -798,6 +801,7 @@ test = []
         self.assertEqual(response["recent_run"]["run_id"], run_id)
         self.assertEqual(response["run_reference"]["run_id"], run_id)
         self.assertEqual(response["run_reference"]["gate_diagnosis"]["status"], "PLANNED")
+        self.assertEqual(response["run_reference"]["gate_diagnosis"]["next_action"]["id"], "approve_and_run")
         self.assertEqual(response["latest_status"]["status"], "PLANNED")
         actions = {item["id"]: item for item in response["actions"]}
         self.assertEqual(actions["open_latest_run"]["kind"], "open_run")
@@ -815,6 +819,9 @@ test = []
         self.assertEqual(response["action"], "gate_status")
         self.assertTrue(response["gate_diagnosis"]["ready_to_apply"])
         self.assertEqual(response["gate_diagnosis"]["blockers"], [])
+        self.assertEqual(response["gate_diagnosis"]["next_action"]["id"], "apply")
+        self.assertFalse(response["gate_diagnosis"]["next_action"]["safe"])
+        self.assertEqual(response["gate_diagnosis"]["next_action"]["requires_confirmation"]["confirmation"], APPLY_CONFIRMATION)
         self.assertEqual(response["requires_confirmation"]["confirmation"], APPLY_CONFIRMATION)
         actions = {item["id"]: item for item in response["actions"]}
         self.assertEqual(actions["open_diff"]["tab"], "Diff")
@@ -1126,6 +1133,8 @@ test = []
         self.assertEqual(response["status"]["status"], "PLANNED")
         self.assertNotEqual(response["requires_confirmation"]["confirmation"], APPLY_CONFIRMATION)
         self.assertFalse(response["gate_diagnosis"]["ready_to_apply"])
+        self.assertEqual(response["gate_diagnosis"]["next_action"]["id"], "approve_and_run")
+        self.assertEqual(response["gate_diagnosis"]["next_action"]["requires_confirmation"]["confirmation"], PLAN_CONFIRMATION)
         blocker_keys = [item["key"] for item in response["gate_diagnosis"]["blockers"]]
         self.assertIn("approval", blocker_keys)
         self.assertIn("tests", blocker_keys)
@@ -1152,6 +1161,8 @@ test = []
         self.assertIsNone(apply_response["requires_confirmation"])
         self.assertFalse(apply_response["gate_diagnosis"]["ready_to_apply"])
         self.assertIn("tests", [item["key"] for item in apply_response["gate_diagnosis"]["blockers"]])
+        self.assertEqual(apply_response["gate_diagnosis"]["next_action"]["id"], "open_readiness")
+        self.assertEqual(apply_response["gate_diagnosis"]["next_action"]["message"], "readiness")
         self.assertEqual({item["id"]: item for item in apply_response["actions"]}["open_diff"]["tab"], "Diff")
 
     def test_mcp_patchbay_agent_wraps_same_service(self) -> None:

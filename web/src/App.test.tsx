@@ -1935,7 +1935,16 @@ describe("Workbench", () => {
           { key: "tests", label: "Tests", ok: false, status: "NOT_RUN", detail: "Tests are not passing yet." },
           { key: "review", label: "Review", ok: false, status: "pending", detail: "Review has not returned PASS." },
           { key: "apply", label: "Apply gate", ok: false, status: "blocked", detail: "Apply is blocked until tests pass and review returns PASS." }
-        ]
+        ],
+        next_action: {
+          id: "approve_and_run",
+          label: "Approve plan",
+          kind: "local_agent",
+          message: "approve",
+          safe: false,
+          reason: "Plan approval is required before write/test/review phases can run.",
+          requires_confirmation: { confirmation: "plan_approved" }
+        }
       },
       actions: [
         {
@@ -1986,6 +1995,9 @@ describe("Workbench", () => {
     expect(screen.getByLabelText("Gate diagnosis")).toBeVisible();
     expect(screen.getByText("门禁诊断")).toBeVisible();
     expect(screen.getByText("Apply 仍被 1 项检查阻塞。")).toBeVisible();
+    expect(screen.getByText("下一步动作")).toBeVisible();
+    expect(screen.getByText("Approve plan")).toBeVisible();
+    expect(screen.getByText("需要显式确认")).toBeVisible();
     expect(screen.getByText("Plan approval")).toBeVisible();
     expect(screen.getByText("Apply gate")).toBeVisible();
     await userEvent.click(await screen.findByRole("button", { name: /open latest run/i }));
@@ -2012,7 +2024,16 @@ describe("Workbench", () => {
           { key: "tests", label: "Tests", ok: true, status: "PASS", detail: "Tests passed." },
           { key: "review", label: "Review", ok: true, status: "PASS", detail: "Review passed." },
           { key: "apply", label: "Apply gate", ok: true, status: "ready", detail: "Apply can proceed with explicit confirmation." }
-        ]
+        ],
+        next_action: {
+          id: "apply",
+          label: "Apply reviewed diff",
+          kind: "local_agent",
+          message: "apply",
+          safe: false,
+          reason: "Tests and review passed; apply still requires explicit confirmation.",
+          requires_confirmation: { confirmation: "apply_approved" }
+        }
       },
       actions: [
         {
@@ -2049,6 +2070,7 @@ describe("Workbench", () => {
       })
     );
     expect(await screen.findByText(/through the technical gates/i)).toBeVisible();
+    expect(screen.getByText("Apply reviewed diff")).toBeVisible();
     expect(screen.getByLabelText("Gate diagnosis")).toBeVisible();
     expect(screen.getByText("所有技术门禁已通过；apply 仍需要显式确认。")).toBeVisible();
     expect(screen.getByText("Apply gate")).toBeVisible();
