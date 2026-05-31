@@ -140,6 +140,10 @@ def _background_job_summary(job: dict[str, Any]) -> dict[str, Any]:
     finished = _job_has_finished(job)
     exit_code = job.get("exit_code")
     failed = bool(job.get("reaper_error")) or (isinstance(exit_code, int) and exit_code != 0)
+    run_id = str(job.get("run_id") or "")
+    actions = list(job.get("actions") or [])
+    if not actions and run_id and run_id != "pending":
+        actions = _background_followup_actions(run_id)
     return {
         "active": not finished,
         "status": "failed" if failed else "finished" if finished else "running",
@@ -154,7 +158,49 @@ def _background_job_summary(job: dict[str, Any]) -> dict[str, Any]:
         "events_path": job.get("events_path"),
         "trace_path": job.get("trace_path"),
         "error": job.get("reaper_error"),
+        "actions": actions,
     }
+
+
+def _background_followup_actions(run_id: str) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": "open_background_run",
+            "label": "Open background run",
+            "kind": "open_run",
+            "run_id": run_id,
+            "tab": "Overview",
+            "safe": True,
+            "reason": "Open the run that owns this background job without advancing any gate.",
+        },
+        {
+            "id": "open_trace",
+            "label": "Open activity",
+            "kind": "diagnostic_tab",
+            "run_id": run_id,
+            "tab": "Trace",
+            "safe": True,
+            "reason": "Inspect queued/running background agent events and provider activity.",
+        },
+        {
+            "id": "poll_status",
+            "label": "Poll status",
+            "kind": "local_agent",
+            "run_id": run_id,
+            "message": "status",
+            "safe": True,
+            "reason": "Refresh this background run without approving, continuing, or applying changes.",
+        },
+        {
+            "id": "poll_events",
+            "label": "Poll events",
+            "kind": "local_agent",
+            "run_id": run_id,
+            "message": "events",
+            "safe": True,
+            "reason": "Read the background run event stream without advancing any phase.",
+        },
+    ]
 
 
 def _job_status_without_status(root: Path, run_id: str, job: dict[str, Any]) -> dict[str, Any]:
@@ -416,6 +462,7 @@ def start_background_phase(
     env["PATCHBAY_BACKGROUND_SOURCE_SCRIPTS"] = str(Path(__file__).resolve().parents[1])
     if phase == "plan" and run_id:
         env[RESERVED_RUN_ENV] = run_id
+    background_actions = _background_followup_actions(str(run_id or "pending"))
     pending_job = {
         "background": True,
         "phase": phase,
@@ -429,6 +476,7 @@ def start_background_phase(
         "run_dir": str(run_path),
         "events_path": str(run_path / "events.jsonl"),
         "trace_path": str(run_path / "trace.jsonl"),
+        "actions": background_actions,
     }
     _record_job(run_path, pending_job)
     try:

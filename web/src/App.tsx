@@ -382,10 +382,6 @@ function requestedTabFromLocalReply(text: string): RunReferenceView["tab"] | nul
 }
 
 function requestedTabFromAgentResponse(response?: AgentResponse | null): TabName | null {
-  for (const action of response?.actions ?? []) {
-    if (action.kind !== "diagnostic_tab" || !action.tab) continue;
-    if (diagnosticTabs.has(action.tab as TabName)) return action.tab as TabName;
-  }
   const requestedView = response?.requested_view ?? response?.run_reference?.requested_view;
   const tab = requestedView?.tab;
   if (tab && diagnosticTabs.has(tab as TabName)) return tab as TabName;
@@ -1549,6 +1545,15 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       await loadRuns(action.run_id);
       return;
     }
+    const targetRun = action.run_id || selectedRun;
+    if (action.kind === "local_agent" && action.message && ["events", "status"].includes(action.message) && targetRun) {
+      if (action.message === "events") {
+        setDiagnosticsOpen(true);
+        setActiveTab("Trace");
+      }
+      await refreshRun(targetRun);
+      return;
+    }
     if (isConfigureReasonixAction(action)) {
       await configureReasonixCommandAction(action.message || "configure reasonix command");
       return;
@@ -1767,15 +1772,6 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     setNewTaskReply(null);
   };
 
-  const openBackgroundActivity = () => {
-    setDiagnosticsOpen(true);
-    setActiveTab("Trace");
-  };
-
-  const refreshBackgroundJob = () => {
-    if (selectedRun) void refreshRun(selectedRun);
-  };
-
   return (
     <main className={`workbench ${diagnosticsOpen ? "diagnostics-open" : ""}`}>
       <aside className="sidebar">
@@ -1903,8 +1899,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
               />
               <BackgroundJobCard
                 job={backgroundJob}
-                onOpenActivity={openBackgroundActivity}
-                onRefresh={refreshBackgroundJob}
+                onAction={(action) => void runHealthAction(action)}
               />
               {messages.map((message) => (
                 <AgentEventBubble key={message.id} message={message} selected={selectedMessage?.id === message.id} onSelect={() => setSelectedMessage(message)} />
@@ -2003,8 +1998,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
               onApplyEconomy={applyEconomyProfileAction}
               onDoctorAction={(action) => void runDoctorAction(action)}
               onHealthAction={(action) => void runHealthAction(action)}
-              onOpenBackgroundActivity={openBackgroundActivity}
-              onRefreshBackgroundJob={refreshBackgroundJob}
+              onBackgroundAction={(action) => void runHealthAction(action)}
               setupBusy={setupInFlight}
               profileBusy={profileInFlight}
               status={activeStatus}
@@ -2100,18 +2094,16 @@ function BackgroundJobBadge({ job }: { job?: BackgroundJob | null }) {
 
 function BackgroundJobCard({
   job,
-  onOpenActivity,
-  onRefresh
+  onAction
 }: {
   job?: BackgroundJob | null;
-  onOpenActivity?: () => void;
-  onRefresh?: () => void;
+  onAction?: (action: AgentHealthAction) => void;
 }) {
   if (!job) return null;
   const tone = backgroundJobTone(job);
   const detail = backgroundJobDetail(job);
   const Icon = tone === "failed" ? AlertTriangle : tone === "success" ? Check : RefreshCw;
-  const hasActions = Boolean(onOpenActivity || onRefresh);
+  const actions = (job.actions ?? []).filter((action) => action.safe !== false);
   return (
     <div className={`background-job-card tone-${tone}`} aria-label="Background job status">
       <Icon size={16} />
@@ -2119,20 +2111,14 @@ function BackgroundJobCard({
         <strong>{backgroundJobTitle(job)}</strong>
         {detail ? <span>{detail}</span> : null}
         {job.error ? <p>{job.error}</p> : null}
-        {hasActions ? (
+        {actions.length ? (
           <div className="background-job-actions">
-            {onOpenActivity ? (
-              <button type="button" onClick={onOpenActivity} aria-label="Open background activity">
-                <Search size={13} />
-                Activity
+            {actions.map((action) => (
+              <button type="button" onClick={() => onAction?.(action)} aria-label={action.label} disabled={!onAction} key={action.id || action.label}>
+                {action.kind === "diagnostic_tab" || action.kind === "open_run" ? <Search size={13} /> : <RefreshCw size={13} />}
+                {action.label}
               </button>
-            ) : null}
-            {onRefresh ? (
-              <button type="button" onClick={onRefresh} aria-label="Refresh background status">
-                <RefreshCw size={13} />
-                Refresh
-              </button>
-            ) : null}
+            ))}
           </div>
         ) : null}
       </div>
@@ -3015,8 +3001,7 @@ function DetailPanel({
   onApplyEconomy,
   onDoctorAction,
   onHealthAction,
-  onOpenBackgroundActivity,
-  onRefreshBackgroundJob,
+  onBackgroundAction,
   setupBusy,
   profileBusy,
   status,
@@ -3037,8 +3022,7 @@ function DetailPanel({
   onApplyEconomy?: () => void;
   onDoctorAction?: (action: AgentHealthAction) => void;
   onHealthAction?: (action: AgentHealthAction) => void;
-  onOpenBackgroundActivity?: () => void;
-  onRefreshBackgroundJob?: () => void;
+  onBackgroundAction?: (action: AgentHealthAction) => void;
   setupBusy?: boolean;
   profileBusy?: boolean;
   status: RunStatus | null;
@@ -3058,7 +3042,7 @@ function DetailPanel({
         {backgroundJob ? (
           <section>
             <h2>后台任务</h2>
-            <BackgroundJobCard job={backgroundJob} onOpenActivity={onOpenBackgroundActivity} onRefresh={onRefreshBackgroundJob} />
+            <BackgroundJobCard job={backgroundJob} onAction={onBackgroundAction} />
           </section>
         ) : null}
         {hasStrategy ? (

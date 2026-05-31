@@ -2074,6 +2074,8 @@ describe("Workbench", () => {
     expect(screen.getByLabelText("Gate diagnosis")).toBeVisible();
     expect(screen.getByText("所有技术门禁已通过；apply 仍需要显式确认。")).toBeVisible();
     expect(screen.getByText("Apply gate")).toBeVisible();
+    expect(screen.queryByRole("tab", { name: "差异" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Open diff" }));
     expect(screen.getByRole("tab", { name: "差异" })).toHaveAttribute("aria-selected", "true");
     await userEvent.click(screen.getByRole("button", { name: "Apply reviewed diff" }));
     const dialog = await screen.findByRole("dialog");
@@ -3562,7 +3564,36 @@ describe("Workbench", () => {
       action: "continue",
       pid: 4321,
       duration_ms: 1500,
-      started_at: "2026-05-24T10:03:00Z"
+      started_at: "2026-05-24T10:03:00Z",
+      actions: [
+        {
+          id: "open_background_run",
+          label: "Open background run",
+          kind: "open_run",
+          run_id: "run-ready",
+          tab: "Overview",
+          safe: true,
+          reason: "Open the run that owns this background job without advancing any gate."
+        },
+        {
+          id: "open_trace",
+          label: "Open activity",
+          kind: "diagnostic_tab",
+          run_id: "run-ready",
+          tab: "Trace",
+          safe: true,
+          reason: "Inspect queued/running background agent events and provider activity."
+        },
+        {
+          id: "poll_status",
+          label: "Poll status",
+          kind: "local_agent",
+          run_id: "run-ready",
+          message: "status",
+          safe: true,
+          reason: "Refresh this background run without approving, continuing, or applying changes."
+        }
+      ]
     };
     const runningContext: HandoffContext = {
       ...plannedContext,
@@ -3639,10 +3670,13 @@ describe("Workbench", () => {
     expect(screen.getAllByLabelText("Background job status")).toHaveLength(2);
     expect(screen.getAllByText(/后台运行中/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/pid 4321/).length).toBeGreaterThan(0);
-    await userEvent.click(screen.getByRole("button", { name: "Open background activity" }));
-    expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("活动");
+    expect(screen.getByRole("button", { name: "Open background run" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open activity" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Poll status" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Open activity" }));
+    expect(screen.getByRole("tab", { selected: true })).toBeInTheDocument();
     const statusCalls = vi.mocked(client.getStatus).mock.calls.length;
-    await userEvent.click(screen.getByRole("button", { name: "Refresh background status" }));
+    await userEvent.click(screen.getByRole("button", { name: "Poll status" }));
     await waitFor(() => expect(client.getStatus).toHaveBeenCalledTimes(statusCalls + 1));
     expect(screen.getAllByText(/1.5s/).length).toBeGreaterThan(0);
     expect(screen.getByText("后台任务运行中")).toBeInTheDocument();

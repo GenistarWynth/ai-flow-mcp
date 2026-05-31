@@ -252,6 +252,7 @@ export type BackgroundJob = {
   events_path?: string | null;
   trace_path?: string | null;
   error?: string | null;
+  actions?: AgentHealthAction[];
 };
 
 export type RunStatus = {

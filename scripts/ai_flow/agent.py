@@ -361,6 +361,7 @@ def _start_background_agent(
         max_fix_rounds=max_fix_rounds,
     )
     job_started = time.time()
+    background_actions = _background_followup_actions(run_id)
     pending_job = {
         "background": True,
         "kind": "agent",
@@ -375,6 +376,7 @@ def _start_background_agent(
         "run_dir": str(run_path),
         "events_path": str(run_path / "events.jsonl"),
         "trace_path": str(run_path / "trace.jsonl"),
+        "actions": background_actions,
     }
     service._record_job(run_path, pending_job)
     _append_agent_event(
@@ -428,7 +430,7 @@ def _start_background_agent(
     )
     response["requires_confirmation"] = None
     response["next_actions"] = ["status", "events"]
-    response["actions"] = _background_followup_actions(run_id)
+    response["actions"] = background_actions
     return response
 
 
