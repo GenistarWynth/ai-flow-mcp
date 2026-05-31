@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import uuid
 from pathlib import Path
 from typing import Any, Callable
 
@@ -16,7 +17,7 @@ from ..artifacts import append_text
 from ..config import split_command
 from ..errors import AiFlowError
 from ..runner import merged_env, redact
-from ..usage import metrics_from_text, with_usage
+from ..usage import merge_usage_metrics, metrics_from_json_text, metrics_from_text, with_usage
 
 # ---------------------------------------------------------------------------
 # Role constants used as capability flags.
@@ -217,8 +218,13 @@ def _run_custom_cli(
             stage="config",
         )
     effective_env = merged_env(env)
+    usage_file = log_path.parent / f"{provider_id}-usage-{uuid.uuid4().hex}.json"
+    effective_env["PATCHBAY_USAGE_FILE"] = str(usage_file)
     append_text(log_path, f"\n## Custom provider {provider_id}\n\n")
-    append_text(log_path, f"cwd: {cwd}\ncommand: {redact(' '.join(argv), effective_env)}\n\n")
+    append_text(
+        log_path,
+        f"cwd: {cwd}\ncommand: {redact(' '.join(argv), effective_env)}\nusage_file: {usage_file}\n\n",
+    )
     try:
         completed = subprocess.run(
             argv,
@@ -259,7 +265,21 @@ def _run_custom_cli(
             f"Custom provider {provider_id} failed with exit code {completed.returncode}.",
             stage="config",
         )
-    return with_usage(completed.stdout or "", metrics_from_text(completed.stdout or ""))
+    usage_metrics = merge_usage_metrics(
+        metrics_from_text(completed.stdout or ""),
+        metrics_from_text(completed.stderr or ""),
+        _metrics_from_usage_file(usage_file),
+    )
+    return with_usage(completed.stdout or "", usage_metrics)
+
+
+def _metrics_from_usage_file(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        return metrics_from_json_text(path.read_text(encoding="utf-8"))
+    except OSError:
+        return {}
 
 
 def _custom_plan_runner(provider_id: str, provider_cfg: dict[str, Any]) -> Callable[..., str]:
@@ -311,13 +331,16 @@ def _custom_writer_runner(provider_id: str, provider_cfg: dict[str, Any]) -> Cal
         )
         contract = str(provider_cfg.get("output_contract", "writer_diff"))
         if contract == "worktree_diff":
-            return "\n".join(
-                [
-                    "BEGIN_WRITER_SUMMARY",
-                    output.strip() or f"Custom provider {provider_id} edited the worktree.",
-                    "END_WRITER_SUMMARY",
-                    "",
-                ]
+            return with_usage(
+                "\n".join(
+                    [
+                        "BEGIN_WRITER_SUMMARY",
+                        output.strip() or f"Custom provider {provider_id} edited the worktree.",
+                        "END_WRITER_SUMMARY",
+                        "",
+                    ]
+                ),
+                getattr(output, "usage_metrics", None),
             )
         return output
     return run_custom_writer

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import unittest
 
-from scripts.ai_flow.usage import metrics_from_output, metrics_from_text, metrics_from_value, with_usage
+from scripts.ai_flow.usage import metrics_from_json_text, metrics_from_output, metrics_from_text, metrics_from_value, with_usage
 
 
 class UsageMetricsTest(unittest.TestCase):
@@ -47,6 +47,27 @@ class UsageMetricsTest(unittest.TestCase):
         self.assertTrue(isinstance(output, str))
         self.assertEqual(metrics["token_usage"]["total_tokens"], 40)
         self.assertEqual(metrics["cost"]["estimated_total"], 0.004)
+
+    def test_extracts_pretty_json_usage_sidecar(self) -> None:
+        output = json.dumps(
+            {
+                "usage": {
+                    "prompt_tokens": 40,
+                    "completion_tokens": 12,
+                    "cache_read_input_tokens": 8,
+                },
+                "estimated_cost_usd": 0.0032,
+            },
+            indent=2,
+        )
+
+        metrics = metrics_from_json_text(output)
+
+        self.assertEqual(metrics["token_usage"]["input_tokens"], 40)
+        self.assertEqual(metrics["token_usage"]["output_tokens"], 12)
+        self.assertEqual(metrics["token_usage"]["cached_tokens"], 8)
+        self.assertEqual(metrics["token_usage"]["total_tokens"], 60)
+        self.assertEqual(metrics["cost"]["estimated_total"], 0.0032)
 
 
 if __name__ == "__main__":

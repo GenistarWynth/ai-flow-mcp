@@ -112,6 +112,12 @@ If a provider is referenced in a phase but doesn't list that role, Patchbay rais
 | `http_api` | OpenAI-compatible POST to `base_url/chat/completions` | JSON response body | Local model servers, proxies |
 | `acp` | JSON-RPC over stdio (ACP protocol) | ACP transcript | Agents that speak the ACP wire format |
 
+### Usage reporting contract
+
+For every custom CLI provider invocation, Patchbay sets `PATCHBAY_USAGE_FILE` to a JSON sidecar path inside the run directory. Wrappers can write either a JSON object or JSONL records there with OpenAI/Claude-style fields such as `usage.prompt_tokens`, `usage.completion_tokens`, `usage.input_tokens`, `usage.output_tokens`, `usage.cache_read_input_tokens`, `total_cost_usd`, or `estimated_cost_usd`.
+
+Patchbay merges usage found in stdout, stderr, and the sidecar, then preserves it through all output contracts, including `worktree_diff`. The merged totals flow into `events.jsonl`, `patchbay metrics`, `run_metrics.provider_usage`, and the Web workbench efficiency panel, so cheap high-volume writer/fixer routes can be verified with actual token/cost evidence instead of provider names alone.
+
 ---
 
 ## Provider Registry Integration

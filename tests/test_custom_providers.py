@@ -103,9 +103,17 @@ provider = "local_planner"
         writer_script = self.tempdir / "writer.py"
         writer_script.write_text(
             """
+import json
+import os
+import sys
 from pathlib import Path
 Path("CUSTOM.md").write_text("# Custom writer\\n", encoding="utf-8")
+Path(os.environ["PATCHBAY_USAGE_FILE"]).write_text(json.dumps({
+    "usage": {"input_tokens": 10, "output_tokens": 5},
+    "total_cost_usd": 0.001,
+}, indent=2), encoding="utf-8")
 print("custom writer wrote CUSTOM.md")
+print(json.dumps({"usage": {"cached_tokens": 2}}), file=sys.stderr)
 """,
             encoding="utf-8",
         )
@@ -134,9 +142,15 @@ test = []
         service.approve(self.repo, planned["run_id"])
         written = service.write(self.repo, planned["run_id"])
         diff = service.diff(self.repo, planned["run_id"])
+        metrics = service.metrics(self.repo, planned["run_id"])["run_metrics"]
 
         self.assertEqual(written["status"], "IMPLEMENTED")
         self.assertIn("CUSTOM.md", diff)
+        self.assertEqual(metrics["token_usage"]["input_tokens"], 10)
+        self.assertEqual(metrics["token_usage"]["output_tokens"], 5)
+        self.assertEqual(metrics["token_usage"]["cached_tokens"], 2)
+        self.assertEqual(metrics["token_usage"]["total_tokens"], 17)
+        self.assertEqual(metrics["cost"]["estimated_total"], 0.001)
 
     def test_custom_fix_only_provider_uses_fix_registry(self) -> None:
         fixer_script = self.tempdir / "fixer.py"

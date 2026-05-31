@@ -87,6 +87,16 @@ def metrics_from_text(text: str) -> dict[str, Any]:
     return merge_usage_metrics(*(metrics_from_value(event) for event in (result_events or events)))
 
 
+def metrics_from_json_text(text: str) -> dict[str, Any]:
+    stripped = text.strip()
+    if not stripped:
+        return empty_usage_metrics()
+    try:
+        return metrics_from_value(json.loads(stripped))
+    except json.JSONDecodeError:
+        return metrics_from_text(text)
+
+
 def metrics_from_value(value: Any) -> dict[str, Any]:
     accumulator = _UsageAccumulator()
     _visit_usage(value, accumulator)
