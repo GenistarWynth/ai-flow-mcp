@@ -1030,6 +1030,7 @@ def _phase_command_blocker(cfg: dict[str, Any], phase_name: str, phase: dict[str
                 "model": str(phase.get("model") or ""),
                 "command_key": command_key,
             },
+            "command_statuses": {phase_name: command_status},
         }
     )
     return {
@@ -1954,6 +1955,7 @@ def _run_routing_evidence(run_metrics: dict[str, Any], effective: dict[str, Any]
         observed_non_economy_phases=observed_non_economy_phases,
         missing_evidence=missing_evidence,
         command_not_ready=command_not_ready,
+        command_statuses=command_statuses,
         coverage=coverage,
         target=target,
     )
@@ -2000,7 +2002,7 @@ def _routing_health_actions(health: dict[str, Any]) -> list[dict[str, Any]]:
             }
         ]
     if next_action == "inspect_economy_provider_command":
-        return [
+        actions = [
             {
                 "id": "inspect_economy_provider_command",
                 "label": "Inspect provider command",
@@ -2010,6 +2012,11 @@ def _routing_health_actions(health: dict[str, Any]) -> list[dict[str, Any]]:
                 "reason": f"Open readiness to inspect the configured {target_name} economy provider command.",
             }
         ]
+        status = _first_not_ready_command_status(health)
+        source = str(status.get("source") or "")
+        if source.startswith("providers."):
+            actions.append(_configure_provider_command_action(source, target_name))
+        return actions
     if next_action == "apply_economy_profile":
         return [
             {
@@ -2046,6 +2053,34 @@ def _routing_health_actions(health: dict[str, Any]) -> list[dict[str, Any]]:
     return []
 
 
+def _configure_provider_command_action(source: str, target_name: str) -> dict[str, Any]:
+    return {
+        "id": "configure_economy_provider_command",
+        "label": "Copy provider command",
+        "kind": "command",
+        "command": f"patchbay config --set-key {source} --set-value <command>",
+        "safe": True,
+        "reason": f"Copy the command for the {target_name} economy provider into .ai/patchbay.toml.",
+    }
+
+
+def _first_not_ready_command_status(health: dict[str, Any]) -> dict[str, Any]:
+    command_status = health.get("command_status")
+    if isinstance(command_status, dict) and command_status.get("required") and command_status.get("ready") is False:
+        return command_status
+    statuses = health.get("command_statuses")
+    if not isinstance(statuses, dict):
+        return {}
+    for phase in ("write", "fix"):
+        item = statuses.get(phase)
+        if isinstance(item, dict) and item.get("required") and item.get("ready") is False:
+            return item
+    for item in statuses.values():
+        if isinstance(item, dict) and item.get("required") and item.get("ready") is False:
+            return item
+    return {}
+
+
 def _economy_health(
     *,
     economy_configured: bool,
@@ -2054,6 +2089,7 @@ def _economy_health(
     observed_non_economy_phases: list[str],
     missing_evidence: list[str],
     command_not_ready: list[str],
+    command_statuses: dict[str, Any],
     coverage: dict[str, Any],
     target: dict[str, Any],
 ) -> dict[str, Any]:
@@ -2098,6 +2134,7 @@ def _economy_health(
             "drift_phases": drift_phases,
             "missing_evidence": missing_observation,
             "observed_economy_phases": observed_economy_phases,
+            "command_statuses": command_statuses,
             "summary": summary,
             "recommendation": f"Fix the configured {target_name} provider command before continuing high-volume write/fix work.",
             "next_action": next_action,

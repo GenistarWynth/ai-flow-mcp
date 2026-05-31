@@ -373,12 +373,16 @@ model = "cheap-model"
 
         self.assertEqual(shown["profile"], "economy")
         self.assertFalse(shown["economy"]["command_ready"])
-        self.assertEqual(shown["next_actions"], ["inspect economy provider command", "readiness"])
+        self.assertEqual(shown["next_actions"], ["copy provider command", "inspect economy provider command", "readiness"])
         status = shown["economy"]["command_status"]["write"]
         self.assertEqual(status["status"], "not_found")
         self.assertEqual(status["source"], "providers.cheap_writer.command")
         actions = {item["id"]: item for item in shown["actions"]}
         self.assertIn("inspect_economy_provider_command", actions)
+        self.assertEqual(
+            actions["configure_economy_provider_command"]["command"],
+            "patchbay config --set-key providers.cheap_writer.command --set-value <command>",
+        )
         self.assertNotIn("configure_reasonix_command", actions)
 
     def test_economy_profile_allows_start_when_reasonix_command_is_resolved(self) -> None:

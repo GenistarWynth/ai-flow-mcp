@@ -895,6 +895,11 @@ test = []
         self.assertIn("providers.cheap_writer.command", blocker["message"])
         self.assertEqual(blocker["action"]["id"], "inspect_economy_provider_command")
         self.assertEqual(status["routing_evidence"]["command_not_ready_phases"], ["write", "fix"])
+        actions = {item["id"]: item for item in status["routing_evidence"]["actions"]}
+        self.assertEqual(
+            actions["configure_economy_provider_command"]["command"],
+            "patchbay config --set-key providers.cheap_writer.command --set-value <command>",
+        )
 
     def test_custom_fix_missing_command_blocks_without_failing_run(self) -> None:
         run_id = self.create_planned_run()

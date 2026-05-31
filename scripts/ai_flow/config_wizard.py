@@ -424,7 +424,9 @@ def _apply_profile(cfg_path: Path, cfg: dict[str, Any], profile: str) -> dict[st
     if economy.get("command_ready") is False and target.get("provider") == "reasonix_cli":
         next_actions.insert(0, "Set `commands.reasonix` if Reasonix is not on PATH.")
     elif economy.get("command_ready") is False:
-        next_actions.insert(0, "Open readiness to inspect the configured economy provider command.")
+        status = _first_not_ready_command_status(economy.get("command_status"))
+        source = str(status.get("source") or "providers.<id>.command")
+        next_actions.insert(0, f"Set `{source}` to a runnable provider command.")
     return {
         "config": str(cfg_path),
         "profile": name,
@@ -446,7 +448,7 @@ def _profile_next_actions(status: dict[str, Any]) -> list[str]:
             target = economy.get("target", {}) if isinstance(economy.get("target"), dict) else {}
             if target.get("provider") == "reasonix_cli":
                 return ["configure reasonix command", "readiness"]
-            return ["inspect economy provider command", "readiness"]
+            return ["copy provider command", "inspect economy provider command", "readiness"]
         return ["readiness", "start"]
     if profile == "custom":
         return ["apply economy profile", "readiness"]
@@ -473,6 +475,8 @@ def _profile_actions(status: dict[str, Any], *, include_validate: bool = False) 
             if target.get("provider") == "reasonix_cli":
                 actions.append(_configure_reasonix_action(str(target.get("label") or "Reasonix/DeepSeek")))
             else:
+                status = _first_not_ready_command_status(economy.get("command_status"))
+                source = str(status.get("source") or "providers.<id>.command")
                 actions.append(
                     {
                         "id": "inspect_economy_provider_command",
@@ -483,6 +487,8 @@ def _profile_actions(status: dict[str, Any], *, include_validate: bool = False) 
                         "reason": "Inspect the command or provider setup for the configured economy target.",
                     }
                 )
+                if source.startswith("providers."):
+                    actions.append(_configure_provider_command_action(source, str(target.get("label") or "the configured")))
         else:
             actions.append(
                 {
@@ -547,6 +553,27 @@ def _configure_reasonix_action(target_label: str = "Reasonix/DeepSeek") -> dict[
         "safe": True,
         "reason": f"Set the default Reasonix executable so the {target_label} write/fix economy route can actually run.",
     }
+
+
+def _configure_provider_command_action(source: str, target_label: str) -> dict[str, Any]:
+    return {
+        "id": "configure_economy_provider_command",
+        "label": "Copy provider command",
+        "kind": "command",
+        "command": f"patchbay config --set-key {source} --set-value <command>",
+        "safe": True,
+        "reason": f"Copy the command for the {target_label} economy provider into .ai/patchbay.toml.",
+    }
+
+
+def _first_not_ready_command_status(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    for phase in ("write", "fix"):
+        item = value.get(phase)
+        if isinstance(item, dict) and item.get("required") and item.get("ready") is False:
+            return item
+    return {}
 
 
 def _set_nested(cfg: dict[str, Any], parts: tuple[str, ...], value: Any) -> None:

@@ -343,9 +343,14 @@ test = []
         self.assertEqual(response["routing"]["command_not_ready_phases"], ["write", "fix"])
         self.assertIn("providers.cheap_writer.command", response["reply"])
         self.assertNotIn("commands.reasonix", response["reply"])
+        self.assertIn("copy provider command", response["next_actions"])
         self.assertIn("inspect economy provider command", response["next_actions"])
         actions = {item["id"]: item for item in response["actions"]}
         self.assertEqual(actions["inspect_economy_provider_command"]["kind"], "local_agent")
+        self.assertEqual(
+            actions["configure_economy_provider_command"]["command"],
+            "patchbay config --set-key providers.cheap_writer.command --set-value <command>",
+        )
         self.assertNotIn("configure_reasonix_command", actions)
         self.assertFalse((self.repo / ".ai" / "runs").exists())
 
@@ -353,6 +358,11 @@ test = []
         self.assertEqual(shown["action"], "profile_show")
         self.assertIn("providers.cheap_writer.command", shown["reply"])
         self.assertNotIn("commands.reasonix", shown["reply"])
+        shown_actions = {item["id"]: item for item in shown["actions"]}
+        self.assertEqual(
+            shown_actions["configure_economy_provider_command"]["command"],
+            "patchbay config --set-key providers.cheap_writer.command --set-value <command>",
+        )
 
     def test_agent_can_configure_reasonix_command_without_starting_run(self) -> None:
         from scripts.ai_flow.config import load_config
