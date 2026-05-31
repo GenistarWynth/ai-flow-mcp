@@ -1013,24 +1013,36 @@ def _phase_command_blocker(cfg: dict[str, Any], phase_name: str, phase: dict[str
     command_status = _routing_phase_command_status(cfg, phase)
     if not command_status.get("required") or command_status.get("ready"):
         return None
-    command_key = str(command_status.get("command_key") or "reasonix")
+    command_key = str(command_status.get("command_key") or "")
     provider = str(command_status.get("provider") or phase.get("provider") or "")
     status = str(command_status.get("status") or "not_ready")
+    source = str(command_status.get("source") or (f"commands.{command_key}" if command_key else "provider command"))
     recommendation = str(command_status.get("recommendation") or "").strip()
-    message = f"{phase_name} is blocked because commands.{command_key} is not ready for {provider} ({status})."
+    message = f"{phase_name} is blocked because {source} is not ready for {provider} ({status})."
     if recommendation:
         message = f"{message} {recommendation}"
-    actions = _routing_health_actions({"next_action": "configure_reasonix_command"})
+    next_action = "configure_reasonix_command" if provider == ECONOMY_PROVIDER else "inspect_economy_provider_command"
+    actions = _routing_health_actions(
+        {
+            "next_action": next_action,
+            "target": {
+                "provider": provider,
+                "model": str(phase.get("model") or ""),
+                "command_key": command_key,
+            },
+        }
+    )
     return {
         "phase": phase_name,
         "status": status,
         "provider": provider,
         "model": str(phase.get("model") or ""),
         "command_key": command_key,
+        "source": source,
         "command_status": command_status,
         "message": message,
         "suggested_next_action": recommendation
-        or f"Set commands.{command_key} to the executable used by the configured economy provider.",
+        or f"Fix {source} so the configured provider can execute.",
         "action": actions[0] if actions else None,
     }
 

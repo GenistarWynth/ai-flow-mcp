@@ -821,6 +821,90 @@ test = []
         self.assertEqual(status["blocked_next_action"]["phase"], "fix")
         self.assertIn("configure_reasonix_command", status["blocked_next_action"]["action"]["id"])
 
+    def test_custom_economy_write_missing_command_blocks_without_failing_run(self) -> None:
+        run_id = self.create_planned_run()
+        self.cli_json("approve", run_id)
+        cfg = self.repo / ".ai" / "patchbay.toml"
+        cfg.write_text(
+            """[providers.cheap_writer]
+roles = ["write", "fix"]
+command = "definitely-missing-cheap-writer"
+prompt_mode = "stdin"
+output_contract = "writer_diff"
+
+[profiles.economy]
+provider = "cheap_writer"
+model = "cheap-model"
+label = "Cheap writer"
+
+[phases.write]
+provider = "cheap_writer"
+model = "cheap-model"
+
+[phases.fix]
+provider = "cheap_writer"
+model = "cheap-model"
+
+[commands_allowlist]
+test = []
+""",
+            encoding="utf-8",
+        )
+
+        result = self.cli("write", run_id)
+
+        self.assertNotEqual(result.returncode, 0)
+        status = self.cli_json("status", run_id)
+        self.assertEqual(status["status"], "APPROVED")
+        self.assertNotIn("WORKTREE_PATH", status["artifacts"])
+        blocker = status["blocked_next_action"]
+        self.assertEqual(blocker["phase"], "write")
+        self.assertEqual(blocker["source"], "providers.cheap_writer.command")
+        self.assertIn("providers.cheap_writer.command", blocker["message"])
+        self.assertEqual(blocker["action"]["id"], "inspect_economy_provider_command")
+        self.assertEqual(status["routing_evidence"]["command_not_ready_phases"], ["write", "fix"])
+
+    def test_custom_fix_missing_command_blocks_without_failing_run(self) -> None:
+        run_id = self.create_planned_run()
+        self.cli_json("approve", run_id)
+        cfg = self.repo / ".ai" / "patchbay.toml"
+        cfg.write_text(
+            """[providers.cheap_fixer]
+roles = ["fix"]
+command = "definitely-missing-cheap-fixer"
+prompt_mode = "stdin"
+output_contract = "worktree_diff"
+
+[phases.write]
+provider = "mock"
+
+[phases.fix]
+provider = "cheap_fixer"
+model = "cheap-model"
+
+[commands_allowlist]
+test = []
+""",
+            encoding="utf-8",
+        )
+        self.cli_json("write", run_id, "--mock")
+        self.cli_json("test", run_id)
+        run_path = self.repo / ".ai" / "runs" / run_id
+        (run_path / "REVIEW.md").write_text("CHANGES_REQUESTED\n\nRequired Fixes:\n1. Test.\n", encoding="utf-8")
+        status = json.loads((run_path / "STATUS.json").read_text(encoding="utf-8"))
+        status["status"] = "REVIEWED_CHANGES_REQUESTED"
+        (run_path / "STATUS.json").write_text(json.dumps(status), encoding="utf-8")
+
+        result = self.cli("fix", run_id)
+
+        self.assertNotEqual(result.returncode, 0)
+        status = self.cli_json("status", run_id)
+        self.assertEqual(status["status"], "REVIEWED_CHANGES_REQUESTED")
+        blocker = status["blocked_next_action"]
+        self.assertEqual(blocker["phase"], "fix")
+        self.assertEqual(blocker["source"], "providers.cheap_fixer.command")
+        self.assertEqual(blocker["action"]["id"], "inspect_economy_provider_command")
+
     def test_writer_scope_rejects_unexplained_file_outside_plan(self) -> None:
         run_id = self.create_planned_run()
         run_path = self.repo / ".ai" / "runs" / run_id
