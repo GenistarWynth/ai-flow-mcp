@@ -78,6 +78,11 @@ PROVIDERS: dict[str, ProviderRoles] = {
 
 
 BUILTIN_PROVIDER_IDS = set(PROVIDERS)
+_BUILTIN_PLANNERS = dict(PLANNERS)
+_BUILTIN_WRITERS = dict(WRITERS)
+_BUILTIN_REVIEWERS = dict(REVIEWERS)
+_BUILTIN_FIXERS = dict(FIXERS)
+_BUILTIN_PROVIDERS = {provider_id: set(roles) for provider_id, roles in PROVIDERS.items()}
 
 
 def _collect_provider_ids(*registries: dict[str, Any]) -> set[str]:
@@ -122,6 +127,7 @@ def provider_supports_phase(provider_id: str, phase: str) -> bool:
 
 def register_custom_providers(config: dict[str, Any]) -> None:
     """Register minimal TOML-defined CLI providers for this process."""
+    reset_custom_providers()
     providers = config.get("providers", {})
     if not isinstance(providers, dict):
         return
@@ -145,12 +151,33 @@ def register_custom_providers(config: dict[str, Any]) -> None:
         PROVIDERS[provider_id] = roles
         if ROLE_PLAN in roles:
             PLANNERS[provider_id] = _custom_plan_runner(provider_id, provider_cfg)
-        if ROLE_WRITE in roles:
-            WRITERS[provider_id] = _custom_writer_runner(provider_id, provider_cfg)
+        custom_writer = _custom_writer_runner(provider_id, provider_cfg) if roles & {ROLE_WRITE, ROLE_FIX} else None
+        if ROLE_WRITE in roles and custom_writer is not None:
+            WRITERS[provider_id] = custom_writer
         if ROLE_REVIEW in roles:
             REVIEWERS[provider_id] = _custom_review_runner(provider_id, provider_cfg)
-        if ROLE_FIX in roles:
-            FIXERS[provider_id] = _custom_writer_runner(provider_id, provider_cfg)
+        if ROLE_FIX in roles and custom_writer is not None:
+            FIXERS[provider_id] = custom_writer
+
+
+def reset_custom_providers() -> None:
+    """Remove project-scoped custom providers without overwriting built-in entries."""
+    for registry, builtins in (
+        (PLANNERS, _BUILTIN_PLANNERS),
+        (WRITERS, _BUILTIN_WRITERS),
+        (REVIEWERS, _BUILTIN_REVIEWERS),
+        (FIXERS, _BUILTIN_FIXERS),
+    ):
+        for provider_id in list(registry):
+            if provider_id not in builtins:
+                del registry[provider_id]
+        for provider_id, runner in builtins.items():
+            registry.setdefault(provider_id, runner)
+    for provider_id in list(PROVIDERS):
+        if provider_id not in _BUILTIN_PROVIDERS:
+            del PROVIDERS[provider_id]
+    for provider_id, roles in _BUILTIN_PROVIDERS.items():
+        PROVIDERS.setdefault(provider_id, set(roles))
 
 
 def _provider_argv(provider_cfg: dict[str, Any]) -> list[str]:
@@ -337,6 +364,7 @@ __all__ = [
     "provider_roles",
     "provider_supports_phase",
     "register_custom_providers",
+    "reset_custom_providers",
     "run_claude_planner",
     "run_claude_reviewer",
     "run_codex_planner",

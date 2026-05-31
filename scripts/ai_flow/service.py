@@ -15,6 +15,7 @@ from typing import Any, Callable
 
 from . import git_utils
 from .adapters import (
+    FIXERS,
     PLANNERS,
     REVIEWERS,
     WRITERS,
@@ -693,6 +694,9 @@ def _call_writer(
         write_phase = resolve_phase(cfg, "write" if not repair else "fix")
         adapter_cfg = _phase_config(cfg, role="writer", model=write_phase.get("model"))
         provider = write_phase["provider"]
+        role_name = "fixer" if repair else "writer"
+        registry = FIXERS if repair else WRITERS
+        stage = "fix" if repair else "write"
         if (not mock) and provider == "reasonix_cli":
             prompt = _reasonix_agent_prompt(root=root, run_path=run_path, repair=repair)
         else:
@@ -712,12 +716,12 @@ def _call_writer(
             raw = WRITERS["mock"](task=task, repair=repair, iteration=iteration)
         else:
             worktree = Path(status["worktree_path"])
-            writer = WRITERS.get(provider)
+            writer = registry.get(provider)
             if writer is None:
                 raise AiFlowError(
-                    f"Unknown writer provider: {provider}",
-                    stage="write",
-                    suggested_next_action="Set [phases.write].provider or [writer].provider to reasonix_cli or mock.",
+                    f"Unknown {role_name} provider: {provider}",
+                    stage=stage,
+                    suggested_next_action=f"Set [phases.{stage}].provider to a provider that supports {stage}.",
                 )
             try:
                 raw = writer(
@@ -728,7 +732,7 @@ def _call_writer(
                     command_key=p_command_key,
                     timeout=p_timeout,
                     env=p_env,
-                    phase="fix" if repair else "write",
+                    phase=stage,
                 )
                 append_text(log_path, raw + "\n")
                 usage_parts.append(metrics_from_output(raw))
@@ -739,7 +743,7 @@ def _call_writer(
                 git_utils.add_all(worktree)
                 final_diff = git_utils.diff(worktree)
                 if not final_diff.strip():
-                    raise AiFlowError(f"{provider} did not produce a worktree diff.", stage="write")
+                    raise AiFlowError(f"{provider} did not produce a worktree diff.", stage=stage)
                 validate_patch_safety(final_diff)
                 return final_diff, summary or f"{provider} edited the isolated worktree.", merge_usage_metrics(*usage_parts)
             except AiFlowError:
