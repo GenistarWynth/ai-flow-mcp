@@ -631,6 +631,38 @@ def agent_autopilot(
                 return _autopilot_result(root, run_id, "Reviewed diff is already applied.")
             return _autopilot_result(root, run_id, f"Current status is {status_value}; no automatic action is available.")
         return _autopilot_result(root, run_id, "Agent stopped after reaching the internal step limit.", ok=False, error="step limit reached")
+    except StateError as exc:
+        blocker = None
+        try:
+            blocker = service.status(root, run_id).get("blocked_next_action")
+        except Exception:
+            blocker = None
+        if blocker:
+            action = blocker.get("action") if isinstance(blocker.get("action"), dict) else {}
+            try:
+                _append_agent_event(
+                    root,
+                    run_id,
+                    action="blocked",
+                    status="BLOCKED",
+                    detail=str(exc),
+                    next_action=str(action.get("message") or "readiness"),
+                )
+            except Exception:
+                pass
+            return _autopilot_result(
+                root,
+                run_id,
+                f"Agent stopped before starting the next phase: {exc}",
+                ok=False,
+                error=str(exc),
+                extra={"blocker": blocker},
+            )
+        try:
+            _append_agent_event(root, run_id, action="error", status="ERROR", detail=str(exc), next_action="inspect")
+        except Exception:
+            pass
+        return _autopilot_result(root, run_id, f"Agent stopped: {exc}", ok=False, error=str(exc))
     except Exception as exc:
         try:
             _append_agent_event(root, run_id, action="error", status="ERROR", detail=str(exc), next_action="inspect")
@@ -2061,6 +2093,11 @@ def _confirmation(kind: str, required_action: str, confirmation: str) -> dict[st
 
 
 def _next_actions_for_status(status_data: dict[str, Any]) -> list[str]:
+    blocker = status_data.get("blocked_next_action") if isinstance(status_data.get("blocked_next_action"), dict) else None
+    if blocker:
+        action = blocker.get("action") if isinstance(blocker.get("action"), dict) else {}
+        suggested = str(action.get("message") or "configure reasonix command")
+        return [suggested, "readiness", "status", "events"]
     if status_data.get("status") == PLANNED:
         return ["approve_and_run", "status", "events", "artifact"]
     if status_data.get("gate_state", {}).get("ready_to_apply"):
@@ -2077,6 +2114,9 @@ def _next_actions_for_status(status_data: dict[str, Any]) -> list[str]:
 
 def _next_step_reply(run_id: str, status_data: dict[str, Any]) -> str:
     status_value = str(status_data.get("status") or "unknown")
+    blocker = status_data.get("blocked_next_action") if isinstance(status_data.get("blocked_next_action"), dict) else None
+    if blocker:
+        return f"Run {run_id} cannot continue yet. {blocker.get('message') or blocker.get('suggested_next_action')}"
     if status_value == PLANNED:
         return f"Run {run_id} is waiting for explicit plan approval. Review the plan, then approve before implementation starts."
     if status_data.get("gate_state", {}).get("ready_to_apply"):

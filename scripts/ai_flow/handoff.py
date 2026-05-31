@@ -145,15 +145,19 @@ def annotate_next_actions(status_data: dict[str, Any]) -> list[dict[str, Any]]:
     actions: list[dict[str, Any]] = []
     for name in status_data.get("next_commands", []) or []:
         safe = _is_action_safe(name, status_data)
-        actions.append(
-            {
-                "name": name,
-                "safe": safe,
-                "tool": ACTION_TO_TOOL.get(name, f"patchbay_{name}"),
-                "requires_human_confirmation": name in HUMAN_CONFIRMATION_ACTIONS,
-                "reason": _action_reason(name, status_data, safe),
-            }
-        )
+        action = {
+            "name": name,
+            "safe": safe,
+            "tool": ACTION_TO_TOOL.get(name, f"patchbay_{name}"),
+            "requires_human_confirmation": name in HUMAN_CONFIRMATION_ACTIONS,
+            "reason": _action_reason(name, status_data, safe),
+        }
+        blocker = _action_blocker(name, status_data)
+        if blocker:
+            action["blocked_by"] = blocker
+            if isinstance(blocker.get("action"), dict):
+                action["alternative_action"] = blocker["action"]
+        actions.append(action)
     return actions
 
 
@@ -187,6 +191,8 @@ def _artifact_purpose(name: str) -> str:
 
 
 def _is_action_safe(name: str, status_data: dict[str, Any]) -> bool:
+    if _action_blocker(name, status_data):
+        return False
     if name == "apply":
         gate = status_data.get("gate_state", {}) or {}
         return bool(
@@ -198,7 +204,17 @@ def _is_action_safe(name: str, status_data: dict[str, Any]) -> bool:
     return True
 
 
+def _action_blocker(name: str, status_data: dict[str, Any]) -> dict[str, Any] | None:
+    blocker = status_data.get("blocked_next_action")
+    if isinstance(blocker, dict) and str(blocker.get("phase") or "") == name:
+        return blocker
+    return None
+
+
 def _action_reason(name: str, status_data: dict[str, Any], safe: bool) -> str:
+    blocker = _action_blocker(name, status_data)
+    if blocker:
+        return str(blocker.get("message") or blocker.get("suggested_next_action") or "This phase is blocked by local configuration.")
     if name == "approve":
         return "Plan is ready for human approval before implementation."
     if name == "apply":

@@ -898,6 +898,19 @@ test = []
         self.assertEqual(response["requires_confirmation"]["confirmation"], APPLY_CONFIRMATION)
         self.assertIn("PATCHBAY_MOCK_OUTPUT.md", response["diff"])
 
+    def test_agent_approval_blocks_missing_reasonix_without_failing_run(self) -> None:
+        agent_message(self.repo, "apply economy profile")
+        planned = agent_message(self.repo, "ready for economy autopilot")
+
+        response = agent_message(self.repo, "approve", run_id=planned["run_id"], confirmation=PLAN_CONFIRMATION)
+
+        self.assertFalse(response["ok"])
+        self.assertEqual(response["status"]["status"], "APPROVED")
+        self.assertEqual(response["autopilot"]["blocker"]["phase"], "write")
+        self.assertIn("commands.reasonix", response["error"])
+        self.assertIn("configure reasonix command", response["next_actions"])
+        self.assertFalse((self.repo / ".ai" / "runs" / planned["run_id"] / "WORKTREE_PATH").exists())
+
     def test_agent_apply_requires_confirmation(self) -> None:
         planned = agent_message(self.repo, "apply confirmation")
         run_id = planned["run_id"]

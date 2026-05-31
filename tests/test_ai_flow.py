@@ -756,6 +756,71 @@ test = []
         self.assertEqual(status["status"], "FAILED")
         self.assertEqual(status["stage"], "write")
 
+    def test_economy_write_missing_reasonix_blocks_without_failing_run(self) -> None:
+        run_id = self.create_planned_run()
+        self.cli_json("approve", run_id)
+        cfg = self.repo / ".ai" / "patchbay.toml"
+        cfg.write_text(
+            """[phases.write]
+provider = "reasonix_cli"
+model = "deepseek-v4-pro"
+command_key = "reasonix"
+
+[phases.fix]
+provider = "reasonix_cli"
+model = "deepseek-v4-pro"
+command_key = "reasonix"
+
+[commands_allowlist]
+test = []
+""",
+            encoding="utf-8",
+        )
+
+        result = self.cli("write", run_id)
+
+        self.assertNotEqual(result.returncode, 0)
+        status = self.cli_json("status", run_id)
+        self.assertEqual(status["status"], "APPROVED")
+        self.assertNotIn("WORKTREE_PATH", status["artifacts"])
+        self.assertEqual(status["blocked_next_action"]["phase"], "write")
+        self.assertIn("commands.reasonix", status["blocked_next_action"]["message"])
+        self.assertEqual(status["routing_evidence"]["command_not_ready_phases"], ["write", "fix"])
+
+    def test_economy_fix_missing_reasonix_blocks_without_failing_run(self) -> None:
+        run_id = self.create_planned_run()
+        self.cli_json("approve", run_id)
+        cfg = self.repo / ".ai" / "patchbay.toml"
+        cfg.write_text(
+            """[phases.write]
+provider = "mock"
+
+[phases.fix]
+provider = "reasonix_cli"
+model = "deepseek-v4-pro"
+command_key = "reasonix"
+
+[commands_allowlist]
+test = []
+""",
+            encoding="utf-8",
+        )
+        self.cli_json("write", run_id, "--mock")
+        self.cli_json("test", run_id)
+        run_path = self.repo / ".ai" / "runs" / run_id
+        (run_path / "REVIEW.md").write_text("CHANGES_REQUESTED\n\nRequired Fixes:\n1. Test.\n", encoding="utf-8")
+        status = json.loads((run_path / "STATUS.json").read_text(encoding="utf-8"))
+        status["status"] = "REVIEWED_CHANGES_REQUESTED"
+        (run_path / "STATUS.json").write_text(json.dumps(status), encoding="utf-8")
+
+        result = self.cli("fix", run_id)
+
+        self.assertNotEqual(result.returncode, 0)
+        status = self.cli_json("status", run_id)
+        self.assertEqual(status["status"], "REVIEWED_CHANGES_REQUESTED")
+        self.assertEqual(status["blocked_next_action"]["phase"], "fix")
+        self.assertIn("configure_reasonix_command", status["blocked_next_action"]["action"]["id"])
+
     def test_writer_scope_rejects_unexplained_file_outside_plan(self) -> None:
         run_id = self.create_planned_run()
         run_path = self.repo / ".ai" / "runs" / run_id

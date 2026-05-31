@@ -111,6 +111,19 @@ class HandoffContextTest(unittest.TestCase):
         self.assertEqual(context["cursors"]["event"], 2)
         self.assertEqual(context["cursors"]["trace"], 0)
 
+    def test_context_marks_write_blocked_when_reasonix_command_is_missing(self) -> None:
+        planned = self.cli_json("plan", "--task", "blocked write handoff", "--mock")
+        self.cli_json("approve", planned["run_id"])
+
+        context = service.context(self.repo, planned["run_id"])
+
+        self.assertEqual(context["status"], "APPROVED")
+        self.assertEqual(context["next_actions"][0]["name"], "write")
+        self.assertFalse(context["next_actions"][0]["safe"])
+        self.assertEqual(context["next_actions"][0]["alternative_action"]["id"], "configure_reasonix_command")
+        self.assertIn("commands.reasonix", context["next_actions"][0]["reason"])
+        self.assertEqual(context["agent_activity"]["conversation_state"]["suggestions"][0]["safe"], False)
+
     def test_context_health_card_prefers_routing_evidence_actions(self) -> None:
         status_data = {
             "run_metrics": {

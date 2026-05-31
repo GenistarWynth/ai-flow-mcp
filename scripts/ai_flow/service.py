@@ -1007,23 +1007,75 @@ def approve(cwd: Path, run_id: str) -> dict[str, Any]:
     return result
 
 
+def _phase_command_blocker(cfg: dict[str, Any], phase_name: str, phase: dict[str, Any]) -> dict[str, Any] | None:
+    command_status = _routing_phase_command_status(cfg, phase)
+    if not command_status.get("required") or command_status.get("ready"):
+        return None
+    command_key = str(command_status.get("command_key") or "reasonix")
+    provider = str(command_status.get("provider") or phase.get("provider") or "")
+    status = str(command_status.get("status") or "not_ready")
+    recommendation = str(command_status.get("recommendation") or "").strip()
+    message = f"{phase_name} is blocked because commands.{command_key} is not ready for {provider} ({status})."
+    if recommendation:
+        message = f"{message} {recommendation}"
+    actions = _routing_health_actions({"next_action": "configure_reasonix_command"})
+    return {
+        "phase": phase_name,
+        "status": status,
+        "provider": provider,
+        "model": str(phase.get("model") or ""),
+        "command_key": command_key,
+        "command_status": command_status,
+        "message": message,
+        "suggested_next_action": recommendation
+        or f"Set commands.{command_key} to the executable used by the configured economy provider.",
+        "action": actions[0] if actions else None,
+    }
+
+
+def _ensure_phase_command_ready(cfg: dict[str, Any], phase_name: str, phase: dict[str, Any], *, mock: bool) -> None:
+    if mock:
+        return
+    blocker = _phase_command_blocker(cfg, phase_name, phase)
+    if blocker:
+        raise StateError(
+            str(blocker["message"]),
+            stage=phase_name,
+            suggested_next_action=str(blocker["suggested_next_action"]),
+        )
+
+
+def _blocked_next_action(data: dict[str, Any], cfg: dict[str, Any], effective: dict[str, Any]) -> dict[str, Any] | None:
+    status_value = str(data.get("status") or "")
+    phase_name = ""
+    if status_value == APPROVED:
+        phase_name = "write"
+    elif status_value == REVIEWED_CHANGES_REQUESTED:
+        phase_name = "fix"
+    if not phase_name:
+        return None
+    phase = effective.get(phase_name) or resolve_phase(cfg, phase_name)
+    return _phase_command_blocker(cfg, phase_name, phase)
+
+
 def write(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
     root = resolve_root(cwd)
     run_path, status = _load_run(root, run_id)
+    require_status(status, {APPROVED}, "write")
+    if not (run_path / "APPROVAL.json").exists():
+        raise StateError("Missing APPROVAL.json.", stage="write")
+    cfg = load_config(root)
+    write_phase = resolve_phase(cfg, "write")
+    _ensure_phase_command_ready(cfg, "write", write_phase, mock=mock)
     try:
         with git_utils.log_to(run_path / "git.log"):
-            require_status(status, {APPROVED}, "write")
             _begin_phase_lock(run_path, "write")
-            if not (run_path / "APPROVAL.json").exists():
-                raise StateError("Missing APPROVAL.json.", stage="write")
             if not git_utils.is_repo(root):
                 raise GitError(
                     "write requires a git repository because it creates an isolated worktree.",
                     stage="write",
                     suggested_next_action="Run Patchbay inside a git repository.",
                 )
-            cfg = load_config(root)
-            write_phase = resolve_phase(cfg, "write")
             write_started = time.time()
             append_event(
                 run_path,
@@ -1335,14 +1387,16 @@ def _ensure_review_did_not_change_diff(run_path: Path, status: dict[str, Any]) -
 def fix(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
     root = resolve_root(cwd)
     run_path, status = _load_run(root, run_id)
+    allowed = {REVIEWED_CHANGES_REQUESTED}
+    if status.get("status") == FAILED and status.get("stage") == "test":
+        allowed.add(FAILED)
+    require_status(status, allowed, "fix")
+    cfg = load_config(root)
+    fix_phase = resolve_phase(cfg, "fix")
+    _ensure_phase_command_ready(cfg, "fix", fix_phase, mock=mock)
     try:
         with git_utils.log_to(run_path / "git.log"):
-            allowed = {REVIEWED_CHANGES_REQUESTED}
-            if status.get("status") == FAILED and status.get("stage") == "test":
-                allowed.add(FAILED)
-            require_status(status, allowed, "fix")
             _begin_phase_lock(run_path, "fix")
-            cfg = load_config(root)
             max_repairs = int(cfg.get("writer", {}).get("max_repair_iterations", 2))
             iterations = int(status.get("fix_iterations") or 0)
             if iterations >= max_repairs:
@@ -1352,7 +1406,6 @@ def fix(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                     suggested_next_action="Inspect artifacts manually or start a new run.",
                 )
             worktree = Path(status["worktree_path"])
-            fix_phase = resolve_phase(cfg, "fix")
             fix_started = time.time()
             append_event(
                 run_path,
@@ -1453,6 +1506,7 @@ def status(cwd: Path, run_id: str) -> dict[str, Any]:
         }
     data["effective_phase_providers"] = effective
     data["routing_evidence"] = _run_routing_evidence(run_metrics, effective, cfg)
+    data["blocked_next_action"] = _blocked_next_action(data, cfg, effective)
     run_metrics["routing_evidence"] = data["routing_evidence"]
     data["run_metrics"] = run_metrics
     job_path = _job_path(run_path)
