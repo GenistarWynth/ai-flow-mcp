@@ -186,14 +186,22 @@ def agent_message(
     if intent == "apply":
         current = service.status(root, run_id)
         if not _apply_ready(current):
-            message = "Apply is blocked until tests pass and review returns PASS."
+            diagnosis = _gate_diagnosis(current)
+            message = _gate_status_reply(run_id, diagnosis)
+            if "Apply is blocked" not in message:
+                message += " Apply is blocked until tests pass and review returns PASS."
             return _agent_response(
                 root,
                 run_id,
                 action="apply",
                 reply=message,
                 include=include,
-                extra={"ok": False, "error": message},
+                extra={
+                    "ok": False,
+                    "error": message,
+                    "gate_diagnosis": diagnosis,
+                    "actions": _gate_status_actions(run_id, current, include_open_run=False),
+                },
             )
         if confirmation != APPLY_CONFIRMATION:
             return _agent_response(

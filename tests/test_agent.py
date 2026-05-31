@@ -1125,6 +1125,14 @@ test = []
         self.assertFalse(response["ok"])
         self.assertEqual(response["status"]["status"], "PLANNED")
         self.assertNotEqual(response["requires_confirmation"]["confirmation"], APPLY_CONFIRMATION)
+        self.assertFalse(response["gate_diagnosis"]["ready_to_apply"])
+        blocker_keys = [item["key"] for item in response["gate_diagnosis"]["blockers"]]
+        self.assertIn("approval", blocker_keys)
+        self.assertIn("tests", blocker_keys)
+        self.assertIn("review", blocker_keys)
+        actions = {item["id"]: item for item in response["actions"]}
+        self.assertEqual(actions["open_plan"]["tab"], "Artifacts")
+        self.assertEqual(actions["open_trace"]["tab"], "Trace")
         self.assertIn("Apply is blocked", response["reply"])
 
     def test_agent_does_not_apply_when_tests_are_skipped_by_default(self) -> None:
@@ -1142,6 +1150,9 @@ test = []
         apply_response = agent_message(self.repo, "apply", run_id=planned["run_id"])
         self.assertFalse(apply_response["ok"])
         self.assertIsNone(apply_response["requires_confirmation"])
+        self.assertFalse(apply_response["gate_diagnosis"]["ready_to_apply"])
+        self.assertIn("tests", [item["key"] for item in apply_response["gate_diagnosis"]["blockers"]])
+        self.assertEqual({item["id"]: item for item in apply_response["actions"]}["open_diff"]["tab"], "Diff")
 
     def test_mcp_patchbay_agent_wraps_same_service(self) -> None:
         from scripts.ai_flow import mcp_server
