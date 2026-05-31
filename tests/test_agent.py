@@ -262,14 +262,31 @@ test = []
 
     def test_agent_routing_question_with_run_does_not_apply_patch_or_profile(self) -> None:
         from scripts.ai_flow.config import load_config, resolve_phase
+        from scripts.ai_flow.events import append_event
 
         planned = agent_message(self.repo, "build routing question target")
         run_id = planned["run_id"]
+        run_path = self.repo / ".ai" / "runs" / run_id
+        append_event(
+            run_path,
+            phase="write",
+            provider="mock",
+            model="mock-model",
+            action="success",
+            status="IMPLEMENTED",
+            detail="synthetic writer event",
+            duration_ms=900,
+            token_usage={"input_tokens": 150, "output_tokens": 50, "cached_tokens": 0, "total_tokens": 200},
+            cost={"currency": "USD", "estimated_total": 0.02},
+        )
 
         response = agent_message(self.repo, "is writer using cheap model?", run_id=run_id)
 
         self.assertEqual(response["action"], "profile_show")
-        self.assertIsNone(response["run_id"])
+        self.assertEqual(response["run_id"], run_id)
+        self.assertEqual(response["metrics"]["run_id"], run_id)
+        self.assertEqual(response["efficiency_summary"]["status"], "not_configured")
+        self.assertIn("Run evidence:", response["reply"])
         cfg = load_config(self.repo)
         self.assertEqual(resolve_phase(cfg, "write")["provider"], "mock")
         self.assertFalse((self.repo / ".ai" / "runs" / run_id / "APPROVAL.json").exists())

@@ -552,6 +552,28 @@ function efficiencyShareSignals(summary?: EfficiencySummary | null) {
   return signals;
 }
 
+function EfficiencySummaryCard({ summary }: { summary?: EfficiencySummary | null }) {
+  if (!summary?.summary) return null;
+  const signals = efficiencyShareSignals(summary);
+  return (
+    <div className={`metric-efficiency ${efficiencyTone(summary)}`} aria-label="Efficiency summary">
+      <div className="metric-efficiency-head">
+        <span>Cost efficiency</span>
+        <strong>{efficiencyStatusLabel(summary.status)}</strong>
+      </div>
+      <p>{summary.summary}</p>
+      {signals.length ? (
+        <div className="metric-efficiency-signals">
+          {signals.map((signal) => (
+            <span key={signal}>{signal}</span>
+          ))}
+        </div>
+      ) : null}
+      {summary.recommendation ? <em>{summary.recommendation}</em> : null}
+    </div>
+  );
+}
+
 function providerMetricLabel(item: ProviderUsage) {
   const provider = item.provider || item.model || "provider";
   const heading = item.phase ? `${phaseLabel(item.phase)} / ${provider}` : provider;
@@ -2132,7 +2154,6 @@ function MetricsGrid({
   const providerCount = metrics?.provider_usage?.filter((item) => item.provider || item.model).length ?? 0;
   const routing = metrics?.routing_evidence;
   const efficiency = metrics?.efficiency_summary;
-  const efficiencySignals = efficiencyShareSignals(efficiency);
   const routingCoverage = routingCoverageLabel(routing);
   const economyHealth = economyHealthLabel(routing);
   const routingAction =
@@ -2168,23 +2189,7 @@ function MetricsGrid({
           <strong>{routing.summary}</strong>
         </div>
       ) : null}
-      {efficiency?.summary ? (
-        <div className={`metric-efficiency ${efficiencyTone(efficiency)}`} aria-label="Efficiency summary">
-          <div className="metric-efficiency-head">
-            <span>Cost efficiency</span>
-            <strong>{efficiencyStatusLabel(efficiency.status)}</strong>
-          </div>
-          <p>{efficiency.summary}</p>
-          {efficiencySignals.length ? (
-            <div className="metric-efficiency-signals">
-              {efficiencySignals.map((signal) => (
-                <span key={signal}>{signal}</span>
-              ))}
-            </div>
-          ) : null}
-          {efficiency.recommendation ? <em>{efficiency.recommendation}</em> : null}
-        </div>
-      ) : null}
+      <EfficiencySummaryCard summary={efficiency} />
       {routingCoverage ? (
         <div className="metric-row">
           <span>经济覆盖</span>
@@ -2374,11 +2379,13 @@ function LocalAgentResponseDetails({
   if (!response) return null;
   const commands = localReplyCommandActions(response);
   const suggestions = localReplyActions(response).filter((action) => !(response.run_id && action.id === "open-latest-run" && action.runId === response.run_id));
+  const efficiency = response.efficiency_summary ?? response.metrics?.efficiency_summary;
   const hasPanels = Boolean(
     response.gate_diagnosis ||
       response.setup ||
       response.routing ||
       response.metrics?.routing_evidence ||
+      efficiency ||
       commands.length ||
       suggestions.length
   );
@@ -2388,6 +2395,7 @@ function LocalAgentResponseDetails({
       {response.gate_diagnosis ? <GateDiagnosisCard diagnosis={response.gate_diagnosis} /> : null}
       {response.setup ? <SetupResultCard response={response} /> : null}
       {response.routing || response.metrics?.routing_evidence ? <RoutingResultCard response={response} /> : null}
+      <EfficiencySummaryCard summary={efficiency} />
       {commands.length ? (
         <div className="local-agent-command-actions" aria-label="Agent command actions">
           {commands.map((action) => (

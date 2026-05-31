@@ -110,7 +110,7 @@ def agent_message(
     if intent == "profile_apply":
         return _profile_apply_response(root)
     if intent == "profile_show":
-        return _profile_show_response(root)
+        return _profile_show_response(root, run_id=run_id)
     if intent == "next_step":
         return _next_step_response(root, run_id=run_id, include=include)
     if intent == "gate_status":
@@ -2379,7 +2379,7 @@ def _looks_like_command_path(value: str) -> bool:
     return "\\" in value or "/" in value or ":" in value
 
 
-def _profile_show_response(root: Path) -> dict[str, Any]:
+def _profile_show_response(root: Path, run_id: str | None = None) -> dict[str, Any]:
     result = run_config_wizard(root, show_profile=True)
     profile = str(result.get("profile") or "custom")
     routing = _profile_routing_digest(result)
@@ -2388,11 +2388,33 @@ def _profile_show_response(root: Path) -> dict[str, Any]:
         reply += " " + str(result.get("recommendation") or "Run `patchbay config profile apply economy`.")
     elif routing.get("economy_command_ready") is False:
         reply += " " + _economy_command_not_ready_sentence(routing)
+    extra: dict[str, Any] = {"profile": result, "routing": routing, "actions": list(result.get("actions") or [])}
+    if run_id:
+        try:
+            metrics = service.metrics(root, run_id)
+        except Exception as exc:
+            extra["run_evidence_error"] = str(exc)
+            reply += f" Run evidence for `{run_id}` could not be loaded: {exc}"
+        else:
+            efficiency = metrics.get("efficiency_summary") if isinstance(metrics.get("efficiency_summary"), dict) else {}
+            run_routing = metrics.get("routing_evidence") if isinstance(metrics.get("routing_evidence"), dict) else {}
+            extra.update(
+                {
+                    "run_id": run_id,
+                    "metrics": metrics,
+                    "routing_evidence": run_routing,
+                    "efficiency_summary": efficiency,
+                }
+            )
+            if efficiency.get("summary"):
+                reply += " Run evidence: " + str(efficiency["summary"])
+            elif run_routing.get("summary"):
+                reply += " Run evidence: " + str(run_routing["summary"])
     return _stateless_response(
         action="profile_show",
         reply=reply,
         next_actions=list(result.get("next_actions") or (["readiness", "start"] if profile == "economy" else ["apply economy profile", "readiness"])),
-        extra={"profile": result, "routing": routing, "actions": list(result.get("actions") or [])},
+        extra=extra,
     )
 
 

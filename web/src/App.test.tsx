@@ -2090,10 +2090,10 @@ describe("Workbench", () => {
 
   it("renders selected-run routing replies with structured cards and safe actions", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
-      run_id: null,
+      run_id: "run-ready",
       action: "profile_show",
       ok: true,
-      reply: "Economy routing profile is not active: write mock, fix mock.",
+      reply: "Economy routing profile is not active: write mock, fix mock. Run evidence: Write/fix are not fully routed to the economy profile.",
       routing: {
         profile: "custom",
         target: { provider: "reasonix_cli", model: "deepseek-v4-pro" },
@@ -2105,6 +2105,22 @@ describe("Workbench", () => {
           write: { configured: { provider: "mock", model: "", command_key: "" }, configured_economy: false },
           fix: { configured: { provider: "mock", model: "", command_key: "" }, configured_economy: false }
         }
+      },
+      efficiency_summary: {
+        status: "not_configured",
+        routing_status: "not_configured",
+        usage_known: { tokens: true, cost: true, duration: true },
+        economy_share: {
+          token_percent: 100,
+          total_tokens: 200,
+          cost_percent: 100,
+          estimated_cost: 0.02,
+          currency: "USD",
+          duration_percent: 100,
+          duration_ms: 900
+        },
+        summary: "Write/fix are not fully routed to the economy profile.",
+        recommendation: "Apply the economy profile or configure a custom low-cost writer before high-volume implementation work."
       },
       actions: [
         {
@@ -2144,6 +2160,10 @@ describe("Workbench", () => {
     expect(within(routingResult).getByText("经济路由未启用")).toBeVisible();
     expect(within(routingResult).getByText("Economy routing profile is not active: write mock, fix mock.")).toBeVisible();
     expect(within(routingResult).getAllByText("mock / 默认")).toHaveLength(2);
+    const efficiencyResult = await screen.findByLabelText("Efficiency summary");
+    expect(within(efficiencyResult).getByText("Not configured")).toBeVisible();
+    expect(within(efficiencyResult).getByText("economy tokens 200 / 100%")).toBeVisible();
+    expect(within(efficiencyResult).getByText("economy cost USD 0.02 / 100%")).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "Apply economy profile" }));
 
     await waitFor(() => expect(client.applyConfigProfile).toHaveBeenCalledWith("economy"));

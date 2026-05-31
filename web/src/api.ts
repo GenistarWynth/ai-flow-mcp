@@ -495,6 +495,8 @@ export type AgentResponse = {
   recovery?: FailureRecovery;
   profile?: Record<string, unknown>;
   routing?: RoutingEvidence;
+  routing_evidence?: RoutingEvidence;
+  efficiency_summary?: EfficiencySummary;
   metrics?: {
     run_metrics?: RunMetrics;
     routing_evidence?: RoutingEvidence;
