@@ -342,6 +342,45 @@ describe("Workbench", () => {
     expect(client.agentMessage).not.toHaveBeenCalled();
   });
 
+  it("copies custom economy provider command fixes from readiness", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      getDoctor: vi.fn().mockResolvedValue({
+        ok: false,
+        root: "C:/repo",
+        checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true } },
+        next_actions: ["Set `providers.cheap_writer.command` before write/fix phases run."],
+        actions: [
+          {
+            id: "configure_economy_provider_command",
+            label: "Copy provider command",
+            kind: "command",
+            command: "patchbay config --set-key providers.cheap_writer.command --set-value <command>",
+            safe: true,
+            reason: "Copy the command for the cheap_writer economy provider into .ai/patchbay.toml."
+          }
+        ]
+      })
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    await userEvent.click(within(details).getByRole("button", { name: "Copy command Copy provider command" }));
+
+    expect(writeText).toHaveBeenCalledWith("patchbay config --set-key providers.cheap_writer.command --set-value <command>");
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.agentMessage).not.toHaveBeenCalled();
+  });
+
   it("renders a Codex-style thread and keeps orchestration details in the closed diagnostics drawer", async () => {
     const client = createClient();
 
