@@ -2554,6 +2554,85 @@ describe("Workbench", () => {
     expect(client.runAction).not.toHaveBeenCalled();
   });
 
+  it("uses the alternative setup action when the next phase is blocked", async () => {
+    const alternativeAction = {
+      id: "configure_reasonix_command",
+      label: "Configure Reasonix",
+      kind: "local_agent",
+      message: "configure reasonix command",
+      safe: true,
+      reason: "Set the Reasonix executable."
+    };
+    const blockedWriteContext: HandoffContext = {
+      ...plannedContext,
+      run_id: "run-ready",
+      status: "APPROVED",
+      current_phase: "write",
+      next_actions: [
+        {
+          name: "write",
+          safe: false,
+          tool: "patchbay_write",
+          requires_human_confirmation: false,
+          reason: "write is blocked because commands.reasonix is not ready.",
+          alternative_action: alternativeAction
+        }
+      ],
+      agent_activity: {
+        ...plannedContext.agent_activity!,
+        next_action: {
+          name: "write",
+          label: "Start write",
+          safe: false,
+          tool: "patchbay_write",
+          requires_human_confirmation: false,
+          reason: "write is blocked because commands.reasonix is not ready.",
+          alternative_action: alternativeAction
+        },
+        conversation_state: {
+          ...plannedContext.agent_activity!.conversation_state!,
+          suggestions: [
+            {
+              id: "write",
+              label: "Start write",
+              action: "write",
+              safe: false,
+              tool: "patchbay_write",
+              requires_human_confirmation: false,
+              reason: "write is blocked because commands.reasonix is not ready.",
+              alternative_action: alternativeAction
+            }
+          ]
+        },
+        health_cards: []
+      }
+    };
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({
+        runs: [{ run_id: "run-ready", task: "Blocked economy route", status: "APPROVED" }]
+      }),
+      getStatus: vi.fn().mockResolvedValue({
+        run_id: "run-ready",
+        task: "Blocked economy route",
+        status: "APPROVED",
+        current_phase: "write",
+        gate_state: { approved: true, tests_passed: false, review_result: null, ready_to_apply: false },
+        next_commands: ["write"],
+        artifacts: [],
+        effective_phase_providers: {}
+      }),
+      getContext: vi.fn().mockResolvedValue(blockedWriteContext)
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByText("write is blocked because commands.reasonix is not ready.");
+    await userEvent.click(screen.getByRole("button", { name: "Configure Reasonix" }));
+
+    await waitFor(() => expect(client.agentMessage).toHaveBeenCalledWith("configure reasonix command"));
+    expect(client.runAction).not.toHaveBeenCalled();
+  });
+
   it("requires confirmation before apply and keeps blocked apply gated", async () => {
     const client = createClient();
 

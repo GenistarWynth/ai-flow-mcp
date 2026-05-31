@@ -307,7 +307,7 @@ def _conversation_state(
 
 def _suggested_action(action: dict[str, Any]) -> dict[str, Any]:
     name = str(action.get("name") or "")
-    return {
+    result = {
         "id": name,
         "label": ACTION_LABELS.get(name, _phase_label(name)),
         "action": name,
@@ -316,6 +316,9 @@ def _suggested_action(action: dict[str, Any]) -> dict[str, Any]:
         "requires_human_confirmation": bool(action.get("requires_human_confirmation")),
         "reason": action.get("reason", ""),
     }
+    if isinstance(action.get("alternative_action"), dict):
+        result["alternative_action"] = action["alternative_action"]
+    return result
 
 
 def _conversation_next_step(status_data: dict[str, Any], next_action: dict[str, Any] | None) -> str:

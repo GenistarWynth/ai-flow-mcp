@@ -307,6 +307,8 @@ export type NextAction = {
   tool: string;
   requires_human_confirmation: boolean;
   reason: string;
+  alternative_action?: AgentHealthAction | null;
+  blocked_by?: unknown;
 };
 
 export type HandoffArtifact = {
@@ -389,6 +391,7 @@ export type SuggestedAction = {
   tool?: string;
   requires_human_confirmation?: boolean;
   reason?: string;
+  alternative_action?: AgentHealthAction | null;
 };
 
 export type ConversationState = {

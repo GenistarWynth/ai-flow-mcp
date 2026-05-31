@@ -32,6 +32,7 @@ import {
   FailureRecovery,
   GateDiagnosis,
   HandoffContext,
+  NextAction,
   PatchbayClient,
   PhaseProvider,
   PhaseStrategy,
@@ -491,7 +492,7 @@ function mergeContext(current: HandoffContext | null, next: HandoffContext): Han
 }
 
 function fallbackActivity(context: HandoffContext | null, status: RunStatus | null): AgentActivity {
-  const fallbackActions = (status?.next_commands ?? []).map((name) => {
+  const fallbackActions: NextAction[] = (status?.next_commands ?? []).map((name) => {
     const safe = name === "apply" ? Boolean(status?.gate_state?.ready_to_apply && status?.review_result === "PASS" && status?.tests_passed) : true;
     return {
       name,
@@ -516,7 +517,8 @@ function fallbackActivity(context: HandoffContext | null, status: RunStatus | nu
     safe: action.safe,
     tool: action.tool,
     requires_human_confirmation: action.requires_human_confirmation,
-    reason: action.reason
+    reason: action.reason,
+    alternative_action: action.alternative_action
   }));
   return {
     headline: nextAction
@@ -595,7 +597,8 @@ function suggestionsFor(activity: AgentActivity, context: HandoffContext | null)
     safe: action.safe,
     tool: action.tool,
     requires_human_confirmation: action.requires_human_confirmation,
-    reason: action.reason
+    reason: action.reason,
+    alternative_action: action.alternative_action
   }));
 }
 
@@ -608,7 +611,8 @@ function actionFromSuggestion(suggestion: SuggestedAction | AgentAction): Sugges
     safe: suggestion.safe,
     tool: suggestion.tool,
     requires_human_confirmation: suggestion.requires_human_confirmation,
-    reason: suggestion.reason
+    reason: suggestion.reason,
+    alternative_action: suggestion.alternative_action
   };
 }
 
@@ -1896,6 +1900,7 @@ function NextActionCard({
     );
   }
   const primary = action ? actionFromSuggestion(action) : suggestions[0];
+  const alternative = primary?.safe === false ? primary.alternative_action : null;
   return (
     <div className={`next-card ${primary?.safe ? "ready" : "blocked"}`} aria-label="下一步确认">
       {primary?.safe ? <Play size={16} /> : <AlertTriangle size={16} />}
@@ -1903,7 +1908,12 @@ function NextActionCard({
         <strong>{primary?.label ?? "下一步"}</strong>
         <span>{primary?.reason || "Patchbay Agent 已准备好继续。"}</span>
       </div>
-      {primary ? (
+      {alternative ? (
+        <button type="button" onClick={() => onRecoveryAction?.(alternative)} disabled={!onRecoveryAction}>
+          <Settings size={13} />
+          {alternative.label}
+        </button>
+      ) : primary ? (
         <button onClick={() => onAction(primary)}>
           {primary.safe ? <Play size={13} /> : <AlertTriangle size={13} />}
           {primary.requires_human_confirmation ? "确认" : "执行"}

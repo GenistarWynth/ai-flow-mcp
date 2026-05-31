@@ -123,6 +123,10 @@ class HandoffContextTest(unittest.TestCase):
         self.assertEqual(context["next_actions"][0]["alternative_action"]["id"], "configure_reasonix_command")
         self.assertIn("commands.reasonix", context["next_actions"][0]["reason"])
         self.assertEqual(context["agent_activity"]["conversation_state"]["suggestions"][0]["safe"], False)
+        self.assertEqual(
+            context["agent_activity"]["conversation_state"]["suggestions"][0]["alternative_action"]["id"],
+            "configure_reasonix_command",
+        )
 
     def test_context_health_card_prefers_routing_evidence_actions(self) -> None:
         status_data = {
