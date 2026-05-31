@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shlex
+import shutil
 import subprocess
 import tomllib
 from copy import deepcopy
@@ -150,6 +151,99 @@ def route_matches_economy(route: dict[str, Any], target: dict[str, Any]) -> bool
     if not target_provider or provider != target_provider:
         return False
     return not target_model or model == target_model
+
+
+def route_command_status(cfg: dict[str, Any], route: dict[str, Any]) -> dict[str, Any]:
+    provider = str(route.get("provider") or "").strip()
+    command_key = str(route.get("command_key") or "").strip()
+    if provider == "reasonix_cli":
+        commands = cfg.get("commands", {}) if isinstance(cfg.get("commands"), dict) else {}
+        key = command_key or "reasonix"
+        return _command_status(
+            provider=provider,
+            command_key=command_key,
+            command_value=commands.get(key, ""),
+            source=f"commands.{key}",
+            target_label="Reasonix",
+        )
+
+    providers = cfg.get("providers", {}) if isinstance(cfg.get("providers"), dict) else {}
+    provider_cfg = providers.get(provider)
+    if not isinstance(provider_cfg, dict) or "command" not in provider_cfg:
+        return {
+            "required": False,
+            "ready": True,
+            "provider": provider,
+            "command_key": command_key,
+        }
+    return _command_status(
+        provider=provider,
+        command_key=command_key,
+        command_value=provider_cfg.get("command", ""),
+        source=f"providers.{provider}.command",
+        target_label=route_label(route),
+    )
+
+
+def _command_status(
+    *,
+    provider: str,
+    command_key: str,
+    command_value: Any,
+    source: str,
+    target_label: str,
+) -> dict[str, Any]:
+    command = _display_command(command_value)
+    try:
+        parts = split_command(command_value)
+    except ValueError as exc:
+        return {
+            "required": True,
+            "ready": False,
+            "status": "invalid",
+            "provider": provider,
+            "command_key": command_key,
+            "command": command,
+            "executable": "",
+            "resolved": "",
+            "source": source,
+            "recommendation": f"Fix {source}: {exc}",
+        }
+    executable = parts[0] if parts else ""
+    resolved = shutil.which(executable) if executable else None
+    if not command:
+        return {
+            "required": True,
+            "ready": False,
+            "status": "missing_config",
+            "provider": provider,
+            "command_key": command_key,
+            "command": command,
+            "executable": executable,
+            "resolved": "",
+            "source": source,
+            "recommendation": f"Set {source} to the {target_label} executable.",
+        }
+    return {
+        "required": True,
+        "ready": bool(resolved),
+        "status": "ready" if resolved else "not_found",
+        "provider": provider,
+        "command_key": command_key,
+        "command": command,
+        "executable": executable,
+        "resolved": resolved or "",
+        "source": source,
+        "recommendation": ""
+        if resolved
+        else f"Install {target_label} or set {source} to its full executable path.",
+    }
+
+
+def _display_command(command: Any) -> str:
+    if isinstance(command, (list, tuple)):
+        return " ".join(str(part) for part in command if str(part))
+    return str(command or "").strip()
 
 
 def deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:

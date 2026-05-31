@@ -173,9 +173,16 @@ def _recommendations(checks: dict[str, Any]) -> list[str]:
             f"Run `patchbay config profile apply economy` to route write/fix implementation work to {target_name}."
         )
     if config.get("ok") and economy.get("matches") and economy.get("command_ready") is False:
-        recommendations.append(
-            f"Set `commands.reasonix` so the {target_name} write/fix economy route can actually execute."
-        )
+        status = _first_not_ready_command_status(economy.get("command_status"))
+        source = str(status.get("source") or "the configured provider command")
+        if target.get("provider") == "reasonix_cli":
+            recommendations.append(
+                f"Set `commands.reasonix` so the {target_name} write/fix economy route can actually execute."
+            )
+        else:
+            recommendations.append(
+                f"Fix `{source}` so the {target_name} write/fix economy route can actually execute."
+            )
     return recommendations
 
 
@@ -268,6 +275,17 @@ def _structured_actions(
         )
     if any("commands.reasonix" in item for item in recommendations):
         actions.append(_configure_reasonix_action(target_name))
+    if economy.get("command_ready") is False and target.get("provider") != "reasonix_cli":
+        actions.append(
+            {
+                "id": "inspect_economy_provider_command",
+                "label": "Inspect provider command",
+                "kind": "local_agent",
+                "message": "readiness",
+                "safe": True,
+                "reason": f"Inspect the configured command for the {target_name} economy provider.",
+            }
+        )
     if next_actions or recommendations:
         actions.append(
             {
@@ -281,6 +299,15 @@ def _structured_actions(
             }
         )
     return _dedupe_actions(actions)
+
+
+def _first_not_ready_command_status(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    for item in value.values():
+        if isinstance(item, dict) and item.get("required") and item.get("ready") is False:
+            return item
+    return {}
 
 
 def _setup_message(host: str) -> str:

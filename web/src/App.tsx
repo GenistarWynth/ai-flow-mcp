@@ -751,6 +751,16 @@ function healthActionFromNext(nextAction?: string, target?: PhaseProvider): Agen
       reason: "Open events while write/fix provider evidence arrives."
     };
   }
+  if (nextAction === "inspect_economy_provider_command") {
+    return {
+      id: "inspect_economy_provider_command",
+      label: "Inspect provider command",
+      kind: "local_agent",
+      message: "readiness",
+      safe: true,
+      reason: `Inspect the configured command for the ${targetLabel} economy provider.`
+    };
+  }
   return null;
 }
 

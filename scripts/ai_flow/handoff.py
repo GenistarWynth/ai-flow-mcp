@@ -482,6 +482,15 @@ def _health_action(health: dict[str, Any]) -> dict[str, Any] | None:
             "safe": True,
             "reason": "Open events while write/fix phases produce provider evidence.",
         }
+    if next_action == "inspect_economy_provider_command":
+        return {
+            "id": "inspect_economy_provider_command",
+            "label": "Inspect provider command",
+            "kind": "local_agent",
+            "message": "readiness",
+            "safe": True,
+            "reason": "Open readiness to inspect the configured economy provider command.",
+        }
     return None
 
 

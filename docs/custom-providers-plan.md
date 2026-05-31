@@ -118,6 +118,8 @@ For every custom CLI provider invocation, Patchbay sets `PATCHBAY_USAGE_FILE` to
 
 Patchbay merges usage found in stdout, stderr, and the sidecar, then preserves it through all output contracts, including `worktree_diff`. The merged totals flow into `events.jsonl`, `patchbay metrics`, `run_metrics.provider_usage`, and the Web workbench efficiency panel, so cheap high-volume writer/fixer routes can be verified with actual token/cost evidence instead of provider names alone.
 
+When a custom provider is used as `[profiles.economy]`, readiness and metrics also validate `providers.<id>.command`. Missing or unresolved commands are reported as `command_not_ready` with `inspect_economy_provider_command` actions, while the built-in Reasonix path continues to use the dedicated `configure_reasonix_command` action for `commands.reasonix`.
+
 ---
 
 ## Provider Registry Integration

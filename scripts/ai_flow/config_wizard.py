@@ -8,7 +8,6 @@ resolved phase configuration.
 
 from __future__ import annotations
 
-import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -352,8 +351,8 @@ def _profile_actions(status: dict[str, Any], *, include_validate: bool = False) 
             else:
                 actions.append(
                     {
-                        "id": "open_readiness",
-                        "label": "Open readiness",
+                        "id": "inspect_economy_provider_command",
+                        "label": "Inspect provider command",
                         "kind": "local_agent",
                         "message": "readiness",
                         "safe": True,
@@ -504,50 +503,9 @@ def _phase_strategy(cfg: dict[str, Any]) -> dict[str, Any]:
 
 
 def _phase_command_status(cfg: dict[str, Any], phase: dict[str, Any]) -> dict[str, Any]:
-    provider = str(phase.get("provider") or "")
-    command_key = str(phase.get("command_key") or "")
-    if provider != "reasonix_cli":
-        return {
-            "required": False,
-            "ready": True,
-            "provider": provider,
-            "command_key": command_key,
-        }
+    from .config import route_command_status
 
-    from .config import split_command
-
-    commands = cfg.get("commands", {})
-    if not isinstance(commands, dict):
-        commands = {}
-    command = str(commands.get(command_key, "") or "").strip()
-    parts = split_command(command)
-    executable = parts[0] if parts else ""
-    resolved = shutil.which(executable) if executable else None
-    if not command:
-        return {
-            "required": True,
-            "ready": False,
-            "status": "missing_config",
-            "provider": provider,
-            "command_key": command_key,
-            "command": command,
-            "executable": executable,
-            "resolved": "",
-            "recommendation": f"Set commands.{command_key} to your Reasonix executable, such as reasonix or reasonix.cmd.",
-        }
-    return {
-        "required": True,
-        "ready": bool(resolved),
-        "status": "ready" if resolved else "not_found",
-        "provider": provider,
-        "command_key": command_key,
-        "command": command,
-        "executable": executable,
-        "resolved": resolved or "",
-        "recommendation": ""
-        if resolved
-        else f"Install Reasonix or set commands.{command_key} to the full Reasonix executable path.",
-    }
+    return route_command_status(cfg, phase)
 
 
 def _public_phase(phase: dict[str, Any]) -> dict[str, Any]:

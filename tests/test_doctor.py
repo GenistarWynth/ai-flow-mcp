@@ -115,6 +115,45 @@ provider = "mock"
         self.assertIn("commands.reasonix", actions["configure_reasonix_command"]["command"])
         self.assertNotIn("apply_economy_profile", actions)
 
+    def test_doctor_recommends_custom_economy_provider_command(self) -> None:
+        from scripts.ai_flow import service
+        from scripts.ai_flow.doctor import run_doctor
+
+        service.init_project(self.tmp)
+        (self.tmp / ".ai" / "patchbay.toml").write_text(
+            """
+[providers.cheap_writer]
+roles = ["write", "fix"]
+command = "definitely-missing-cheap-writer"
+prompt_mode = "stdin"
+output_contract = "writer_diff"
+
+[profiles.economy]
+provider = "cheap_writer"
+model = "cheap-model"
+label = "Cheap writer"
+
+[phases.write]
+provider = "cheap_writer"
+model = "cheap-model"
+
+[phases.fix]
+provider = "cheap_writer"
+model = "cheap-model"
+""".lstrip(),
+            encoding="utf-8",
+        )
+
+        result = run_doctor(self.tmp, include_mcp=False, skill_path=self.tmp / "skills")
+
+        profile = result["checks"]["config"]["profile"]
+        self.assertEqual(profile["profile"], "economy")
+        self.assertFalse(profile["economy"]["command_ready"])
+        self.assertTrue(any("providers.cheap_writer.command" in item for item in result["recommendations"]))
+        actions = {item["id"]: item for item in result["actions"]}
+        self.assertIn("inspect_economy_provider_command", actions)
+        self.assertNotIn("configure_reasonix_command", actions)
+
 
 if __name__ == "__main__":
     unittest.main()

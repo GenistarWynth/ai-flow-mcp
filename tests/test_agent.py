@@ -1418,6 +1418,55 @@ label = "Mock writer"
         self.assertEqual(routing["phases"]["write"]["observed"][0]["provider"], "mock")
         self.assertEqual(routing["phases"]["write"]["observed"][1]["provider"], "reasonix_cli")
 
+    def test_agent_metrics_warns_when_custom_economy_provider_command_is_missing(self) -> None:
+        config_path = self.repo / ".ai" / "patchbay.toml"
+        config_path.write_text(
+            """
+[phases.plan]
+provider = "mock"
+
+[phases.review]
+provider = "mock"
+
+[workflow]
+allow_apply_without_tests = true
+
+[commands_allowlist]
+test = []
+
+[providers.cheap_writer]
+roles = ["write", "fix"]
+command = "definitely-missing-cheap-writer"
+prompt_mode = "stdin"
+output_contract = "writer_diff"
+
+[profiles.economy]
+provider = "cheap_writer"
+model = "cheap-model"
+label = "Cheap writer"
+
+[phases.write]
+provider = "cheap_writer"
+model = "cheap-model"
+
+[phases.fix]
+provider = "cheap_writer"
+model = "cheap-model"
+""".lstrip(),
+            encoding="utf-8",
+        )
+        planned = agent_message(self.repo, "build custom command health fixture")
+
+        response = agent_message(self.repo, "cost", run_id=planned["run_id"])
+
+        routing = response["metrics"]["routing_evidence"]
+        self.assertTrue(routing["economy_configured"])
+        self.assertFalse(routing["economy_command_ready"])
+        self.assertEqual(routing["command_not_ready_phases"], ["write", "fix"])
+        self.assertEqual(routing["economy_health"]["next_action"], "inspect_economy_provider_command")
+        self.assertEqual(routing["actions"][0]["id"], "inspect_economy_provider_command")
+        self.assertEqual(routing["phases"]["write"]["command_status"]["source"], "providers.cheap_writer.command")
+
     def test_mcp_patchbay_agent_continue_without_run_returns_guidance(self) -> None:
         from scripts.ai_flow import mcp_server
 

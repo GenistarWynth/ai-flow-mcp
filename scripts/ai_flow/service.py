@@ -4,7 +4,6 @@ from copy import deepcopy
 from datetime import datetime
 import json
 import os
-import shutil
 import subprocess
 import sys
 import threading
@@ -48,8 +47,8 @@ from .config import (
     load_config,
     resolve_phase,
     route_label,
+    route_command_status,
     route_matches_economy,
-    split_command,
 )
 from .context import build_context
 from .errors import AiFlowError, GitError, SafetyError, StateError
@@ -1833,6 +1832,17 @@ def _routing_health_actions(health: dict[str, Any]) -> list[dict[str, Any]]:
                 "reason": f"Set the default Reasonix executable so the {target_name} write/fix economy route can actually run.",
             }
         ]
+    if next_action == "inspect_economy_provider_command":
+        return [
+            {
+                "id": "inspect_economy_provider_command",
+                "label": "Inspect provider command",
+                "kind": "local_agent",
+                "message": "readiness",
+                "safe": True,
+                "reason": f"Open readiness to inspect the configured {target_name} economy provider command.",
+            }
+        ]
     if next_action == "apply_economy_profile":
         return [
             {
@@ -1904,6 +1914,11 @@ def _economy_health(
             "next_action": "apply_economy_profile",
         }
     if command_not_ready:
+        next_action = (
+            "configure_reasonix_command"
+            if str(target.get("provider") or "") == ECONOMY_PROVIDER
+            else "inspect_economy_provider_command"
+        )
         summary = f"Economy route is configured, but {'/'.join(command_not_ready)} cannot execute because the {target_name} command is not ready."
         return {
             "status": "command_not_ready",
@@ -1917,8 +1932,8 @@ def _economy_health(
             "missing_evidence": missing_observation,
             "observed_economy_phases": observed_economy_phases,
             "summary": summary,
-            "recommendation": f"Set `commands.reasonix` before continuing high-volume write/fix work on the {target_name} economy route.",
-            "next_action": "configure_reasonix_command",
+            "recommendation": f"Fix the configured {target_name} provider command before continuing high-volume write/fix work.",
+            "next_action": next_action,
         }
     if drift_phases:
         summary = f"Economy route is configured, but {'/'.join(drift_phases)} observed non-economy provider events."
@@ -2009,45 +2024,7 @@ def _routing_phase_snapshot(route: dict[str, Any]) -> dict[str, Any]:
 
 
 def _routing_phase_command_status(cfg: dict[str, Any], phase: dict[str, Any]) -> dict[str, Any]:
-    provider = str(phase.get("provider") or "")
-    command_key = str(phase.get("command_key") or "")
-    if provider != ECONOMY_PROVIDER:
-        return {
-            "required": False,
-            "ready": True,
-            "provider": provider,
-            "command_key": command_key,
-        }
-    commands = cfg.get("commands", {}) if isinstance(cfg.get("commands"), dict) else {}
-    command = str(commands.get(command_key, "") or "").strip()
-    parts = split_command(command)
-    executable = parts[0] if parts else ""
-    resolved = shutil.which(executable) if executable else None
-    if not command:
-        return {
-            "required": True,
-            "ready": False,
-            "status": "missing_config",
-            "provider": provider,
-            "command_key": command_key,
-            "command": command,
-            "executable": executable,
-            "resolved": "",
-            "recommendation": f"Set commands.{command_key} to your Reasonix executable, such as reasonix or reasonix.cmd.",
-        }
-    return {
-        "required": True,
-        "ready": bool(resolved),
-        "status": "ready" if resolved else "not_found",
-        "provider": provider,
-        "command_key": command_key,
-        "command": command,
-        "executable": executable,
-        "resolved": resolved or "",
-        "recommendation": ""
-        if resolved
-        else f"Install Reasonix or set commands.{command_key} to the full Reasonix executable path.",
-    }
+    return route_command_status(cfg, phase)
 
 
 def _is_economy_route(route: dict[str, Any], target: dict[str, Any]) -> bool:
