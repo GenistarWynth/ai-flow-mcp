@@ -149,6 +149,7 @@ class ConfigWizardTest(unittest.TestCase):
         target = economy_target(cfg)
         self.assertEqual(target["provider"], "cheap_writer")
         self.assertEqual(target["model"], "deepseek-chat")
+        self.assertEqual(target["command_key"], "")
         self.assertEqual(target["label"], "DeepSeek cheap writer")
         write = resolve_phase(cfg, "write")
         fix = resolve_phase(cfg, "fix")
@@ -482,6 +483,41 @@ model = "mock"
         self.assertEqual(actions["apply_economy_profile"]["kind"], "local_agent")
         self.assertEqual(actions["apply_economy_profile"]["message"], "apply economy profile")
         self.assertTrue(actions["apply_economy_profile"]["safe"])
+
+    def test_profile_show_treats_command_key_mismatch_as_custom_route(self) -> None:
+        from scripts.ai_flow.config_wizard import run_config_wizard
+
+        self._make_git_repo()
+        config_path = self.tmp / ".ai" / "patchbay.toml"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        escaped = sys.executable.replace("\\", "\\\\")
+        config_path.write_text(
+            f"""
+[commands]
+reasonix = "{escaped}"
+other_reasonix = "{escaped}"
+
+[phases.write]
+provider = "reasonix_cli"
+model = "deepseek-v4-pro"
+command_key = "other_reasonix"
+
+[phases.fix]
+provider = "reasonix_cli"
+model = "deepseek-v4-pro"
+command_key = "other_reasonix"
+""".lstrip(),
+            encoding="utf-8",
+        )
+
+        result = run_config_wizard(self.tmp, show_profile=True)
+
+        self.assertEqual(result["profile"], "custom")
+        self.assertFalse(result["economy"]["matches"])
+        self.assertEqual(result["economy"]["target"]["command_key"], "reasonix")
+        self.assertEqual(result["economy"]["write"]["command_key"], "other_reasonix")
+        self.assertFalse(result["phase_strategy"]["write"]["economy_route"])
+        self.assertFalse(result["phase_strategy"]["fix"]["economy_route"])
 
 
 if __name__ == "__main__":

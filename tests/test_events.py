@@ -63,8 +63,9 @@ class EventsTest(unittest.TestCase):
         append_event(
             self.tmp,
             phase="apply",
-            provider="",
+            provider="reasonix_cli",
             model="",
+            command_key="reasonix",
             action="apply_granted",
             status="APPLIED",
             detail="Applied FINAL.diff to /repo",
@@ -89,8 +90,9 @@ class EventsTest(unittest.TestCase):
         self.assertEqual(e["next_action"], "cleanup")
         self.assertEqual(e["token_usage"]["total_tokens"], 125)
         self.assertEqual(e["cost"]["estimated_total"], 0.0125)
-        # provider and model omitted when empty
-        self.assertNotIn("provider", e)
+        self.assertEqual(e["provider"], "reasonix_cli")
+        self.assertEqual(e["command_key"], "reasonix")
+        # model omitted when empty
         self.assertNotIn("model", e)
 
     def test_events_file_is_jsonl(self) -> None:

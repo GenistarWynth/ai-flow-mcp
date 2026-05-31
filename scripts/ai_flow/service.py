@@ -1097,6 +1097,7 @@ def write(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 phase="write",
                 provider=write_phase["provider"],
                 model=write_phase.get("model", ""),
+                command_key=write_phase.get("command_key", ""),
                 action="start",
                 status="RUNNING",
                 run_id=run_id,
@@ -1125,6 +1126,7 @@ def write(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 phase="write",
                 provider=write_phase["provider"],
                 model=write_phase.get("model", ""),
+                command_key=write_phase.get("command_key", ""),
                 action="success",
                 status="IMPLEMENTED",
                 run_id=run_id,
@@ -1427,6 +1429,7 @@ def fix(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 phase="fix",
                 provider=fix_phase["provider"],
                 model=fix_phase.get("model", ""),
+                command_key=fix_phase.get("command_key", ""),
                 action="start",
                 status="RUNNING",
                 detail=f"Fix iteration {iterations + 1}/{max_repairs}",
@@ -1456,6 +1459,7 @@ def fix(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 phase="fix",
                 provider=fix_phase["provider"],
                 model=fix_phase.get("model", ""),
+                command_key=fix_phase.get("command_key", ""),
                 action="success",
                 status="IMPLEMENTED",
                 detail=f"Fix iteration {iterations + 1} complete.",
@@ -1648,8 +1652,8 @@ def _run_metrics(run_path: Path) -> dict[str, Any]:
     phase_durations: dict[str, int] = {}
     phase_attempts: dict[str, int] = {}
     open_phase_starts: dict[str, str] = {}
-    provider_usage: dict[tuple[str, str, str], dict[str, Any]] = {}
-    provider_order: list[tuple[str, str, str]] = []
+    provider_usage: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    provider_order: list[tuple[str, str, str, str]] = []
     token_totals = {
         "input_tokens": 0,
         "output_tokens": 0,
@@ -1682,9 +1686,10 @@ def _run_metrics(run_path: Path) -> dict[str, Any]:
 
         provider = str(entry.get("provider") or "")
         model = str(entry.get("model") or "")
+        command_key = str(entry.get("command_key") or "")
         provider_bucket: dict[str, Any] | None = None
         if provider or model:
-            key = (phase, provider, model)
+            key = (phase, provider, model, command_key)
             if key not in provider_usage:
                 provider_usage[key] = {
                     "phase": phase,
@@ -1693,6 +1698,8 @@ def _run_metrics(run_path: Path) -> dict[str, Any]:
                     "events": 0,
                     "duration_ms": 0,
                 }
+                if command_key:
+                    provider_usage[key]["command_key"] = command_key
                 provider_order.append(key)
             provider_bucket = provider_usage[key]
             provider_bucket["events"] += 1

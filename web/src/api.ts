@@ -75,6 +75,7 @@ export type ProviderUsage = {
   phase?: string;
   provider?: string;
   model?: string;
+  command_key?: string;
   events?: number;
   duration_ms?: number;
   input_tokens?: number;

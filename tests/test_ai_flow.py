@@ -1227,6 +1227,34 @@ class PhaseResolverTests(unittest.TestCase):
         from scripts.ai_flow.config import DEFAULT_CONFIG
         self.default_cfg = copy.deepcopy(DEFAULT_CONFIG)
 
+    def test_economy_route_match_respects_explicit_command_key(self) -> None:
+        from scripts.ai_flow.config import route_matches_economy
+
+        target = {
+            "provider": "reasonix_cli",
+            "model": "deepseek-v4-pro",
+            "command_key": "reasonix",
+        }
+
+        self.assertTrue(
+            route_matches_economy(
+                {"provider": "reasonix_cli", "model": "deepseek-v4-pro", "command_key": "reasonix"},
+                target,
+            )
+        )
+        self.assertFalse(
+            route_matches_economy(
+                {"provider": "reasonix_cli", "model": "deepseek-v4-pro", "command_key": "other_reasonix"},
+                target,
+            )
+        )
+        self.assertFalse(
+            route_matches_economy(
+                {"provider": "reasonix_cli", "model": "deepseek-v4-pro"},
+                target,
+            )
+        )
+
     def test_legacy_config_resolves_plan_to_claude_cli(self) -> None:
         """Without [phases], plan provider should resolve to claude_cli from legacy defaults."""
         cfg = dict(self.default_cfg)

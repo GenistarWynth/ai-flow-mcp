@@ -970,7 +970,10 @@ function profileStatusToRouting(result: ConfigProfileStatus): RoutingEvidence {
   const target = economy.target ?? { provider: "reasonix_cli", model: "deepseek-v4-pro" };
   const configuredEconomy = Boolean(economy.matches);
   const commandStatus = economy.command_status ?? {};
-  const matchesTarget = (route: PhaseProvider) => route.provider === target.provider && (!target.model || route.model === target.model);
+  const matchesTarget = (route: PhaseProvider) =>
+    route.provider === target.provider &&
+    (!target.model || route.model === target.model) &&
+    (!target.command_key || route.command_key === target.command_key);
   return {
     profile: status.profile ?? result.profile ?? (configuredEconomy ? "economy" : "custom"),
     target,

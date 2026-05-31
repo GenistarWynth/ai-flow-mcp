@@ -119,6 +119,9 @@ def economy_target(cfg: dict[str, Any]) -> dict[str, str]:
     if not model and provider == "reasonix_cli":
         model = "deepseek-v4-pro"
     command_key = str(raw.get("command_key") or "").strip()
+    default_profile = DEFAULT_CONFIG["profiles"]["economy"]
+    if provider != default_profile["provider"] and command_key == default_profile["command_key"]:
+        command_key = ""
     if not command_key:
         command_key = _PROVIDER_COMMAND_KEY_DEFAULTS.get(provider, "")
     label = str(raw.get("label") or "").strip()
@@ -146,11 +149,15 @@ def route_label(route: dict[str, Any]) -> str:
 def route_matches_economy(route: dict[str, Any], target: dict[str, Any]) -> bool:
     provider = str(route.get("provider") or "").strip()
     model = str(route.get("model") or "").strip()
+    command_key = str(route.get("command_key") or "").strip()
     target_provider = str(target.get("provider") or "").strip()
     target_model = str(target.get("model") or "").strip()
+    target_command_key = str(target.get("command_key") or "").strip()
     if not target_provider or provider != target_provider:
         return False
-    return not target_model or model == target_model
+    if target_model and model != target_model:
+        return False
+    return not target_command_key or command_key == target_command_key
 
 
 def route_command_status(cfg: dict[str, Any], route: dict[str, Any]) -> dict[str, Any]:

@@ -27,6 +27,7 @@ def append_event(
     phase: str,
     provider: str = "",
     model: str = "",
+    command_key: str = "",
     action: str,
     status: str,
     detail: str = "",
@@ -56,6 +57,8 @@ def append_event(
         record["provider"] = provider
     if model:
         record["model"] = model
+    if command_key:
+        record["command_key"] = command_key
     if detail:
         record["detail"] = detail
     if artifact_paths:

@@ -1502,6 +1502,7 @@ test = []
             phase="write",
             provider="reasonix_cli",
             model="deepseek-v4-pro",
+            command_key="reasonix",
             action="success",
             status="IMPLEMENTED",
             detail="synthetic economy writer event",
@@ -1592,6 +1593,36 @@ test = []
         self.assertEqual(response["actions"][0]["tab"], "Trace")
         self.assertIn("write observed a non-economy provider", routing["summary"])
 
+    def test_agent_metrics_flags_command_key_drift_on_economy_route(self) -> None:
+        from scripts.ai_flow.events import append_event
+
+        agent_message(self.repo, "apply economy profile")
+        self._set_reasonix_command_to_python()
+        planned = agent_message(self.repo, "command key routing drift target")
+        run_path = self.repo / ".ai" / "runs" / planned["run_id"]
+        append_event(
+            run_path,
+            phase="write",
+            provider="reasonix_cli",
+            model="deepseek-v4-pro",
+            command_key="other_reasonix",
+            action="success",
+            status="IMPLEMENTED",
+            detail="synthetic writer event through the wrong command alias",
+            duration_ms=1200,
+        )
+
+        response = agent_message(self.repo, "cost", run_id=planned["run_id"])
+
+        routing = response["metrics"]["routing_evidence"]
+        self.assertTrue(routing["economy_configured"])
+        self.assertEqual(routing["observed_economy_phases"], [])
+        self.assertEqual(routing["observed_non_economy_phases"], ["write"])
+        self.assertEqual(routing["phases"]["write"]["observed"][0]["command_key"], "other_reasonix")
+        self.assertEqual(routing["phases"]["write"]["status"], "observed_other")
+        self.assertEqual(routing["economy_health"]["status"], "drift")
+        self.assertEqual(routing["actions"][0]["id"], "inspect_routing_events")
+
     def test_agent_metrics_flags_mixed_provider_drift_on_economy_route(self) -> None:
         from scripts.ai_flow.events import append_event
 
@@ -1604,6 +1635,7 @@ test = []
             phase="write",
             provider="reasonix_cli",
             model="deepseek-v4-pro",
+            command_key="reasonix",
             action="success",
             status="IMPLEMENTED",
             detail="synthetic economy writer event",

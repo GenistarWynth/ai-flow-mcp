@@ -2995,6 +2995,84 @@ describe("Workbench", () => {
     expect(client.getConfig).toHaveBeenCalled();
   });
 
+  it("does not mark profile routes as economy when command keys mismatch", async () => {
+    const applyConfigProfile = vi.fn().mockResolvedValue({
+      profile: "custom",
+      status: {
+        profile: "custom",
+        economy: {
+          matches: false,
+          target: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" },
+          write: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "other_reasonix" },
+          fix: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "other_reasonix" },
+          command_ready: true
+        },
+        phase_strategy: {
+          plan: { provider: "claude_cli", model: "opus", tier: "supervision", reason: "Use a stronger planner." },
+          write: {
+            provider: "reasonix_cli",
+            model: "deepseek-v4-pro",
+            command_key: "other_reasonix",
+            tier: "economy",
+            economy_route: false
+          },
+          fix: {
+            provider: "reasonix_cli",
+            model: "deepseek-v4-pro",
+            command_key: "other_reasonix",
+            tier: "economy",
+            economy_route: false
+          },
+          review: { provider: "codex_cli", model: "gpt-5", tier: "supervision", reason: "Use a stronger reviewer." }
+        }
+      },
+      next_actions: ["apply economy profile", "readiness"]
+    });
+    const getDoctor = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        root: "C:/repo",
+        checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true } },
+        next_actions: [],
+        recommendations: [],
+        actions: [
+          {
+            id: "apply_economy_profile",
+            label: "Apply economy profile",
+            kind: "local_agent",
+            message: "apply economy profile",
+            safe: true,
+            reason: "Route high-volume write/fix work to Reasonix/DeepSeek."
+          }
+        ]
+      })
+      .mockResolvedValue({
+        ok: true,
+        root: "C:/repo",
+        checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true } },
+        next_actions: [],
+        recommendations: []
+      });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      getDoctor,
+      applyConfigProfile
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Apply economy profile" }));
+
+    const routingResult = await screen.findByLabelText("Routing result");
+    expect(within(routingResult).getByText("经济路由未启用")).toBeVisible();
+    expect(within(routingResult).getAllByText("未观测")).toHaveLength(2);
+    expect(within(routingResult).queryByText("待观测")).not.toBeInTheDocument();
+  });
+
   it("renders custom economy targets from profile status", async () => {
     const applyConfigProfile = vi.fn().mockResolvedValue({
       profile: "economy",
