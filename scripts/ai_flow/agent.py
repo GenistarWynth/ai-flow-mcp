@@ -117,6 +117,8 @@ def agent_message(
         return _setup_response(root, text)
     if intent == "metrics_latest":
         return _latest_metrics_response(root, text)
+    if intent == "latest_view":
+        return _latest_view_response(root, text)
     if intent == "metrics":
         assert run_id is not None
         return _metrics_response(root, run_id)
@@ -702,6 +704,10 @@ def _classify_intent(message: str, *, has_run: bool, confirmation: str) -> str:
         if _is_runs_intent(text):
             return "runs"
         if _is_run_bound_intent(text):
+            if _is_gate_changing_run_request(text):
+                return "missing_run"
+            if _missing_run_requested_view(text):
+                return "latest_view"
             return "missing_run"
         return "start"
     if _has_any(text, ("apply", "应用", "套用")):
@@ -1117,6 +1123,21 @@ def _is_run_bound_intent(text: str) -> bool:
 
 
 def _is_chinese_run_bound_request(text: str) -> bool:
+    if _has_any(text, ("继续", "推进", "下一步", "接着", "恢复")):
+        return True
+    if _has_any(text, ("确认", "批准", "同意")) and _has_any(text, ("计划", "方案", "plan")):
+        return True
+    if _has_any(text, ("应用补丁", "应用变更", "应用改动", "应用修改", "套用补丁", "套用变更", "套用改动", "合并补丁")):
+        return True
+    return False
+
+
+def _is_gate_changing_run_request(text: str) -> bool:
+    words = _words(text)
+    if words & {"approve", "approved", "confirm", "continue", "resume"}:
+        return True
+    if "apply" in words:
+        return True
     if _has_any(text, ("继续", "推进", "下一步", "接着", "恢复")):
         return True
     if _has_any(text, ("确认", "批准", "同意")) and _has_any(text, ("计划", "方案", "plan")):
@@ -1584,6 +1605,102 @@ def _latest_metrics_response(root: Path, text: str) -> dict[str, Any]:
         }
     )
     return response
+
+
+def _latest_view_response(root: Path, text: str) -> dict[str, Any]:
+    report = service.runs(root, limit=5)
+    recent = list(report.get("runs") or [])
+    if not recent:
+        return _missing_run_response(root, text)
+    latest = recent[0]
+    latest_run_id = str(latest.get("run_id") or "")
+    requested_view = _missing_run_requested_view(text) or {"tab": "Overview", "reason": "The prompt asked for the latest run."}
+    tab = str(requested_view.get("tab") or "Overview")
+    include = _include_for_requested_view(root, latest_run_id, tab)
+    response = _agent_response(
+        root,
+        latest_run_id,
+        action=_action_for_requested_view(tab),
+        reply=f"Latest run {latest_run_id} {tab.lower()} view.",
+        include=include,
+        extra=_run_view_response_extra(text, default_tab=tab),
+    )
+    response.update(
+        {
+            "recent_run": latest,
+            "run_reference": {
+                "run_id": latest_run_id,
+                "status": latest.get("status"),
+                "task": latest.get("task"),
+                "updated_at": latest.get("updated_at"),
+                "suggested_message": "open latest run",
+                "safe_actions": ["open_run", "status", "events"],
+                "requested_view": requested_view,
+            },
+            "requested_view": requested_view,
+            "runs": report,
+        }
+    )
+    response["actions"] = [
+        {
+            "id": "open_latest_run",
+            "label": "Open latest run",
+            "kind": "open_run",
+            "run_id": latest_run_id,
+            "tab": tab,
+            "safe": True,
+            "reason": "Open the latest Patchbay run that supplied this read-only view.",
+        },
+        *list(response.get("actions") or []),
+    ]
+    return response
+
+
+def _include_for_requested_view(root: Path, run_id: str, tab: str) -> dict[str, Any]:
+    if tab == "Diff":
+        return {"diff": True}
+    if tab == "Trace":
+        return {"events_since": 0, "include_trace": True}
+    if tab == "Log":
+        artifact = _log_artifact_for_run(root, run_id)
+        include: dict[str, Any] = {"events_since": 0, "include_trace": True}
+        if artifact:
+            include.update({"artifact": artifact, "artifact_tail": 200})
+        return include
+    if tab == "Artifacts":
+        return {"plan": True, "review": True}
+    return {"events_since": 0}
+
+
+def _action_for_requested_view(tab: str) -> str:
+    if tab == "Diff":
+        return "diff"
+    if tab in {"Artifacts", "Log"}:
+        return "artifact"
+    return "status"
+
+
+def _log_artifact_for_run(root: Path, run_id: str) -> str | None:
+    try:
+        run_path, _ = service._load_run(root, run_id)
+        status = service.status(root, run_id)
+    except Exception:
+        return None
+    recovery = status.get("failure_recovery") if isinstance(status.get("failure_recovery"), dict) else {}
+    for artifact in recovery.get("artifacts") or []:
+        name = str(artifact or "")
+        if name.endswith(".log") and (run_path / name).is_file():
+            return name
+    phase = str(status.get("current_phase") or "")
+    phase_logs = {
+        "plan": "claude-planner.log",
+        "write": "writer.log",
+        "fix": "writer.log",
+        "review": "codex-reviewer.log",
+        "test": "TEST.log",
+    }
+    candidate = phase_logs.get(phase)
+    return candidate if candidate and (run_path / candidate).is_file() else None
 
 
 def _missing_run_response(root: Path, text: str) -> dict[str, Any]:

@@ -823,20 +823,44 @@ test = []
         self.assertIn("open latest run", response["next_actions"])
         self.assertFalse((self.repo / ".ai" / "runs" / run_id / "APPROVAL.json").exists())
 
-    def test_agent_missing_run_preserves_requested_view(self) -> None:
-        agent_message(self.repo, "latest view handoff")
+    def test_agent_view_prompts_without_run_read_latest_run(self) -> None:
+        planned = agent_message(self.repo, "latest view handoff")
+        run_id = planned["run_id"]
 
-        self.assertEqual(agent_message(self.repo, "diff")["run_reference"]["requested_view"]["tab"], "Diff")
-        self.assertEqual(agent_message(self.repo, "events")["run_reference"]["requested_view"]["tab"], "Trace")
-        self.assertEqual(agent_message(self.repo, "logs")["run_reference"]["requested_view"]["tab"], "Log")
-        self.assertEqual(agent_message(self.repo, "artifact")["run_reference"]["requested_view"]["tab"], "Artifacts")
-        self.assertEqual(agent_message(self.repo, "看补丁")["run_reference"]["requested_view"]["tab"], "Diff")
-        self.assertEqual(agent_message(self.repo, "查看事件轨迹")["run_reference"]["requested_view"]["tab"], "Trace")
-        self.assertEqual(agent_message(self.repo, "打开日志")["run_reference"]["requested_view"]["tab"], "Log")
-        self.assertEqual(agent_message(self.repo, "看计划产物")["run_reference"]["requested_view"]["tab"], "Artifacts")
-        self.assertEqual(agent_message(self.repo, "查看失败原因")["run_reference"]["requested_view"]["tab"], "Log")
-        self.assertEqual(agent_message(self.repo, "为什么失败")["run_reference"]["requested_view"]["tab"], "Log")
-        self.assertEqual(agent_message(self.repo, "why did it fail")["run_reference"]["requested_view"]["tab"], "Log")
+        cases = [
+            ("diff", "Diff", "diff"),
+            ("events", "Trace", "status"),
+            ("logs", "Log", "artifact"),
+            ("artifact", "Artifacts", "artifact"),
+            ("看补丁", "Diff", "diff"),
+            ("查看事件轨迹", "Trace", "status"),
+            ("打开日志", "Log", "artifact"),
+            ("看计划产物", "Artifacts", "artifact"),
+            ("查看失败原因", "Log", "artifact"),
+            ("为什么失败", "Log", "artifact"),
+            ("why did it fail", "Log", "artifact"),
+        ]
+        for message, tab, action in cases:
+            with self.subTest(message=message):
+                response = agent_message(self.repo, message)
+                self.assertEqual(response["action"], action)
+                self.assertEqual(response["run_id"], run_id)
+                self.assertEqual(response["recent_run"]["run_id"], run_id)
+                self.assertEqual(response["run_reference"]["requested_view"]["tab"], tab)
+                self.assertEqual(response["requested_view"]["tab"], tab)
+                actions = {item["id"]: item for item in response["actions"]}
+                self.assertEqual(actions["open_latest_run"]["run_id"], run_id)
+                self.assertEqual(actions["open_latest_run"]["tab"], tab)
+                self.assertFalse((self.repo / ".ai" / "runs" / run_id / "APPROVAL.json").exists())
+
+    def test_agent_view_prompt_without_runs_returns_local_guidance(self) -> None:
+        response = agent_message(self.repo, "diff")
+
+        self.assertEqual(response["action"], "missing_run")
+        self.assertFalse(response["ok"])
+        self.assertIsNone(response["run_id"])
+        self.assertIsNone(response["run_reference"])
+        self.assertEqual(response["requested_view"]["tab"], "Diff")
 
     def test_agent_run_bound_view_prompts_return_diagnostic_actions(self) -> None:
         planned = agent_message(self.repo, "selected run diagnostics")
