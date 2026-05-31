@@ -14,6 +14,7 @@ Patchbay ships built-in providers in each role registry (`PLANNERS`, `WRITERS`, 
 - Shipped: CLI prompt delivery through `prompt_mode = "stdin" | "arg" | "file"`.
 - Shipped: output contracts `plan_json`, `review_verdict`, `writer_diff`, and `worktree_diff`.
 - Shipped: phase resolution registers configured providers into the existing registries at load time.
+- Shipped: custom provider IDs are rejected before registration or `add-cli` writes when they collide with built-ins (`reasonix_cli`, `claude_cli`, `codex_cli`, `gemini_cli`, `mock`).
 - Roadmap: HTTP API mode, generic ACP mode, provider-specific path allowlists/denylists, execution blocking, and richer output extraction.
 
 ## Out of scope
@@ -120,6 +121,8 @@ Patchbay merges usage found in stdout, stderr, and the sidecar, then preserves i
 
 When a custom provider is used as `[profiles.economy]`, readiness, metrics, and write/fix preflight gates also validate `providers.<id>.command`. Missing or unresolved commands are reported as `command_not_ready` with `inspect_economy_provider_command` actions and leave the run in its prior durable state, while the built-in Reasonix path continues to use the dedicated `configure_reasonix_command` action for `commands.reasonix`.
 
+`patchbay config provider add-cli` validates provider IDs, roles, command, prompt mode, and output contract before writing `.ai/patchbay.toml`. Invalid definitions fail without mutating the project config, so a bad low-cost provider setup cannot poison later doctor/setup runs.
+
 ---
 
 ## Provider Registry Integration
@@ -200,7 +203,7 @@ When implementing, every item below must be addressed:
 - [ ] Provider output is redacted: any value from the provider's `env` that appears in stdout/stderr is replaced with `***REDACTED***` in logs.
 - [ ] Provider process is killed on timeout; orphan cleanup is handled.
 - [ ] Custom providers are never allowed to modify `.git/`, `.env*`, secret-like files, or paths outside the worktree (same rules as built-in providers).
-- [ ] Custom providers cannot override built-in provider IDs (`reasonix_cli`, `claude_cli`, `codex_cli`, `gemini_cli`, `mock`).
+- [x] Custom providers cannot override built-in provider IDs (`reasonix_cli`, `claude_cli`, `codex_cli`, `gemini_cli`, `mock`).
 
 ---
 

@@ -163,7 +163,7 @@ def run_config_wizard(
     if test_command:
         return _add_test_command(cfg_path, cfg, test_command)
 
-    if provider_id:
+    if provider_id or provider_roles is not None or provider_command or provider_args is not None or output_contract:
         return _add_cli_provider(
             cfg_path,
             cfg,
@@ -238,6 +238,18 @@ def _add_cli_provider(
     prompt_mode: str,
     output_contract: str,
 ) -> dict[str, Any]:
+    provider_id = provider_id.strip()
+    roles = [str(role).strip() for role in roles if str(role).strip()]
+    command = command.strip()
+    prompt_mode = prompt_mode.strip()
+    output_contract = output_contract.strip()
+    _validate_cli_provider_input(
+        provider_id=provider_id,
+        roles=roles,
+        command=command,
+        prompt_mode=prompt_mode,
+        output_contract=output_contract,
+    )
     provider_cfg = {
         "roles": roles,
         "command": command,
@@ -248,6 +260,48 @@ def _add_cli_provider(
     cfg.setdefault("providers", {})[provider_id] = provider_cfg
     _write_config_update(cfg_path, ("providers", provider_id), provider_cfg)
     return {"config": str(cfg_path), "provider": provider_id, "updated": provider_cfg}
+
+
+def _validate_cli_provider_input(
+    *,
+    provider_id: str,
+    roles: list[str],
+    command: str,
+    prompt_mode: str,
+    output_contract: str,
+) -> None:
+    from .adapters import BUILTIN_PROVIDER_IDS, ROLE_FIX, ROLE_PLAN, ROLE_REVIEW, ROLE_WRITE
+    from .errors import AiFlowError
+
+    provider_id = provider_id.strip()
+    if not provider_id:
+        raise AiFlowError("Custom provider id cannot be empty.", stage="config")
+    if provider_id in BUILTIN_PROVIDER_IDS:
+        raise AiFlowError(
+            f"Custom provider id collides with built-in provider: {provider_id}",
+            stage="config",
+            suggested_next_action="Choose a unique provider id such as cheap_writer or local_writer.",
+        )
+    role_set = {str(role).strip() for role in roles if str(role).strip()}
+    if not role_set:
+        raise AiFlowError("Custom provider must declare at least one role.", stage="config")
+    valid_roles = {ROLE_PLAN, ROLE_WRITE, ROLE_REVIEW, ROLE_FIX}
+    invalid_roles = role_set - valid_roles
+    if invalid_roles:
+        raise AiFlowError(
+            f"Custom provider has invalid roles: {', '.join(sorted(invalid_roles))}",
+            stage="config",
+            suggested_next_action="Use one or more of: plan, write, review, fix.",
+        )
+    if not command.strip():
+        raise AiFlowError("Custom provider command cannot be empty.", stage="config")
+    if prompt_mode not in {"stdin", "arg", "file"}:
+        raise AiFlowError("Custom provider prompt_mode must be one of: stdin, arg, file.", stage="config")
+    if output_contract not in {"plan_json", "review_verdict", "worktree_diff", "writer_diff"}:
+        raise AiFlowError(
+            "Custom provider output_contract must be one of: plan_json, review_verdict, worktree_diff, writer_diff.",
+            stage="config",
+        )
 
 
 def _economy_profile_definition(cfg: dict[str, Any]) -> dict[str, Any]:

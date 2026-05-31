@@ -116,6 +116,69 @@ class ConfigWizardTest(unittest.TestCase):
         )
         self.assertEqual(result["provider"], "local_writer")
 
+    def test_add_cli_provider_rejects_invalid_definitions_without_writing(self) -> None:
+        from scripts.ai_flow.errors import AiFlowError
+        from scripts.ai_flow.config_wizard import run_config_wizard
+        self._make_git_repo()
+        config_path = self.tmp / ".ai" / "patchbay.toml"
+
+        cases = [
+            {
+                "provider_id": "mock",
+                "provider_roles": ["write"],
+                "provider_command": "python",
+                "provider_args": [],
+                "prompt_mode": "stdin",
+                "output_contract": "writer_diff",
+                "message": "collides with built-in provider",
+            },
+            {
+                "provider_id": "",
+                "provider_roles": ["write"],
+                "provider_command": "python",
+                "provider_args": [],
+                "prompt_mode": "stdin",
+                "output_contract": "writer_diff",
+                "message": "cannot be empty",
+            },
+            {
+                "provider_id": "bad_role",
+                "provider_roles": ["writer"],
+                "provider_command": "python",
+                "provider_args": [],
+                "prompt_mode": "stdin",
+                "output_contract": "writer_diff",
+                "message": "invalid roles",
+            },
+            {
+                "provider_id": "missing_command",
+                "provider_roles": ["write"],
+                "provider_command": "",
+                "provider_args": [],
+                "prompt_mode": "stdin",
+                "output_contract": "writer_diff",
+                "message": "command cannot be empty",
+            },
+            {
+                "provider_id": "bad_contract",
+                "provider_roles": ["write"],
+                "provider_command": "python",
+                "provider_args": [],
+                "prompt_mode": "stdin",
+                "output_contract": "raw_text",
+                "message": "output_contract",
+            },
+        ]
+        for case in cases:
+            with self.subTest(case=case["provider_id"] or "empty"):
+                before = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
+                with self.assertRaises(AiFlowError) as captured:
+                    run_config_wizard(self.tmp, **{key: value for key, value in case.items() if key != "message"})
+                self.assertIn(case["message"], str(captured.exception))
+                after = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
+                self.assertEqual(after, before)
+                self.assertNotIn("[providers.", after)
+
     def test_add_command_and_test_command(self) -> None:
         from scripts.ai_flow.config_wizard import run_config_wizard
         self._make_git_repo()
