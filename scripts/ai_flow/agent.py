@@ -1229,7 +1229,7 @@ def _help_response(root: Path) -> dict[str, Any]:
         },
         {
             "name": "custom-economy-provider",
-            "summary": "Send `configure DeepSeek provider` to get the safe one-command template for registering a low-cost CLI writer and activating it for write/fix.",
+            "summary": "Send `configure DeepSeek provider` to get the safe one-command template for registering a low-cost CLI writer, or `configure DeepSeek provider to <command>` to register the command immediately. If the custom provider command later fails readiness or metrics checks, clients should render the returned `configure_economy_provider_command` command action before falling back to inspection.",
         },
         {
             "name": "reasonix-command",

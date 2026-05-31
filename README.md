@@ -111,7 +111,7 @@ python scripts/patchbay metrics <run_id>
 python scripts/patchbay apply <run_id>
 ```
 
-`metrics` includes phase duration/attempt counts, provider usage, token/cost availability, and `routing_evidence` with `economy_health` for the write/fix economy route. For desktop and MCP clients, prefer the returned `actions[]` or `routing_evidence.actions[]` over deriving UI controls from `economy_health.next_action`; those actions are already typed as safe `local_agent` or `diagnostic_tab` follow-ups and may include a `command` field for exact CLI fallback display.
+`metrics` includes phase duration/attempt counts, provider usage, token/cost availability, and `routing_evidence` with `economy_health` for the write/fix economy route. For desktop and MCP clients, prefer the returned `actions[]` or `routing_evidence.actions[]` over deriving UI controls from `economy_health.next_action`; those actions are already typed as safe `local_agent`, `command`, or `diagnostic_tab` follow-ups and may include a `command` field for exact CLI fallback display. When `command_not_ready` comes from a custom economy provider, render the `configure_economy_provider_command` copy command before the inspect action so users can fix `providers.<id>.command` directly.
 
 Use `--background` for long conversational turns so the caller can return immediately and poll status/events:
 

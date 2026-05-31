@@ -468,6 +468,9 @@ test = []
         setup_capability = next(item for item in response["capabilities"] if item["name"] == "setup")
         self.assertIn("Claude Desktop", setup_capability["summary"])
         self.assertIn("Gemini CLI", setup_capability["summary"])
+        custom_capability = next(item for item in response["capabilities"] if item["name"] == "custom-economy-provider")
+        self.assertIn("configure DeepSeek provider to <command>", custom_capability["summary"])
+        self.assertIn("configure_economy_provider_command", custom_capability["summary"])
         actions = {item["id"]: item for item in response["actions"]}
         self.assertEqual(actions["run_setup"]["kind"], "local_agent")
         self.assertEqual(actions["run_setup"]["message"], "patchbay setup")
