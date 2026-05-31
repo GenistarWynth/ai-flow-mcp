@@ -276,6 +276,8 @@ def _structured_actions(
     if any("commands.reasonix" in item for item in recommendations):
         actions.append(_configure_reasonix_action(target_name))
     if economy.get("command_ready") is False and target.get("provider") != "reasonix_cli":
+        status = _first_not_ready_command_status(economy.get("command_status"))
+        source = str(status.get("source") or "providers.<id>.command")
         actions.append(
             {
                 "id": "inspect_economy_provider_command",
@@ -286,6 +288,8 @@ def _structured_actions(
                 "reason": f"Inspect the configured command for the {target_name} economy provider.",
             }
         )
+        if source.startswith("providers."):
+            actions.append(_configure_provider_command_action(source, target_name))
     if next_actions or recommendations:
         actions.append(
             {
@@ -308,6 +312,17 @@ def _first_not_ready_command_status(value: Any) -> dict[str, Any]:
         if isinstance(item, dict) and item.get("required") and item.get("ready") is False:
             return item
     return {}
+
+
+def _configure_provider_command_action(source: str, target_name: str) -> dict[str, Any]:
+    return {
+        "id": "configure_economy_provider_command",
+        "label": "Copy provider command",
+        "kind": "command",
+        "command": f"patchbay config --set-key {source} --set-value <command>",
+        "safe": True,
+        "reason": f"Copy the command for the {target_name} economy provider into .ai/patchbay.toml.",
+    }
 
 
 def _setup_message(host: str) -> str:

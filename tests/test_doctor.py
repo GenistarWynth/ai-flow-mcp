@@ -152,6 +152,11 @@ model = "cheap-model"
         self.assertTrue(any("providers.cheap_writer.command" in item for item in result["recommendations"]))
         actions = {item["id"]: item for item in result["actions"]}
         self.assertIn("inspect_economy_provider_command", actions)
+        self.assertEqual(actions["configure_economy_provider_command"]["kind"], "command")
+        self.assertEqual(
+            actions["configure_economy_provider_command"]["command"],
+            "patchbay config --set-key providers.cheap_writer.command --set-value <command>",
+        )
         self.assertNotIn("configure_reasonix_command", actions)
 
 
