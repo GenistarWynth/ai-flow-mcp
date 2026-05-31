@@ -385,6 +385,46 @@ model = "cheap-model"
         )
         self.assertNotIn("configure_reasonix_command", actions)
 
+    def test_custom_economy_provider_command_copy_fix_resolves_readiness(self) -> None:
+        from scripts.ai_flow.config_wizard import run_config_wizard
+        self._make_git_repo()
+        config_path = self.tmp / ".ai" / "patchbay.toml"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            """
+[providers.cheap_writer]
+roles = ["write", "fix"]
+command = "definitely-missing-cheap-writer"
+prompt_mode = "stdin"
+output_contract = "writer_diff"
+
+[profiles.economy]
+provider = "cheap_writer"
+model = "cheap-model"
+label = "Cheap writer"
+
+[phases.write]
+provider = "cheap_writer"
+model = "cheap-model"
+
+[phases.fix]
+provider = "cheap_writer"
+model = "cheap-model"
+""".lstrip(),
+            encoding="utf-8",
+        )
+        command = f'"{sys.executable}"' if " " in sys.executable else sys.executable
+
+        result = run_config_wizard(self.tmp, set_key="providers.cheap_writer.command", set_value=command)
+        shown = run_config_wizard(self.tmp, show_profile=True)
+
+        self.assertEqual(result["set"]["providers.cheap_writer.command"], command)
+        self.assertTrue(shown["economy"]["command_ready"])
+        self.assertEqual(shown["next_actions"], ["readiness", "start"])
+        actions = {item["id"]: item for item in shown["actions"]}
+        self.assertEqual(actions["start_new_task"]["kind"], "focus_composer")
+        self.assertNotIn("configure_economy_provider_command", actions)
+
     def test_economy_profile_allows_start_when_reasonix_command_is_resolved(self) -> None:
         from scripts.ai_flow.config_wizard import run_config_wizard
         self._make_git_repo()
