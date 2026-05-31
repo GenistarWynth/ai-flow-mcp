@@ -813,6 +813,18 @@ function healthActionFromNext(nextAction?: string, target?: PhaseProvider): Agen
   return null;
 }
 
+function preferredSafeRoutingAction(actions?: AgentHealthAction[] | null, status?: string) {
+  const safeActions = (actions ?? []).filter((action) => action.safe !== false);
+  if (!safeActions.length) return null;
+  if (status === "command_not_ready") {
+    const commandAction =
+      safeActions.find((action) => action.id === "configure_economy_provider_command") ??
+      safeActions.find((action) => action.kind === "command" && Boolean(action.command));
+    if (commandAction) return commandAction;
+  }
+  return safeActions[0];
+}
+
 function profileStatusToRouting(result: ConfigProfileStatus): RoutingEvidence {
   const status = result.status ?? result;
   const economy = status.economy ?? {};
@@ -861,7 +873,7 @@ function economyHealthCard(status: RunStatus | null) {
       recommendation: health.recommendation,
       next_action: health.next_action,
       action:
-        routing?.actions?.find((action) => action.safe !== false) ??
+        preferredSafeRoutingAction(routing?.actions, health.status) ??
         healthActionFromNext(health.next_action, health.target ?? routing?.target),
       coverage_percent: routing?.coverage?.observed_economy_percent ?? null
     }
@@ -2017,7 +2029,7 @@ function MetricsGrid({
   const routingCoverage = routingCoverageLabel(routing);
   const economyHealth = economyHealthLabel(routing);
   const routingAction =
-    routing?.actions?.find((action) => action.safe !== false) ??
+    preferredSafeRoutingAction(routing?.actions, routing?.economy_health?.status) ??
     healthActionFromNext(routing?.economy_health?.next_action, routing?.economy_health?.target ?? routing?.target);
   return (
     <div className="metrics-panel">

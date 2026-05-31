@@ -436,7 +436,7 @@ def _health_cards(status_data: dict[str, Any]) -> list[dict[str, Any]]:
     coverage = routing.get("coverage") if isinstance(routing.get("coverage"), dict) else {}
     percent = coverage.get("observed_economy_percent")
     actions = routing.get("actions") if isinstance(routing.get("actions"), list) else []
-    action = next((item for item in actions if isinstance(item, dict) and item.get("safe") is not False), None)
+    action = _preferred_health_action(actions, status)
     if health:
         cards.append(
             {
@@ -455,6 +455,25 @@ def _health_cards(status_data: dict[str, Any]) -> list[dict[str, Any]]:
     if economy_load:
         cards.append(economy_load)
     return cards
+
+
+def _preferred_health_action(actions: list[Any], status: str) -> dict[str, Any] | None:
+    safe_actions = [item for item in actions if isinstance(item, dict) and item.get("safe") is not False]
+    if not safe_actions:
+        return None
+    if status == "command_not_ready":
+        command_action = next(
+            (
+                item
+                for item in safe_actions
+                if item.get("id") == "configure_economy_provider_command"
+                or (item.get("kind") == "command" and item.get("command"))
+            ),
+            None,
+        )
+        if command_action:
+            return command_action
+    return safe_actions[0]
 
 
 def _economy_load_health_card(run_metrics: dict[str, Any]) -> dict[str, Any] | None:

@@ -164,6 +164,53 @@ class HandoffContextTest(unittest.TestCase):
         self.assertEqual(card["action"]["id"], "custom_structured_action")
         self.assertEqual(card["action"]["reason"], "Use the service-provided routing action.")
 
+    def test_context_health_card_prefers_copy_command_for_custom_provider_command_gap(self) -> None:
+        status_data = {
+            "run_metrics": {
+                "routing_evidence": {
+                    "summary": "Custom economy provider command is missing.",
+                    "coverage": {"observed_economy_percent": 0},
+                    "economy_health": {
+                        "status": "command_not_ready",
+                        "severity": "warning",
+                        "summary": "Economy route is configured, but write/fix cannot execute.",
+                        "recommendation": "Fix the custom provider command.",
+                        "next_action": "inspect_economy_provider_command",
+                    },
+                    "actions": [
+                        {
+                            "id": "inspect_economy_provider_command",
+                            "label": "Inspect provider command",
+                            "kind": "local_agent",
+                            "message": "readiness",
+                            "safe": True,
+                            "reason": "Inspect the configured command.",
+                        },
+                        {
+                            "id": "configure_economy_provider_command",
+                            "label": "Copy provider command",
+                            "kind": "command",
+                            "command": "patchbay config --set-key providers.cheap_writer.command --set-value <command>",
+                            "safe": True,
+                            "reason": "Copy the command fix.",
+                        },
+                    ],
+                }
+            }
+        }
+
+        run_path = self.repo / ".ai" / "runs" / "custom-command-run"
+        run_path.mkdir(parents=True)
+
+        activity = build_handoff_context(run_path=run_path, status_data=status_data)["agent_activity"]
+
+        action = activity["health_cards"][0]["action"]
+        self.assertEqual(action["id"], "configure_economy_provider_command")
+        self.assertEqual(
+            action["command"],
+            "patchbay config --set-key providers.cheap_writer.command --set-value <command>",
+        )
+
     def test_context_marks_apply_as_human_confirmed_technical_gate(self) -> None:
         planned = self.cli_json("plan", "--task", "ready for apply", "--mock")
         run_id = planned["run_id"]

@@ -58,6 +58,7 @@ export type CommandStatus = {
   command?: string;
   executable?: string;
   resolved?: string;
+  source?: string;
   recommendation?: string;
 };
 

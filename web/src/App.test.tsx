@@ -754,6 +754,101 @@ describe("Workbench", () => {
     expect(client.runAction).not.toHaveBeenCalled();
   });
 
+  it("prefers copy commands for custom provider command health in metrics", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    const command = "patchbay config --set-key providers.cheap_writer.command --set-value <command>";
+    const commandContext: HandoffContext = {
+      ...readyContext,
+      run_metrics: {
+        ...readyContext.run_metrics!,
+        routing_evidence: {
+          economy_configured: true,
+          economy_command_ready: false,
+          command_not_ready_phases: ["write", "fix"],
+          coverage: { observed_economy_percent: 0, observed_economy_total: 0, required_total: 2 },
+          summary: "Economy route is configured, but write/fix cannot execute because the Cheap writer command is not ready.",
+          phases: {
+            write: {
+              configured: { provider: "cheap_writer", model: "cheap-model" },
+              configured_economy: true,
+              command_status: { required: true, ready: false, status: "not_found", source: "providers.cheap_writer.command" }
+            },
+            fix: {
+              configured: { provider: "cheap_writer", model: "cheap-model" },
+              configured_economy: true,
+              command_status: { required: true, ready: false, status: "not_found", source: "providers.cheap_writer.command" }
+            }
+          },
+          economy_health: {
+            status: "command_not_ready",
+            severity: "warning",
+            configured: true,
+            target: { provider: "cheap_writer", model: "cheap-model", label: "Cheap writer" },
+            required_phases: ["write", "fix"],
+            missing_config_phases: [],
+            command_not_ready_phases: ["write", "fix"],
+            drift_phases: [],
+            missing_evidence: ["write", "fix"],
+            observed_economy_phases: [],
+            summary: "Economy route is configured, but write/fix cannot execute because the Cheap writer command is not ready.",
+            recommendation: "Fix the configured Cheap writer provider command.",
+            next_action: "inspect_economy_provider_command"
+          },
+          actions: [
+            {
+              id: "inspect_economy_provider_command",
+              label: "Inspect provider command",
+              kind: "local_agent",
+              message: "readiness",
+              safe: true,
+              reason: "Open readiness to inspect the configured Cheap writer economy provider command."
+            },
+            {
+              id: "configure_economy_provider_command",
+              label: "Copy provider command",
+              kind: "command",
+              command,
+              safe: true,
+              reason: "Copy the command for the Cheap writer economy provider into .ai/patchbay.toml."
+            }
+          ]
+        }
+      },
+      agent_activity: {
+        ...readyContext.agent_activity!,
+        health_cards: []
+      }
+    };
+    const client = createClient({
+      getContext: vi.fn().mockResolvedValue(commandContext),
+      getStatus: vi.fn().mockResolvedValue({
+        run_id: "run-ready",
+        task: "Ship dashboard",
+        status: "REVIEWED_PASS",
+        current_phase: "apply",
+        gate_state: { approved: true, tests_passed: true, review_result: "PASS", ready_to_apply: true },
+        run_metrics: commandContext.run_metrics,
+        artifacts: [],
+        effective_phase_providers: {}
+      })
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    expect(screen.getByText(command)).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Copy command Copy provider command" }));
+
+    expect(writeText).toHaveBeenCalledWith(command);
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.agentMessage).not.toHaveBeenCalled();
+  });
+
   it("configures an explicit Reasonix path from the readiness panel", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: null,
