@@ -176,6 +176,28 @@ export type RoutingEvidence = {
   recommendation?: string;
 };
 
+export type EfficiencySummary = {
+  status?: string;
+  routing_status?: string;
+  usage_known?: {
+    tokens?: boolean;
+    cost?: boolean;
+    duration?: boolean;
+  };
+  economy_share?: {
+    token_percent?: number | null;
+    total_tokens?: number | null;
+    cost_percent?: number | null;
+    estimated_cost?: number | null;
+    currency?: string;
+    duration_percent?: number | null;
+    duration_ms?: number | null;
+  };
+  coverage?: RoutingCoverage;
+  summary?: string;
+  recommendation?: string;
+};
+
 export type RunMetrics = {
   duration_known?: boolean;
   duration_source?: string;
@@ -211,6 +233,7 @@ export type RunMetrics = {
   };
   routing_evidence?: RoutingEvidence;
   tier_usage?: Record<string, TierUsage>;
+  efficiency_summary?: EfficiencySummary;
 };
 
 export type BackgroundJob = {
@@ -475,6 +498,7 @@ export type AgentResponse = {
   metrics?: {
     run_metrics?: RunMetrics;
     routing_evidence?: RoutingEvidence;
+    efficiency_summary?: EfficiencySummary;
     [key: string]: unknown;
   };
   capabilities?: { name: string; summary: string }[];

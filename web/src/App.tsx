@@ -29,6 +29,7 @@ import {
   ConfigProfileStatus,
   createPatchbayClient,
   DoctorReport,
+  EfficiencySummary,
   FailureRecovery,
   GateDiagnosis,
   HandoffContext,
@@ -513,6 +514,42 @@ function tierMetricLabel(tier: string, usage: TierUsage) {
     signals.push(`${compactDuration(usage.duration_ms)}${percent !== undefined && percent !== null ? ` / ${percent}%` : ""}`);
   }
   return `${tierMetricName(tier, usage)} ${signals.join(" | ")}`;
+}
+
+function efficiencyStatusLabel(status?: string) {
+  if (status === "verified_economy") return "Verified economy";
+  if (status === "missing_usage") return "Usage missing";
+  if (status === "pending_evidence") return "Pending evidence";
+  if (status === "command_not_ready") return "Command not ready";
+  if (status === "drift") return "Routing drift";
+  if (status === "not_configured") return "Not configured";
+  return status || "Unknown";
+}
+
+function efficiencyTone(summary?: EfficiencySummary | null) {
+  if (summary?.status === "verified_economy") return "ready";
+  if (summary?.status === "command_not_ready" || summary?.status === "drift" || summary?.status === "not_configured") return "blocked";
+  return "custom";
+}
+
+function percentSuffix(value?: number | null) {
+  return value !== undefined && value !== null ? ` / ${value}%` : "";
+}
+
+function efficiencyShareSignals(summary?: EfficiencySummary | null) {
+  const known = summary?.usage_known ?? {};
+  const share = summary?.economy_share ?? {};
+  const signals: string[] = [];
+  if (known.tokens) {
+    signals.push(`economy tokens ${compactNumber(share.total_tokens)}${percentSuffix(share.token_percent)}`);
+  }
+  if (known.cost) {
+    signals.push(`economy cost ${share.currency ?? "USD"} ${compactNumber(share.estimated_cost ?? 0)}${percentSuffix(share.cost_percent)}`);
+  }
+  if (known.duration) {
+    signals.push(`economy time ${compactDuration(share.duration_ms)}${percentSuffix(share.duration_percent)}`);
+  }
+  return signals;
 }
 
 function providerMetricLabel(item: ProviderUsage) {
@@ -2094,6 +2131,8 @@ function MetricsGrid({
   const providerMetrics = providerMetricEntries(metrics);
   const providerCount = metrics?.provider_usage?.filter((item) => item.provider || item.model).length ?? 0;
   const routing = metrics?.routing_evidence;
+  const efficiency = metrics?.efficiency_summary;
+  const efficiencySignals = efficiencyShareSignals(efficiency);
   const routingCoverage = routingCoverageLabel(routing);
   const economyHealth = economyHealthLabel(routing);
   const routingAction =
@@ -2127,6 +2166,23 @@ function MetricsGrid({
         <div className={`metric-routing ${routing.economy_configured ? "ready" : "custom"}`} aria-label="路由证据">
           <span>路由证据</span>
           <strong>{routing.summary}</strong>
+        </div>
+      ) : null}
+      {efficiency?.summary ? (
+        <div className={`metric-efficiency ${efficiencyTone(efficiency)}`} aria-label="Efficiency summary">
+          <div className="metric-efficiency-head">
+            <span>Cost efficiency</span>
+            <strong>{efficiencyStatusLabel(efficiency.status)}</strong>
+          </div>
+          <p>{efficiency.summary}</p>
+          {efficiencySignals.length ? (
+            <div className="metric-efficiency-signals">
+              {efficiencySignals.map((signal) => (
+                <span key={signal}>{signal}</span>
+              ))}
+            </div>
+          ) : null}
+          {efficiency.recommendation ? <em>{efficiency.recommendation}</em> : null}
         </div>
       ) : null}
       {routingCoverage ? (

@@ -1460,9 +1460,15 @@ test = []
         response = agent_message(self.repo, "cost", run_id=planned["run_id"])
 
         routing = response["metrics"]["routing_evidence"]
+        efficiency = response["metrics"]["efficiency_summary"]
         tier_usage = response["metrics"]["run_metrics"]["tier_usage"]
         self.assertEqual(tier_usage["economy"]["token_usage"]["total_tokens"], 700)
+        self.assertEqual(efficiency["status"], "pending_evidence")
+        self.assertEqual(efficiency["economy_share"]["total_tokens"], 700)
+        self.assertEqual(efficiency["economy_share"]["token_percent"], 100.0)
+        self.assertIn("1/2 economy phases observed", efficiency["summary"])
         self.assertIn("economy tier 100.0% tokens", response["reply"])
+        self.assertIn("efficiency pending_evidence", response["reply"])
         self.assertTrue(routing["economy_configured"])
         self.assertTrue(routing["economy_command_ready"])
         self.assertEqual(routing["command_not_ready_phases"], [])

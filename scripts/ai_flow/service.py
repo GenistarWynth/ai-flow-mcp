@@ -1521,8 +1521,10 @@ def status(cwd: Path, run_id: str) -> dict[str, Any]:
         }
     data["effective_phase_providers"] = effective
     data["routing_evidence"] = _run_routing_evidence(run_metrics, effective, cfg)
+    data["efficiency_summary"] = _run_efficiency_summary(run_metrics, data["routing_evidence"])
     data["blocked_next_action"] = _blocked_next_action(data, cfg, effective)
     run_metrics["routing_evidence"] = data["routing_evidence"]
+    run_metrics["efficiency_summary"] = data["efficiency_summary"]
     data["run_metrics"] = run_metrics
     job_path = _job_path(run_path)
     if job_path.exists():
@@ -1821,6 +1823,98 @@ def _run_tier_usage(
             cost["cost_percent"] = None
 
     return tiers
+
+
+def _run_efficiency_summary(run_metrics: dict[str, Any], routing: dict[str, Any]) -> dict[str, Any]:
+    tier_usage = run_metrics.get("tier_usage") if isinstance(run_metrics.get("tier_usage"), dict) else {}
+    economy = tier_usage.get("economy") if isinstance(tier_usage.get("economy"), dict) else {}
+    token_usage = economy.get("token_usage") if isinstance(economy.get("token_usage"), dict) else {}
+    cost = economy.get("cost") if isinstance(economy.get("cost"), dict) else {}
+    run_cost = run_metrics.get("cost") if isinstance(run_metrics.get("cost"), dict) else {}
+    health = routing.get("economy_health") if isinstance(routing.get("economy_health"), dict) else {}
+    coverage = routing.get("coverage") if isinstance(routing.get("coverage"), dict) else {}
+    routing_status = str(health.get("status") or "unknown")
+    usage_known = {
+        "tokens": bool(token_usage.get("known")),
+        "cost": bool(cost.get("known")),
+        "duration": bool(economy.get("duration_known")),
+    }
+    economy_share = {
+        "token_percent": token_usage.get("token_percent") if usage_known["tokens"] else None,
+        "total_tokens": token_usage.get("total_tokens") if usage_known["tokens"] else None,
+        "cost_percent": cost.get("cost_percent") if usage_known["cost"] else None,
+        "estimated_cost": cost.get("estimated_total") if usage_known["cost"] else None,
+        "currency": cost.get("currency") or run_cost.get("currency") or "USD",
+        "duration_percent": economy.get("duration_percent") if usage_known["duration"] else None,
+        "duration_ms": economy.get("duration_ms") if usage_known["duration"] else None,
+    }
+
+    if routing_status == "healthy":
+        status = "verified_economy" if any(usage_known.values()) else "missing_usage"
+    elif routing_status in {"pending_evidence", "drift", "not_configured", "command_not_ready"}:
+        status = routing_status
+    else:
+        status = "unknown"
+
+    share_parts = _efficiency_share_parts(economy_share, usage_known)
+    share_text = ", ".join(share_parts) if share_parts else "no token/cost/duration usage reported"
+    coverage_label = str(coverage.get("label") or "").strip()
+    if status == "verified_economy":
+        summary = f"Economy write/fix route is verified with {share_text}."
+        recommendation = "Keep plan/review on supervision providers and use this split to monitor whether simple work stays on the cheaper route."
+    elif status == "missing_usage":
+        summary = "Economy routing is healthy, but provider usage is not reported yet."
+        recommendation = "Have low-cost wrappers emit token/cost data through PATCHBAY_USAGE_FILE so the cost split can be audited."
+    elif status == "pending_evidence":
+        summary = f"Economy routing is configured, but provider evidence is incomplete{f' ({coverage_label})' if coverage_label else ''}."
+        recommendation = "Poll events or complete write/fix phases before treating the run as cost-optimized."
+    elif status == "command_not_ready":
+        summary = "Economy routing is configured, but the low-cost provider command cannot execute."
+        recommendation = "Fix the returned command action before starting or continuing high-volume write/fix work."
+    elif status == "drift":
+        summary = f"Write/fix routing drifted away from the configured economy provider{f' ({coverage_label})' if coverage_label else ''}."
+        recommendation = "Inspect provider events and configuration before assuming simple work used the cheaper model."
+    elif status == "not_configured":
+        summary = "Write/fix are not fully routed to the economy profile."
+        recommendation = "Apply the economy profile or configure a custom low-cost writer before high-volume implementation work."
+    else:
+        summary = f"Efficiency evidence is incomplete; economy load has {share_text}."
+        recommendation = "Inspect metrics and routing evidence before making cost-efficiency claims."
+
+    return {
+        "status": status,
+        "routing_status": routing_status,
+        "usage_known": usage_known,
+        "economy_share": economy_share,
+        "coverage": coverage,
+        "summary": summary,
+        "recommendation": recommendation,
+    }
+
+
+def _efficiency_share_parts(economy_share: dict[str, Any], usage_known: dict[str, bool]) -> list[str]:
+    parts: list[str] = []
+    if usage_known.get("tokens"):
+        percent = economy_share.get("token_percent")
+        tokens = economy_share.get("total_tokens")
+        label = f"{tokens} tokens" if tokens is not None else "known tokens"
+        parts.append(f"{label}{_efficiency_percent_suffix(percent)}")
+    if usage_known.get("cost"):
+        percent = economy_share.get("cost_percent")
+        amount = economy_share.get("estimated_cost")
+        currency = economy_share.get("currency") or "USD"
+        label = f"{currency} {amount}" if amount is not None else "known cost"
+        parts.append(f"{label}{_efficiency_percent_suffix(percent)}")
+    if usage_known.get("duration"):
+        percent = economy_share.get("duration_percent")
+        duration = economy_share.get("duration_ms")
+        label = f"{duration} ms" if duration is not None else "known duration"
+        parts.append(f"{label}{_efficiency_percent_suffix(percent)}")
+    return parts
+
+
+def _efficiency_percent_suffix(value: Any) -> str:
+    return f" / {value}%" if value is not None else ""
 
 
 def _empty_tier_usage(tier: str, currency: str) -> dict[str, Any]:
@@ -2437,12 +2531,14 @@ def metrics(cwd: Path, run_id: str) -> dict[str, Any]:
     """Return the run efficiency digest without the full handoff payload."""
     status_data = status(cwd, run_id)
     routing = status_data.get("routing_evidence", {})
+    efficiency = status_data.get("efficiency_summary", {})
     return {
         "run_id": run_id,
         "status": status_data.get("status"),
         "current_phase": status_data.get("current_phase"),
         "effective_phase_providers": status_data.get("effective_phase_providers", {}),
         "routing_evidence": routing,
+        "efficiency_summary": efficiency,
         "actions": routing.get("actions", []) if isinstance(routing, dict) else [],
         "run_metrics": status_data.get("run_metrics", {}),
     }

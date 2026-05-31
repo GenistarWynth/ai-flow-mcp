@@ -438,6 +438,11 @@ class HandoffContextTest(unittest.TestCase):
         self.assertEqual(tiers["economy"]["cost"]["cost_percent"], 20.0)
         self.assertEqual(tiers["supervision"]["token_usage"]["total_tokens"], 1000)
         self.assertEqual(tiers["supervision"]["cost"]["estimated_total"], 0.2)
+        efficiency = cli_metrics["efficiency_summary"]
+        self.assertEqual(efficiency["economy_share"]["total_tokens"], 1000)
+        self.assertEqual(efficiency["economy_share"]["token_percent"], 50.0)
+        self.assertEqual(efficiency["economy_share"]["estimated_cost"], 0.05)
+        self.assertEqual(efficiency, cli_metrics["run_metrics"]["efficiency_summary"])
         context = self.cli_json("context", run_id)
         cards = {card["key"]: card for card in context["agent_activity"]["health_cards"]}
         self.assertEqual(cards["economy_load"]["status"], "tracked")

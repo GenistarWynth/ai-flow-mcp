@@ -1630,12 +1630,17 @@ def _metrics_response(root: Path, run_id: str) -> dict[str, Any]:
     token_usage = run_metrics.get("token_usage") or {}
     tier_usage = run_metrics.get("tier_usage") or {}
     routing = result.get("routing_evidence") or run_metrics.get("routing_evidence") or {}
+    efficiency = result.get("efficiency_summary") or run_metrics.get("efficiency_summary") or {}
     signals = [
         f"{attempts} phase attempt{'s' if attempts != 1 else ''}",
         f"{len(providers)} provider trace entr{'ies' if len(providers) != 1 else 'y'}",
         "cost known" if cost.get("known") else "cost not reported",
         "tokens known" if token_usage.get("known") else "tokens not reported",
     ]
+    if isinstance(efficiency, dict) and efficiency.get("status"):
+        signals.append(f"efficiency {efficiency['status']}")
+        if efficiency.get("summary"):
+            signals.append(str(efficiency["summary"]))
     economy_tier = tier_usage.get("economy") if isinstance(tier_usage, dict) else {}
     economy_tokens = economy_tier.get("token_usage") if isinstance(economy_tier, dict) else {}
     if isinstance(economy_tokens, dict) and economy_tokens.get("known"):
@@ -1650,6 +1655,8 @@ def _metrics_response(root: Path, run_id: str) -> dict[str, Any]:
     metrics_payload = dict(result)
     if routing:
         metrics_payload["routing_evidence"] = routing
+    if efficiency:
+        metrics_payload["efficiency_summary"] = efficiency
     actions = list(result.get("actions") or (routing.get("actions") if isinstance(routing, dict) else []) or [])
     return {
         "schema_version": SCHEMA_VERSION,

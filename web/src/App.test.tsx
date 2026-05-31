@@ -480,6 +480,34 @@ describe("Workbench", () => {
             cost: { known: true, currency: "USD", estimated_total: 0.12, cost_percent: 28.6 }
           }
         },
+        efficiency_summary: {
+          status: "verified_economy",
+          routing_status: "healthy",
+          usage_known: { tokens: true, cost: true, duration: true },
+          economy_share: {
+            token_percent: 67.5,
+            total_tokens: 8300,
+            cost_percent: 71.4,
+            estimated_cost: 0.3,
+            currency: "USD",
+            duration_percent: 41.3,
+            duration_ms: 5100
+          },
+          coverage: {
+            required_phases: ["write", "fix"],
+            required_total: 2,
+            configured_economy_total: 2,
+            observed_total: 2,
+            observed_economy_total: 2,
+            observed_other_total: 0,
+            observed_economy_ratio: 1,
+            observed_economy_percent: 100,
+            complete: true,
+            label: "2/2 economy phases observed"
+          },
+          summary: "Economy write/fix route is verified with 8300 tokens / 67.5%, USD 0.3 / 71.4%, 5100 ms / 41.3%.",
+          recommendation: "Keep simple write/fix work on the low-cost model."
+        },
         routing_evidence: {
           economy_configured: true,
           summary: "Economy route configured; observed write, fix not observed yet.",
@@ -555,6 +583,11 @@ describe("Workbench", () => {
     expect(screen.getByText("经济层 8.3k tok / 67.5% | USD 0.3 / 71.4% | 5.1s / 41.3%")).toBeVisible();
     expect(screen.getByText("监督层 4.0k tok / 32.5% | USD 0.12 / 28.6% | 3.4s / 27.6%")).toBeVisible();
     expect(screen.getByText("Economy route configured; observed write, fix not observed yet.")).toBeVisible();
+    expect(screen.getByText("Verified economy")).toBeVisible();
+    expect(screen.getByText("Economy write/fix route is verified with 8300 tokens / 67.5%, USD 0.3 / 71.4%, 5100 ms / 41.3%.")).toBeVisible();
+    expect(screen.getByText("economy tokens 8.3k / 67.5%")).toBeVisible();
+    expect(screen.getByText("economy cost USD 0.3 / 71.4%")).toBeVisible();
+    expect(screen.getByText("economy time 5.1s / 41.3%")).toBeVisible();
     const healthSection = screen.getByRole("heading", { name: "健康" }).closest("section")!;
     expect(within(healthSection).getByText("Economy route")).toBeVisible();
     expect(within(healthSection).getByText("100% economy observed")).toBeVisible();
