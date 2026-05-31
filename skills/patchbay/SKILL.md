@@ -76,7 +76,7 @@ scripts/patchbay context <run_id>
 scripts/patchbay events <run_id>
 ```
 
-Background turns write `JOB.json` and append `agent` events. They do not change the safety model: implementation still requires explicit plan approval, and apply remains foreground-only after tests and review pass.
+Background turns write `JOB.json` and append `agent` events. They return safe structured `actions[]` for opening the run, opening Trace, polling status, and polling events. They do not change the safety model: implementation still requires explicit plan approval, and apply remains foreground-only after tests and review pass. Do not treat background follow-up actions as approval, continue, or apply controls.
 
 ## Installation Reference
 
