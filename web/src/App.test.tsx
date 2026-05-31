@@ -754,11 +754,17 @@ describe("Workbench", () => {
     expect(client.runAction).not.toHaveBeenCalled();
   });
 
-  it("prefers copy commands for custom provider command health in metrics", async () => {
+  it("configures custom provider command health actions from metrics", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText }
+    });
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "custom_provider_command_configure",
+      ok: true,
+      reply: "Custom economy provider command configured."
     });
     const command = "patchbay config --set-key providers.cheap_writer.command --set-value <command>";
     const commandContext: HandoffContext = {
@@ -824,6 +830,7 @@ describe("Workbench", () => {
       }
     };
     const client = createClient({
+      agentMessage,
       getContext: vi.fn().mockResolvedValue(commandContext),
       getStatus: vi.fn().mockResolvedValue({
         run_id: "run-ready",
@@ -841,12 +848,19 @@ describe("Workbench", () => {
 
     await screen.findByRole("heading", { name: "Ship dashboard" });
     await userEvent.click(screen.getByRole("button", { name: "诊断" }));
-    expect(screen.getByText(command)).toBeVisible();
-    await userEvent.click(screen.getByRole("button", { name: "Copy command Copy provider command" }));
+    const details = screen.getAllByRole("complementary")[1];
+    expect(within(details).getByLabelText("Provider command path")).toBeVisible();
+    await userEvent.click(within(details).getByRole("button", { name: "Copy command Copy provider command" }));
+    await userEvent.type(within(details).getByLabelText("Provider command path"), "C:/Program Files/DeepSeek/deepseek-writer.cmd");
+    await userEvent.click(within(details).getByRole("button", { name: "Configure" }));
 
     expect(writeText).toHaveBeenCalledWith(command);
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith(
+        'patchbay config --set-key providers.cheap_writer.command --set-value "C:/Program Files/DeepSeek/deepseek-writer.cmd"'
+      )
+    );
     expect(client.runAction).not.toHaveBeenCalled();
-    expect(client.agentMessage).not.toHaveBeenCalled();
   });
 
   it("configures an explicit Reasonix path from the readiness panel", async () => {
@@ -890,6 +904,52 @@ describe("Workbench", () => {
 
     await waitFor(() =>
       expect(agentMessage).toHaveBeenCalledWith('configure reasonix command to "C:/Program Files/Reasonix/reasonix.cmd"')
+    );
+    expect(client.applyConfigProfile).not.toHaveBeenCalled();
+    expect(client.runAction).not.toHaveBeenCalled();
+  });
+
+  it("configures an explicit custom provider path from the readiness panel", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "custom_provider_command_configure",
+      ok: true,
+      reply: "Custom economy provider command configured."
+    });
+    const getDoctor = vi.fn().mockResolvedValue({
+      ok: false,
+      root: "C:/repo",
+      host: "codex",
+      checks: {
+        repo: { ok: true },
+        config: { ok: true },
+        mcp: { ok: true, skipped: true },
+        skill: { ok: true }
+      },
+      actions: [
+        {
+          id: "configure_economy_provider_command",
+          label: "Copy provider command",
+          kind: "command",
+          command: "patchbay config --set-key providers.cheap_writer.command --set-value <command>",
+          safe: true,
+          reason: "Copy the command for the cheap_writer economy provider into .ai/patchbay.toml."
+        }
+      ]
+    });
+    const client = createClient({ agentMessage, getDoctor });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+    const details = screen.getAllByRole("complementary")[1];
+    await userEvent.type(within(details).getByLabelText("Provider command path"), "C:/Tools/deepseek-writer.cmd");
+    await userEvent.click(within(details).getByRole("button", { name: "Configure" }));
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith("patchbay config --set-key providers.cheap_writer.command --set-value C:/Tools/deepseek-writer.cmd")
     );
     expect(client.applyConfigProfile).not.toHaveBeenCalled();
     expect(client.runAction).not.toHaveBeenCalled();

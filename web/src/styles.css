@@ -724,6 +724,25 @@ button.danger { color: #b42318; border-color: #f0b6b2; background: #fff8f7; }
   font-size: 12px;
 }
 .reasonix-command-action input:focus { outline: 2px solid #bfdbfe; outline-offset: 1px; border-color: #2f6fed; }
+.reasonix-command-action button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 30px;
+  border: 1px solid #cfd7e3;
+  border-radius: 7px;
+  padding: 5px 8px;
+  color: #172033;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.reasonix-command-action button:hover { border-color: #9fb0c4; background: #f8fafc; }
+.reasonix-command-action button:disabled { color: #8b96a7; background: #eef2f7; cursor: not-allowed; }
+.provider-command-action.copied { border-color: #b7e4c7; background: #f1fbf6; }
+.provider-command-action.failed { border-color: #fed7aa; background: #fff7ed; }
 .doctor-actions span, .doctor-check { border: 1px solid #d9dee6; border-radius: 8px; padding: 8px 10px; background: #ffffff; overflow-wrap: anywhere; }
 .doctor-actions span { color: #344255; font-size: 12px; font-weight: 700; }
 .doctor-recommendation { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; border: 1px solid #bfdbfe; border-radius: 8px; padding: 8px 10px; color: #174ea6; background: #eff6ff; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }

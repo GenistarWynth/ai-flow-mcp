@@ -254,12 +254,37 @@ function isConfigureReasonixAction(action: Pick<AgentHealthAction, "id" | "messa
   return action.id === "configure_reasonix_command" || isReasonixConfigureText(action.message);
 }
 
+function providerCommandSource(action: Pick<AgentHealthAction, "id" | "command">) {
+  if (action.id !== "configure_economy_provider_command" && !action.command) return "";
+  const command = action.command ?? "";
+  return command.match(/--set-key\s+(providers\.[a-z0-9_-]+\.command)/i)?.[1] ?? command.match(/\b(providers\.[a-z0-9_-]+\.command)\b/i)?.[1] ?? "";
+}
+
+function isProviderCommandConfigureAction(action: Pick<AgentHealthAction, "id" | "command">) {
+  return action.id === "configure_economy_provider_command" || Boolean(providerCommandSource(action));
+}
+
 function reasonixCommandMessage(path: string) {
   const trimmed = path.trim();
   if (!trimmed) return "configure reasonix command";
   const quoted = /^[`'"].*[`'"]$/.test(trimmed);
   const value = /\s/.test(trimmed) && !quoted ? `"${trimmed}"` : trimmed;
   return `configure reasonix command to ${value}`;
+}
+
+function providerCommandMessage(action: Pick<AgentHealthAction, "command">, path: string) {
+  const trimmed = path.trim();
+  const source = providerCommandSource({ id: "configure_economy_provider_command", command: action.command });
+  if (!trimmed) return source ? `why is ${source} missing` : "show economy profile";
+  const quoted = /^[`'"].*[`'"]$/.test(trimmed);
+  const value = /\s/.test(trimmed) && !quoted ? `"${trimmed}"` : trimmed;
+  return source ? `patchbay config --set-key ${source} --set-value ${value}` : `configure economy provider command to ${value}`;
+}
+
+function providerCommandLabel(action: Pick<AgentHealthAction, "command">) {
+  const source = providerCommandSource({ id: "configure_economy_provider_command", command: action.command });
+  const provider = source.match(/^providers\.([^.]+)\.command$/)?.[1]?.replace(/_/g, " ");
+  return provider ? `${provider} command` : "Provider command";
 }
 
 function mapStructuredLocalReplyAction(action: AgentHealthAction): LocalReplyAction | null {
@@ -1361,6 +1386,26 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }
   };
 
+  const configureProviderCommandAction = async (message: string) => {
+    if (profileInFlight) return;
+    setError("");
+    setProfileInFlight(true);
+    try {
+      const response = await client.agentMessage(message);
+      if (selectedRun) appendLocalAgentReply(response);
+      else setNewTaskReply(response);
+      const [nextDoctor, nextConfig] = await Promise.all([client.getDoctor({ include_mcp: false, host: readinessHost.id }), client.getConfig()]);
+      setDoctor(nextDoctor);
+      setConfig(nextConfig);
+      if (selectedRun) await refreshRun(selectedRun);
+      else await loadRuns(undefined, { autoSelect: false });
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setProfileInFlight(false);
+    }
+  };
+
   const openReadinessAction = async (force = false, host: SetupHostOption = readinessHost) => {
     if (host.id !== readinessHost.id) {
       setReadinessHost(host);
@@ -1391,6 +1436,10 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }
     if (isConfigureReasonixAction(action)) {
       await configureReasonixCommandAction(action.message || "configure reasonix command");
+      return;
+    }
+    if (isProviderCommandConfigureAction(action)) {
+      await configureProviderCommandAction(action.message || providerCommandMessage(action, ""));
       return;
     }
     if (action.kind === "local_agent" && (action.id === "apply_economy_profile" || action.message === "apply economy profile")) {
@@ -1438,6 +1487,10 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }
     if (isConfigureReasonixAction(action)) {
       await configureReasonixCommandAction(action.message || "configure reasonix command");
+      return;
+    }
+    if (isProviderCommandConfigureAction(action)) {
+      await configureProviderCommandAction(action.message || providerCommandMessage(action, ""));
       return;
     }
     if (action.id === "run_setup" || action.message?.startsWith("patchbay setup")) {
@@ -1688,11 +1741,21 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                     timestamp={message.timestamp}
                     tone={message.response?.ok === false ? "failed" : message.role === "assistant" ? "ready" : undefined}
                   />
-                  <LocalAgentResponseDetails response={message.response} onAction={(action) => void runLocalReplyAction(action)} actionBusy={setupInFlight || profileInFlight} />
+                  <LocalAgentResponseDetails
+                    response={message.response}
+                    onAction={(action) => void runLocalReplyAction(action)}
+                    onCommandAction={(action) => void runHealthAction(action)}
+                    actionBusy={setupInFlight || profileInFlight}
+                  />
                 </Fragment>
               ))}
               {newTaskReply ? <ChatBubble role="assistant" title="Patchbay Agent" body={newTaskReply.reply} tone={newTaskReply.ok === false ? "failed" : "ready"} /> : null}
-              <LocalAgentResponseDetails response={newTaskReply} onAction={(action) => void runLocalReplyAction(action)} actionBusy={setupInFlight || profileInFlight} />
+              <LocalAgentResponseDetails
+                response={newTaskReply}
+                onAction={(action) => void runLocalReplyAction(action)}
+                onCommandAction={(action) => void runHealthAction(action)}
+                actionBusy={setupInFlight || profileInFlight}
+              />
             </>
           ) : (
             <>
@@ -1716,7 +1779,12 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                     timestamp={message.timestamp}
                     tone={message.response?.ok === false ? "failed" : message.role === "assistant" ? "ready" : undefined}
                   />
-                  <LocalAgentResponseDetails response={message.response} onAction={(action) => void runLocalReplyAction(action)} actionBusy={setupInFlight || profileInFlight} />
+                  <LocalAgentResponseDetails
+                    response={message.response}
+                    onAction={(action) => void runLocalReplyAction(action)}
+                    onCommandAction={(action) => void runHealthAction(action)}
+                    actionBusy={setupInFlight || profileInFlight}
+                  />
                 </Fragment>
               ))}
               <NextActionCard
@@ -2083,7 +2151,9 @@ function MetricsGrid({
       {routingAction ? (
         <div className="metric-action-row" aria-label="路由建议动作">
           <span>{routingAction.reason || "Patchbay 已提供安全的路由后续动作。"}</span>
-          {routingAction.kind === "command" && routingAction.command ? (
+          {isProviderCommandConfigureAction(routingAction) ? (
+            <ProviderCommandAction action={routingAction} onAction={onAction} disabled={actionBusy} />
+          ) : routingAction.kind === "command" && routingAction.command ? (
             <CommandActionRow command={routingAction.command} label={routingAction.label} />
           ) : (
             <button
@@ -2212,7 +2282,9 @@ function HealthCardGrid({
             {typeof card.coverage_percent === "number" ? <small>{card.coverage_percent}% economy observed</small> : null}
             {card.detail ? <p>{card.detail}</p> : null}
             {card.recommendation ? <em>{card.recommendation}</em> : null}
-            {action?.kind === "command" && action.command ? (
+            {action && isProviderCommandConfigureAction(action) ? (
+              <ProviderCommandAction action={action} onAction={onAction} disabled={actionBusy} />
+            ) : action?.kind === "command" && action.command ? (
               <CommandActionRow command={action.command} label={action.label} />
             ) : action ? (
               <button
@@ -2235,10 +2307,12 @@ function HealthCardGrid({
 function LocalAgentResponseDetails({
   response,
   onAction,
+  onCommandAction,
   actionBusy
 }: {
   response?: AgentResponse | null;
   onAction?: (action: LocalReplyAction) => void;
+  onCommandAction?: (action: AgentHealthAction) => void;
   actionBusy?: boolean;
 }) {
   if (!response) return null;
@@ -2261,7 +2335,11 @@ function LocalAgentResponseDetails({
       {commands.length ? (
         <div className="local-agent-command-actions" aria-label="Agent command actions">
           {commands.map((action) => (
-            <CommandActionRow key={action.id || action.command} command={action.command ?? ""} label={action.label} />
+            isProviderCommandConfigureAction(action) ? (
+              <ProviderCommandAction key={action.id || action.command} action={action} onAction={onCommandAction} disabled={actionBusy} />
+            ) : (
+              <CommandActionRow key={action.id || action.command} command={action.command ?? ""} label={action.label} />
+            )
           ))}
         </div>
       ) : null}
@@ -2495,6 +2573,52 @@ function ReasonixCommandAction({
   );
 }
 
+function ProviderCommandAction({
+  action,
+  onAction,
+  disabled
+}: {
+  action: AgentHealthAction;
+  onAction?: (action: AgentHealthAction) => void;
+  disabled?: boolean;
+}) {
+  const [path, setPath] = useState("");
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    onAction?.({ ...action, message: providerCommandMessage(action, path) });
+  };
+  const copyCommand = async () => {
+    if (!action.command) return;
+    const copied = await copyTextToClipboard(action.command);
+    setCopyState(copied ? "copied" : "failed");
+  };
+  return (
+    <form className={`reasonix-command-action provider-command-action ${copyState}`} onSubmit={submit}>
+      <label>
+        <span>{providerCommandLabel(action)}</span>
+        <input
+          aria-label="Provider command path"
+          value={path}
+          onChange={(event) => setPath(event.target.value)}
+          placeholder="executable or wrapper path"
+          disabled={disabled}
+        />
+      </label>
+      <button type="submit" disabled={!onAction || disabled || !path.trim()}>
+        <Settings size={13} />
+        Configure
+      </button>
+      {action.command ? (
+        <button type="button" aria-label={`Copy command ${action.label}`} onClick={() => void copyCommand()}>
+          {copyState === "copied" ? <Check size={13} /> : <Copy size={13} />}
+          {copyState === "copied" ? "Copied" : "Copy"}
+        </button>
+      ) : null}
+    </form>
+  );
+}
+
 function DoctorActionButtons({
   actions,
   onAction,
@@ -2511,7 +2635,14 @@ function DoctorActionButtons({
   return (
     <div className="doctor-action-buttons" aria-label="Readiness actions">
       {visible.map((action) =>
-        action.kind === "command" ? (
+        isProviderCommandConfigureAction(action) ? (
+          <ProviderCommandAction
+            key={action.id || action.label}
+            action={action}
+            onAction={onAction}
+            disabled={setupBusy || profileBusy}
+          />
+        ) : action.kind === "command" ? (
           <CommandActionRow key={action.id || action.label} command={action.command ?? ""} label={action.label} />
         ) : isConfigureReasonixAction(action) ? (
           <ReasonixCommandAction
