@@ -104,7 +104,7 @@ def agent_message(
     if intent == "reasonix_command_configure":
         return _reasonix_command_configure_response(root, text)
     if intent == "custom_provider_setup":
-        return _custom_provider_setup_response(root)
+        return _custom_provider_setup_response(root, text)
     if intent == "profile_apply":
         return _profile_apply_response(root)
     if intent == "profile_show":
@@ -1348,6 +1348,38 @@ def _custom_provider_setup_command() -> str:
     )
 
 
+def _custom_provider_command_from_message(message: str) -> str:
+    text = (message or "").strip()
+    patterns = (
+        r"--command\s+(.+?)(?:\s+--[a-z0-9-]+|$)",
+        r"\bdeepseek\s+provider\s+(?:command|cmd|executable|wrapper)\s+(.+)$",
+        r"\b(?:with|using|use)\s+(?:command|cmd|executable|wrapper)\s+(.+)$",
+        r"\b(?:command|cmd|executable|wrapper|path)\s+(.+)$",
+        r"\b(?:to|as|at)\s+(.+)$",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if not match:
+            continue
+        value = _clean_custom_provider_command_value(match.group(1))
+        if value:
+            return value
+    return ""
+
+
+def _clean_custom_provider_command_value(value: str) -> str:
+    cleaned = _clean_reasonix_command_value(value)
+    if cleaned.lower() in {
+        "cheap writer",
+        "deepseek",
+        "deepseek provider",
+        "provider",
+        "writer",
+    }:
+        return ""
+    return cleaned
+
+
 def _setup_response(root: Path, message: str) -> dict[str, Any]:
     host = _setup_host_from_message(message)
     result = run_setup(root, host=host)
@@ -1978,6 +2010,38 @@ def _profile_routing_summary(*, economy_active: bool, write: dict[str, Any], fix
     return f"{prefix}: write {_route_label(write)}, fix {_route_label(fix)}."
 
 
+def _economy_command_not_ready_sentence(routing: dict[str, Any]) -> str:
+    phases = routing.get("command_not_ready_phases") or ["write", "fix"]
+    phase_text = "/".join(str(phase) for phase in phases)
+    phase_data = routing.get("phases") if isinstance(routing.get("phases"), dict) else {}
+    statuses: list[dict[str, Any]] = []
+    for phase in phases:
+        item = phase_data.get(phase) if isinstance(phase_data.get(phase), dict) else {}
+        status = item.get("command_status") if isinstance(item.get("command_status"), dict) else None
+        if status:
+            statuses.append(status)
+    sources = _dedupe_strings([str(item.get("source") or "").strip() for item in statuses if str(item.get("source") or "").strip()])
+    recommendations = _dedupe_strings(
+        [str(item.get("recommendation") or "").strip() for item in statuses if str(item.get("recommendation") or "").strip()]
+    )
+    target = routing.get("target", {}) if isinstance(routing.get("target"), dict) else {}
+    target_label = str(target.get("label") or _route_label(target) or "the configured economy target")
+    source_text = " and ".join(f"`{source}`" for source in sources) if sources else "the configured provider command"
+    if str(target.get("provider") or "") == service.ECONOMY_PROVIDER and "commands.reasonix" in sources:
+        sentence = (
+            f"The economy route is configured, but {phase_text} cannot execute until "
+            "`commands.reasonix` points to a runnable Reasonix CLI."
+        )
+    else:
+        sentence = (
+            f"The economy route is configured, but {phase_text} cannot execute until "
+            f"{source_text} points to a runnable {target_label} command."
+        )
+    if recommendations:
+        sentence += " " + recommendations[0]
+    return sentence
+
+
 def _profile_apply_response(root: Path) -> dict[str, Any]:
     result = run_config_wizard(root, profile="economy")
     status = result.get("status") or {}
@@ -1994,7 +2058,7 @@ def _profile_apply_response(root: Path) -> dict[str, Any]:
         reply += f" Fix uses {fix.get('provider') or '-'} / {fix.get('model') or '-'}."
     reply += f" {routing['summary']}"
     if routing.get("economy_command_ready") is False:
-        reply += " Configure `commands.reasonix` before starting write/fix work so the cheaper route can execute."
+        reply += " " + _economy_command_not_ready_sentence(routing)
     return _stateless_response(
         action="profile_apply",
         reply=reply,
@@ -2007,7 +2071,47 @@ def _profile_apply_response(root: Path) -> dict[str, Any]:
     )
 
 
-def _custom_provider_setup_response(root: Path) -> dict[str, Any]:
+def _custom_provider_setup_response(root: Path, message: str) -> dict[str, Any]:
+    command = _custom_provider_command_from_message(message)
+    if command:
+        result = run_config_wizard(
+            root,
+            provider_id="cheap_writer",
+            provider_roles=["write", "fix"],
+            provider_command=command,
+            prompt_mode="stdin",
+            output_contract="writer_diff",
+            activate_economy=True,
+            economy_model="deepseek-chat",
+            economy_label="DeepSeek cheap writer",
+        )
+        routing = _profile_routing_digest(result)
+        reply = (
+            f"Custom economy provider `cheap_writer` configured with `{command}`. "
+            "High-volume write/fix work now routes to DeepSeek cheap writer. "
+            f"{routing['summary']}"
+        )
+        if routing.get("economy_command_ready") is False:
+            reply += " " + _economy_command_not_ready_sentence(routing)
+        return _stateless_response(
+            action="custom_provider_configure",
+            reply=reply,
+            next_actions=list(result.get("next_actions") or ["readiness", "start"]),
+            extra={
+                "config_update": result,
+                "profile": result,
+                "routing": routing,
+                "actions": list(result.get("actions") or []),
+                "custom_provider": {
+                    "provider_id": "cheap_writer",
+                    "roles": ["write", "fix"],
+                    "command": command,
+                    "output_contract": "writer_diff",
+                    "activate_economy": True,
+                },
+            },
+        )
+
     profile = run_config_wizard(root, show_profile=True)
     routing = _profile_routing_digest(profile)
     action = _custom_provider_setup_action()
@@ -2134,8 +2238,7 @@ def _profile_show_response(root: Path) -> dict[str, Any]:
     if not routing.get("economy_configured"):
         reply += " " + str(result.get("recommendation") or "Run `patchbay config profile apply economy`.")
     elif routing.get("economy_command_ready") is False:
-        phases = "/".join(routing.get("command_not_ready_phases") or ["write", "fix"])
-        reply += f" The economy route is configured, but {phases} cannot execute until `commands.reasonix` points to a runnable Reasonix CLI."
+        reply += " " + _economy_command_not_ready_sentence(routing)
     return _stateless_response(
         action="profile_show",
         reply=reply,

@@ -421,8 +421,10 @@ def _apply_profile(cfg_path: Path, cfg: dict[str, Any], profile: str) -> dict[st
     economy = status.get("economy", {}) if isinstance(status.get("economy"), dict) else {}
     target = economy.get("target", {}) if isinstance(economy.get("target"), dict) else {}
     next_actions = ["Run `patchbay config --doctor --json` to validate the resolved routing."]
-    if target.get("provider") == "reasonix_cli":
+    if economy.get("command_ready") is False and target.get("provider") == "reasonix_cli":
         next_actions.insert(0, "Set `commands.reasonix` if Reasonix is not on PATH.")
+    elif economy.get("command_ready") is False:
+        next_actions.insert(0, "Open readiness to inspect the configured economy provider command.")
     return {
         "config": str(cfg_path),
         "profile": name,
@@ -444,6 +446,7 @@ def _profile_next_actions(status: dict[str, Any]) -> list[str]:
             target = economy.get("target", {}) if isinstance(economy.get("target"), dict) else {}
             if target.get("provider") == "reasonix_cli":
                 return ["configure reasonix command", "readiness"]
+            return ["inspect economy provider command", "readiness"]
         return ["readiness", "start"]
     if profile == "custom":
         return ["apply economy profile", "readiness"]

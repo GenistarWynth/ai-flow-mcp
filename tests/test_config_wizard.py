@@ -373,6 +373,7 @@ model = "cheap-model"
 
         self.assertEqual(shown["profile"], "economy")
         self.assertFalse(shown["economy"]["command_ready"])
+        self.assertEqual(shown["next_actions"], ["inspect economy provider command", "readiness"])
         status = shown["economy"]["command_status"]["write"]
         self.assertEqual(status["status"], "not_found")
         self.assertEqual(status["source"], "providers.cheap_writer.command")
