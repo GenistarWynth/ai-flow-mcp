@@ -103,6 +103,8 @@ def agent_message(
         return _runs_response(root)
     if intent == "reasonix_command_configure":
         return _reasonix_command_configure_response(root, text)
+    if intent == "custom_provider_setup":
+        return _custom_provider_setup_response(root)
     if intent == "profile_apply":
         return _profile_apply_response(root)
     if intent == "profile_show":
@@ -685,6 +687,8 @@ def _classify_intent(message: str, *, has_run: bool, confirmation: str) -> str:
         return "apply"
     if _is_reasonix_command_configure_intent(text):
         return "reasonix_command_configure"
+    if _is_custom_economy_provider_setup_intent(text):
+        return "custom_provider_setup"
     profile_intent = _config_profile_intent(text)
     if profile_intent:
         return profile_intent
@@ -941,6 +945,22 @@ def _chinese_economy_profile_intent(text: str) -> str | None:
     if _has_any(text, ("用", "使用", "让", "交给", "给", "走", "路由", "干", "跑", "配置", "启用", "切到", "换成")):
         return "profile_apply"
     return None
+
+
+def _is_custom_economy_provider_setup_intent(text: str) -> bool:
+    if not text:
+        return False
+    words = _words(text)
+    if bool(words & {"support", "feature"}) and bool(words & {"add", "build", "implement"}):
+        return False
+    setup_words = {"add-cli", "configure", "install", "register", "setup"}
+    economy_words = {"cheap", "cheaper", "cost", "deepseek", "economy", "low", "lower"}
+    provider_words = {"cli", "provider", "providers", "wrapper", "writer"}
+    if bool(words & setup_words) and bool(words & economy_words) and bool(words & provider_words):
+        return True
+    return _has_any(text, ("配置", "注册", "安装", "接入")) and _has_any(
+        text, ("deepseek", "便宜", "低成本", "经济", "省钱", "性价比")
+    ) and _has_any(text, ("provider", "cli", "wrapper", "写手", "写代码", "实现", "修复"))
 
 
 def _is_reasonix_command_configure_intent(text: str) -> bool:
@@ -1208,6 +1228,10 @@ def _help_response(root: Path) -> dict[str, Any]:
             "summary": f"Send `show economy profile` or ask `what model will write/fix use` for a read-only routing check; send `apply economy profile` to route high-volume write/fix work to {target_label} without starting a run.",
         },
         {
+            "name": "custom-economy-provider",
+            "summary": "Send `configure DeepSeek provider` to get the safe one-command template for registering a low-cost CLI writer and activating it for write/fix.",
+        },
+        {
             "name": "reasonix-command",
             "summary": "Send `configure reasonix command` or `configure reasonix command to <path>` to set the Reasonix executable used by the economy write/fix route.",
         },
@@ -1239,9 +1263,9 @@ def _help_response(root: Path) -> dict[str, Any]:
 
 
 def _help_next_actions(target: dict[str, Any]) -> list[str]:
-    actions = ["setup", "start", "readiness", "apply economy profile", "runs"]
+    actions = ["setup", "start", "readiness", "configure DeepSeek provider", "apply economy profile", "runs"]
     if target.get("provider") == "reasonix_cli":
-        actions.insert(4, "configure reasonix command")
+        actions.insert(5, "configure reasonix command")
     return actions
 
 
@@ -1279,6 +1303,7 @@ def _help_actions(target: dict[str, Any]) -> list[dict[str, Any]]:
             "safe": True,
             "reason": f"Route high-volume write/fix work to the {target_label} economy profile.",
         },
+        _custom_provider_setup_action(),
         {
             "id": "show_runs",
             "label": "Show runs",
@@ -1302,6 +1327,25 @@ def _help_actions(target: dict[str, Any]) -> list[dict[str, Any]]:
             },
         )
     return actions
+
+
+def _custom_provider_setup_action() -> dict[str, Any]:
+    return {
+        "id": "configure_custom_economy_provider",
+        "label": "Configure cheap writer provider",
+        "kind": "command",
+        "command": _custom_provider_setup_command(),
+        "safe": True,
+        "reason": "Register a low-cost CLI writer and immediately route write/fix work through it.",
+    }
+
+
+def _custom_provider_setup_command() -> str:
+    return (
+        "patchbay config provider add-cli cheap_writer --roles write fix "
+        "--command <deepseek-writer-command> --output-contract writer_diff "
+        "--activate-economy --economy-model deepseek-chat --economy-label \"DeepSeek cheap writer\""
+    )
 
 
 def _setup_response(root: Path, message: str) -> dict[str, Any]:
@@ -1959,6 +2003,41 @@ def _profile_apply_response(root: Path) -> dict[str, Any]:
             "profile": result,
             "routing": routing,
             "actions": list(result.get("actions") or []),
+        },
+    )
+
+
+def _custom_provider_setup_response(root: Path) -> dict[str, Any]:
+    profile = run_config_wizard(root, show_profile=True)
+    routing = _profile_routing_digest(profile)
+    action = _custom_provider_setup_action()
+    return _stateless_response(
+        action="custom_provider_setup",
+        reply=(
+            "Use the command action to register a low-cost CLI writer such as DeepSeek and activate it for write/fix. "
+            "Replace `<deepseek-writer-command>` with your local wrapper or executable; Patchbay will validate the provider before writing config."
+        ),
+        next_actions=["copy custom provider command", "readiness", "show economy profile"],
+        extra={
+            "profile": profile,
+            "routing": routing,
+            "actions": [
+                action,
+                {
+                    "id": "open_readiness",
+                    "label": "Open readiness",
+                    "kind": "local_agent",
+                    "message": "readiness",
+                    "safe": True,
+                    "reason": "Inspect setup and economy route command readiness after registering the provider.",
+                },
+            ],
+            "custom_provider": {
+                "provider_id": "cheap_writer",
+                "roles": ["write", "fix"],
+                "output_contract": "writer_diff",
+                "activate_economy": True,
+            },
         },
     )
 

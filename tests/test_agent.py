@@ -288,6 +288,28 @@ test = []
         self.assertEqual(resolve_phase(cfg, "fix")["model"], "deepseek-v4-pro")
         self.assertFalse((self.repo / ".ai" / "runs").exists())
 
+    def test_agent_custom_economy_provider_setup_returns_safe_command_without_mutating_config(self) -> None:
+        from scripts.ai_flow.config import load_config, resolve_phase
+
+        response = agent_message(self.repo, "configure DeepSeek provider for cheap writer work")
+
+        self.assertEqual(response["action"], "custom_provider_setup")
+        self.assertIsNone(response["run_id"])
+        actions = {item["id"]: item for item in response["actions"]}
+        command_action = actions["configure_custom_economy_provider"]
+        self.assertEqual(command_action["kind"], "command")
+        self.assertTrue(command_action["safe"])
+        self.assertIn("config provider add-cli cheap_writer", command_action["command"])
+        self.assertIn("--activate-economy", command_action["command"])
+        self.assertIn("<deepseek-writer-command>", command_action["command"])
+        self.assertEqual(response["custom_provider"]["roles"], ["write", "fix"])
+        self.assertIn("readiness", response["next_actions"])
+
+        cfg = load_config(self.repo)
+        self.assertEqual(resolve_phase(cfg, "write")["provider"], "mock")
+        self.assertEqual(resolve_phase(cfg, "fix")["provider"], "mock")
+        self.assertFalse((self.repo / ".ai" / "runs").exists())
+
     def test_agent_can_configure_reasonix_command_without_starting_run(self) -> None:
         from scripts.ai_flow.config import load_config
 
@@ -397,6 +419,8 @@ test = []
         self.assertEqual(actions["run_setup"]["message"], "patchbay setup")
         self.assertEqual(actions["start_new_task"]["kind"], "focus_composer")
         self.assertEqual(actions["open_readiness"]["message"], "readiness")
+        self.assertEqual(actions["configure_custom_economy_provider"]["kind"], "command")
+        self.assertIn("--activate-economy", actions["configure_custom_economy_provider"]["command"])
         self.assertEqual(actions["apply_economy_profile"]["message"], "apply economy profile")
         self.assertEqual(actions["configure_reasonix_command"]["message"], "configure reasonix command")
         self.assertIn("commands.reasonix", actions["configure_reasonix_command"]["command"])
@@ -1057,6 +1081,29 @@ test = []
         payload = json.loads(response["result"]["content"][0]["text"])
         self.assertEqual(payload["action"], "profile_apply")
         self.assertEqual(payload["profile"]["status"]["profile"], "economy")
+
+    def test_mcp_patchbay_agent_can_return_custom_provider_setup_command(self) -> None:
+        from scripts.ai_flow import mcp_server
+
+        original_root = mcp_server.ROOT
+        try:
+            mcp_server.ROOT = self.repo
+            response = mcp_server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {"name": "patchbay_agent", "arguments": {"message": "configure DeepSeek provider"}},
+                }
+            )
+        finally:
+            mcp_server.ROOT = original_root
+
+        payload = json.loads(response["result"]["content"][0]["text"])
+        self.assertEqual(payload["action"], "custom_provider_setup")
+        actions = {item["id"]: item for item in payload["actions"]}
+        self.assertIn("--activate-economy", actions["configure_custom_economy_provider"]["command"])
+        self.assertIsNone(payload["run_id"])
 
     def test_mcp_patchbay_agent_can_configure_reasonix_command(self) -> None:
         from scripts.ai_flow import mcp_server
