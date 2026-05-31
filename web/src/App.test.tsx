@@ -2070,11 +2070,20 @@ describe("Workbench", () => {
       })
     );
     expect(await screen.findByText(/through the technical gates/i)).toBeVisible();
-    expect(screen.getByText("Apply reviewed diff")).toBeVisible();
+    expect(screen.getAllByText("Apply reviewed diff").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByLabelText("Gate diagnosis")).toBeVisible();
     expect(screen.getByText("所有技术门禁已通过；apply 仍需要显式确认。")).toBeVisible();
     expect(screen.getByText("Apply gate")).toBeVisible();
     expect(screen.getByRole("tab", { name: "差异" })).toHaveAttribute("aria-selected", "true");
+    await userEvent.click(screen.getByRole("button", { name: "Apply reviewed diff" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getAllByRole("button")[1]);
+    expect(agentMessage).toHaveBeenCalledWith("apply", {
+      runId: "run-ready",
+      confirmation: "apply_approved",
+      include: { diff: true, review: true },
+      background: false
+    });
     expect(screen.getByRole("button", { name: "Open trace" })).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "Open trace" }));
     expect(screen.getByRole("tab", { name: "活动" })).toHaveAttribute("aria-selected", "true");

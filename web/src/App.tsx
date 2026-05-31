@@ -72,6 +72,8 @@ type LocalReplyAction = {
   host?: string;
   runId?: string;
   tab?: RunReferenceView["tab"];
+  phaseAction?: "approve" | "apply";
+  reason?: string;
 };
 type SetupHostOption = {
   id: string;
@@ -218,6 +220,11 @@ function localReplyActions(response: AgentResponse | null): LocalReplyAction[] {
     seen.add(mapped.id);
     result.push(mapped);
   }
+  const gateAction = mapGateNextLocalReplyAction(response);
+  if (gateAction && !seen.has(gateAction.id)) {
+    seen.add(gateAction.id);
+    result.push(gateAction);
+  }
   return result;
 }
 
@@ -239,6 +246,22 @@ function localReplyCommandActions(response: AgentResponse | null): AgentHealthAc
     result.push(action);
   }
   return result;
+}
+
+function mapGateNextLocalReplyAction(response: AgentResponse | null): LocalReplyAction | null {
+  const action = response?.gate_diagnosis?.next_action;
+  if (!response?.run_id || !action?.message || !action.requires_confirmation) return null;
+  const message = action.message.toLowerCase();
+  const phaseAction = message.includes("apply") ? "apply" : message.includes("approve") ? "approve" : null;
+  if (!phaseAction) return null;
+  return {
+    id: `gate-${phaseAction}`,
+    label: action.label || commandLabel(phaseAction),
+    message: action.message,
+    icon: phaseAction === "approve" ? "shield" : "play",
+    phaseAction,
+    reason: action.reason
+  };
 }
 
 function isReasonixConfigureText(raw = "") {
@@ -1566,6 +1589,17 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   };
 
   const runLocalReplyAction = async (action: LocalReplyAction) => {
+    if (action.phaseAction) {
+      handleAction({
+        id: action.id,
+        label: action.label,
+        action: action.phaseAction,
+        safe: true,
+        requires_human_confirmation: true,
+        reason: action.reason
+      });
+      return;
+    }
     if (action.id.startsWith("setup")) {
       await runSetupAction(setupMessageToHost(action.message));
       return;
