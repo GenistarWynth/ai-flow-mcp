@@ -2525,6 +2525,55 @@ describe("Workbench", () => {
     expect(client.apply).not.toHaveBeenCalled();
   });
 
+  it("normalizes host names in prose setup actions", async () => {
+    const agentMessage = vi
+      .fn()
+      .mockResolvedValueOnce({
+        run_id: "run-ready",
+        action: "help",
+        ok: true,
+        reply: "Setup guidance available.",
+        next_actions: ["patchbay setup for Claude Desktop"]
+      })
+      .mockResolvedValueOnce({
+        run_id: null,
+        action: "setup",
+        ok: true,
+        reply: "Patchbay setup completed for Claude Desktop.",
+        setup_host: "claude-desktop",
+        setup: {
+          doctor: {
+            ok: true,
+            host: "claude-desktop",
+            root: "C:/repo",
+            checks: { repo: { ok: true }, config: { ok: true }, mcp: { ok: true } },
+            next_actions: []
+          }
+        }
+      });
+    const client = createClient({ agentMessage });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(composer, "help{enter}");
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith("help", {
+        runId: "run-ready",
+        include: { diff: true, review: true },
+        background: true
+      })
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Claude Desktop" }));
+
+    await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("patchbay setup for claude-desktop"));
+    expect(await screen.findByText("Patchbay setup completed for Claude Desktop.")).toBeVisible();
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
   it("runs local setup from the empty state and exposes readiness immediately", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: null,

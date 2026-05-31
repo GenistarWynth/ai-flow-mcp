@@ -151,6 +151,12 @@ const setupHostOptions: SetupHostOption[] = [
   { id: "gemini", label: "Gemini", message: "install patchbay for gemini" }
 ];
 const setupHostLabels = new Map(setupHostOptions.map((host) => [host.id, host.label]));
+const setupHostAliases: Record<string, string[]> = {
+  codex: ["codex desktop", "codex 桌面"],
+  "claude-code": ["claude code", "claude 代码"],
+  "claude-desktop": ["claude desktop", "claude 桌面"],
+  gemini: ["gemini cli", "gemini 命令行"]
+};
 
 function phaseLabel(phase?: string) {
   if (!phase) return "空闲";
@@ -166,8 +172,17 @@ function setupHostById(host?: string | null) {
   return setupHostOptions.find((option) => option.id === host) ?? setupHostOptions[0];
 }
 
+function setupHostFromText(raw: string) {
+  const text = raw.toLowerCase();
+  return (
+    setupHostOptions.find((host) => text.includes(host.id) || text.includes(host.label.toLowerCase())) ??
+    setupHostOptions.find((host) => setupHostAliases[host.id]?.some((alias) => text.includes(alias))) ??
+    null
+  );
+}
+
 function setupMessageToHost(message: string) {
-  return setupHostOptions.find((host) => host.message === message) ?? setupHostOptions[0];
+  return setupHostOptions.find((host) => host.message === message) ?? setupHostFromText(message) ?? setupHostOptions[0];
 }
 
 function setupHostFromAction(action: AgentHealthAction, fallback: SetupHostOption) {
@@ -425,7 +440,7 @@ function mapLocalReplyAction(raw: string): LocalReplyAction | null {
     return { id: "readiness", label: "就绪", message: "readiness", icon: "shield" };
   }
   if (includesAny(text, ["setup", "install", "安装", "初始化", "配置 patchbay", "帮我配置", "帮助我配置"])) {
-    const setupHost = setupHostOptions.find((host) => text.includes(host.id));
+    const setupHost = setupHostFromText(text);
     if (setupHost) {
       return { id: `setup-${setupHost.id}`, label: setupHost.label, message: setupHost.message, icon: "settings" };
     }
