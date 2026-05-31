@@ -179,6 +179,11 @@ function setupHostFromAction(action: AgentHealthAction, fallback: SetupHostOptio
   return fallback;
 }
 
+function setupHostFromLocalReplyAction(action: Pick<LocalReplyAction, "host" | "message">) {
+  if (action.host) return setupHostById(action.host);
+  return setupMessageToHost(action.message);
+}
+
 function statusLabel(status?: string | null) {
   if (!status) return "未知";
   return statusLabels[status] ?? status;
@@ -351,7 +356,7 @@ function includesAny(text: string, needles: string[]) {
 }
 
 function requestedTabFromLocalReply(text: string): RunReferenceView["tab"] | null {
-  if (includesAny(text, ["diff", "patch", "补丁", "变更", "差异", "改动"])) return "Diff";
+  if (/\bdiffs?\b/.test(text) || /\bpatch(?:es)?\b/.test(text) || includesAny(text, ["补丁", "变更", "差异", "改动"])) return "Diff";
   if (includesAny(text, ["events", "trace", "事件", "轨迹", "跟踪", "活动"])) return "Trace";
   if (includesAny(text, ["log", "logs", "日志", "失败", "错误", "报错", "原因", "为什么"])) return "Log";
   if (includesAny(text, ["artifact", "artifacts", "plan", "review", "产物", "计划", "审查", "评审"])) return "Artifacts";
@@ -1601,7 +1606,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       return;
     }
     if (action.id.startsWith("setup")) {
-      await runSetupAction(setupMessageToHost(action.message));
+      await runSetupAction(setupHostFromLocalReplyAction(action));
       return;
     }
     if (action.id === "apply-economy") {
