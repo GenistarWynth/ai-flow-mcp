@@ -437,7 +437,14 @@ function mapLocalReplyAction(raw: string): LocalReplyAction | null {
     return { id: "configure_reasonix_command", label: "Configure Reasonix", message: "configure reasonix command", icon: "settings" };
   }
   if (includesAny(text, ["readiness", "doctor", "diagnose", "就绪", "诊断", "检查", "检查环境", "环境自检"])) {
-    return { id: "readiness", label: "就绪", message: "readiness", icon: "shield" };
+    const readinessHost = setupHostFromText(text);
+    return {
+      id: readinessHost ? `readiness-${readinessHost.id}` : "readiness",
+      label: readinessHost ? `${readinessHost.label} readiness` : "就绪",
+      message: "readiness",
+      icon: "shield",
+      host: readinessHost?.id
+    };
   }
   if (includesAny(text, ["setup", "install", "安装", "初始化", "配置 patchbay", "帮我配置", "帮助我配置"])) {
     const setupHost = setupHostFromText(text);
@@ -1632,7 +1639,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       await configureReasonixCommandAction(action.message);
       return;
     }
-    if (action.id === "readiness") {
+    if (action.id === "readiness" || action.id.startsWith("readiness-")) {
       await openReadinessAction(false, setupHostById(action.host));
       return;
     }

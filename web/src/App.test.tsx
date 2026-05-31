@@ -2574,6 +2574,47 @@ describe("Workbench", () => {
     expect(client.apply).not.toHaveBeenCalled();
   });
 
+  it("normalizes host names in prose readiness actions", async () => {
+    const getDoctor = vi
+      .fn()
+      .mockResolvedValue({
+        ok: true,
+        host: "claude-desktop",
+        root: "C:/repo",
+        checks: { repo: { ok: true }, config: { ok: true }, mcp: { ok: true } },
+        next_actions: []
+      });
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: "run-ready",
+      action: "help",
+      ok: true,
+      reply: "Readiness guidance available.",
+      next_actions: ["readiness for Claude Desktop"]
+    });
+    const client = createClient({ agentMessage, getDoctor });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(composer, "help{enter}");
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith("help", {
+        runId: "run-ready",
+        include: { diff: true, review: true },
+        background: true
+      })
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Claude Desktop readiness" }));
+
+    await waitFor(() => expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "claude-desktop" }));
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    expect(within(details).getAllByText(/Claude Desktop/).length).toBeGreaterThan(0);
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
   it("runs local setup from the empty state and exposes readiness immediately", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: null,
