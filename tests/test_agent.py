@@ -541,6 +541,13 @@ test = []
         actions = {item["id"]: item for item in response["actions"]}
         self.assertEqual(actions["run_setup"]["kind"], "local_agent")
         self.assertEqual(actions["run_setup"]["message"], "patchbay setup")
+        self.assertEqual(actions["run_setup"]["host"], "codex")
+        self.assertEqual(actions["setup_claude_code"]["message"], "patchbay setup for claude-code")
+        self.assertEqual(actions["setup_claude_code"]["host"], "claude-code")
+        self.assertEqual(actions["setup_claude_desktop"]["message"], "patchbay setup for claude-desktop")
+        self.assertEqual(actions["setup_claude_desktop"]["host"], "claude-desktop")
+        self.assertEqual(actions["setup_gemini"]["message"], "install patchbay for gemini")
+        self.assertEqual(actions["setup_gemini"]["host"], "gemini")
         self.assertEqual(actions["start_new_task"]["kind"], "focus_composer")
         self.assertEqual(actions["open_readiness"]["message"], "readiness")
         self.assertEqual(actions["configure_custom_economy_provider"]["kind"], "command")
