@@ -15,6 +15,7 @@ Patchbay ships built-in providers in each role registry (`PLANNERS`, `WRITERS`, 
 - Shipped: output contracts `plan_json`, `review_verdict`, `writer_diff`, and `worktree_diff`.
 - Shipped: phase resolution registers configured providers into the existing registries at load time.
 - Shipped: custom provider IDs are rejected before registration or `add-cli` writes when they collide with built-ins (`reasonix_cli`, `claude_cli`, `codex_cli`, `gemini_cli`, `mock`).
+- Shipped: `patchbay config provider add-cli --activate-economy` registers a custom write/fix provider and immediately makes it the low-cost economy route.
 - Roadmap: HTTP API mode, generic ACP mode, provider-specific path allowlists/denylists, execution blocking, and richer output extraction.
 
 ## Out of scope
@@ -121,7 +122,7 @@ Patchbay merges usage found in stdout, stderr, and the sidecar, then preserves i
 
 When a custom provider is used as `[profiles.economy]`, readiness, metrics, and write/fix preflight gates also validate `providers.<id>.command`. Missing or unresolved commands are reported as `command_not_ready` with `inspect_economy_provider_command` actions and leave the run in its prior durable state, while the built-in Reasonix path continues to use the dedicated `configure_reasonix_command` action for `commands.reasonix`.
 
-`patchbay config provider add-cli` validates provider IDs, roles, command, prompt mode, and output contract before writing `.ai/patchbay.toml`. Invalid definitions fail without mutating the project config, so a bad low-cost provider setup cannot poison later doctor/setup runs.
+`patchbay config provider add-cli` validates provider IDs, roles, command, prompt mode, and output contract before writing `.ai/patchbay.toml`. Invalid definitions fail without mutating the project config, so a bad low-cost provider setup cannot poison later doctor/setup runs. Add `--activate-economy --economy-model <model> --economy-label <label>` to write `[profiles.economy]`, `[phases.write]`, and `[phases.fix]` in the same update; this requires both `write` and `fix` roles so a write-only provider cannot be accidentally chosen for repair loops.
 
 ---
 

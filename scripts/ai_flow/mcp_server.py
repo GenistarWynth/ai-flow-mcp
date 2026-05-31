@@ -176,6 +176,9 @@ def patchbay_config_provider_add_cli(
     args: list[str] | None = None,
     prompt_mode: str = "stdin",
     output_contract: str = "writer_diff",
+    activate_economy: bool = False,
+    economy_model: str = "",
+    economy_label: str = "",
 ) -> dict[str, Any]:
     return run_config_wizard(
         ROOT,
@@ -185,6 +188,9 @@ def patchbay_config_provider_add_cli(
         provider_args=args or [],
         prompt_mode=prompt_mode,
         output_contract=output_contract,
+        activate_economy=activate_economy,
+        economy_model=economy_model,
+        economy_label=economy_label,
     )
 
 
@@ -422,6 +428,12 @@ def _tool_schema(name: str) -> dict[str, Any]:
             "args": {"type": "array", "items": {"type": "string"}},
             "prompt_mode": {"type": "string"},
             "output_contract": {"type": "string"},
+            "activate_economy": {
+                "type": "boolean",
+                "description": "Also make this provider the economy write/fix route; requires write and fix roles.",
+            },
+            "economy_model": {"type": "string", "description": "Model label to record for the economy write/fix route."},
+            "economy_label": {"type": "string", "description": "Human-readable label for this low-cost economy route."},
         }
         required = ["provider_id", "roles", "command", "output_contract"]
     else:
@@ -457,7 +469,7 @@ def _tool_schema(name: str) -> dict[str, Any]:
         "patchbay_config_test_add": "Add a test command to both allowlist and phase config.",
         "patchbay_config_profile_apply": "Apply a recommended routing profile; economy keeps expensive thinking in plan/review and routes write/fix work to Reasonix/DeepSeek, returning structured actions[] for safe readiness/start/configure_reasonix_command follow-ups.",
         "patchbay_config_profile_show": "Show whether the current write/fix routing matches the economy profile and return structured actions[] for safe apply/readiness/start/configure_reasonix_command follow-ups.",
-        "patchbay_config_provider_add_cli": "Add a custom CLI provider block under [providers.<id>].",
+        "patchbay_config_provider_add_cli": "Add a custom CLI provider block under [providers.<id>]; optionally activate it as the economy write/fix route for low-cost DeepSeek-style writer work.",
         "patchbay_diff": "Return the current FINAL.diff for the run.",
         "patchbay_apply": "Apply the reviewed patch to the original repository (no LLM executor).",
     }

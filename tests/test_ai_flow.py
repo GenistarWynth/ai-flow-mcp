@@ -687,6 +687,38 @@ default_branch_prefix = "legacy-prefix"
         cfg = load_config(self.repo)
         self.assertEqual(cfg["workflow"]["default_branch_prefix"], "legacy-prefix")
 
+    def test_cli_config_provider_add_cli_can_activate_economy_route(self) -> None:
+        result = self.cli_json(
+            "config",
+            "provider",
+            "add-cli",
+            "cheap_writer",
+            "--roles",
+            "write",
+            "fix",
+            "--command",
+            sys.executable,
+            "--args",
+            "cheap_writer.py",
+            "--output-contract",
+            "writer_diff",
+            "--activate-economy",
+            "--economy-model",
+            "deepseek-chat",
+            "--economy-label",
+            "DeepSeek cheap writer",
+        )
+
+        self.assertTrue(result["activated_economy"])
+        self.assertEqual(result["status"]["profile"], "economy")
+        cfg = load_config(self.repo)
+        write = resolve_phase(cfg, "write")
+        fix = resolve_phase(cfg, "fix")
+        self.assertEqual(write["provider"], "cheap_writer")
+        self.assertEqual(write["command_key"], "")
+        self.assertEqual(fix["model"], "deepseek-chat")
+        self.assertEqual(fix["command_key"], "")
+
     def test_status_transitions_and_artifacts(self) -> None:
         run_id = self.create_planned_run()
         status = self.cli_json("status", run_id)
@@ -1312,6 +1344,26 @@ class PhaseResolverTests(unittest.TestCase):
         self.assertEqual(phase["command_key"], "phase_write")
         self.assertEqual(cfg["commands"]["phase_write"], "custom-reasonix --flag")
 
+    def test_custom_provider_does_not_inherit_builtin_phase_command_key(self) -> None:
+        from scripts.ai_flow.adapters import register_custom_providers, reset_custom_providers
+
+        cfg = dict(self.default_cfg)
+        cfg["providers"] = {
+            "cheap_writer": {
+                "roles": ["write", "fix"],
+                "command": sys.executable,
+                "output_contract": "writer_diff",
+            }
+        }
+        cfg.setdefault("phases", {})["write"] = {"provider": "cheap_writer", "model": "cheap-model"}
+        cfg.setdefault("phases", {})["fix"] = {"provider": "cheap_writer", "model": "cheap-model"}
+        try:
+            register_custom_providers(cfg)
+            self.assertEqual(resolve_phase(cfg, "write")["command_key"], "")
+            self.assertEqual(resolve_phase(cfg, "fix")["command_key"], "")
+        finally:
+            reset_custom_providers()
+
     def test_fix_phase_defaults_to_fully_resolved_write_phase(self) -> None:
         cfg = dict(self.default_cfg)
         cfg["models"] = dict(self.default_cfg["models"])
@@ -1548,6 +1600,12 @@ class McpSchemaTests(unittest.TestCase):
         self.assertIn("configure_reasonix_command", tools["patchbay_config_profile_apply"])
         self.assertIn("patchbay_config_profile_show", tools)
         self.assertIn("configure_reasonix_command", tools["patchbay_config_profile_show"])
+        self.assertIn("patchbay_config_provider_add_cli", tools)
+        self.assertIn("economy write/fix route", tools["patchbay_config_provider_add_cli"])
+        provider_schema = tool_items["patchbay_config_provider_add_cli"]["inputSchema"]["properties"]
+        self.assertIn("activate_economy", provider_schema)
+        self.assertIn("economy_model", provider_schema)
+        self.assertIn("economy_label", provider_schema)
 
         # Legacy aliases should still exist and mention alias status
         self.assertIn("ai_flow_plan", tools)

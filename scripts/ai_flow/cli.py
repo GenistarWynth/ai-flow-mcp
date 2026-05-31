@@ -39,10 +39,13 @@ def config_wizard_run(cwd: Path, args: argparse.Namespace) -> Any:
             cwd,
             provider_id=args.provider_id,
             provider_roles=args.roles,
-            provider_command=args.command,
+            provider_command=args.provider_command,
             provider_args=args.args,
             prompt_mode=args.prompt_mode,
             output_contract=args.output_contract,
+            activate_economy=args.activate_economy,
+            economy_model=args.economy_model,
+            economy_label=args.economy_label,
         )
     if config_command == "profile":
         if args.profile_command == "apply":
@@ -281,10 +284,19 @@ def build_parser() -> argparse.ArgumentParser:
     provider_add = provider_sub.add_parser("add-cli", help="Add a custom CLI provider.")
     provider_add.add_argument("provider_id")
     provider_add.add_argument("--roles", nargs="+", required=True)
-    provider_add.add_argument("--command", required=True)
+    provider_add.add_argument("--command", dest="provider_command", required=True)
     provider_add.add_argument("--args", nargs="*", default=[])
     provider_add.add_argument("--prompt-mode", choices=["stdin", "arg", "file"], default="stdin")
     provider_add.add_argument("--output-contract", choices=["plan_json", "review_verdict", "worktree_diff", "writer_diff"], required=True)
+    provider_add.add_argument(
+        "--activate-economy",
+        "--as-economy",
+        dest="activate_economy",
+        action="store_true",
+        help="Also make this provider the economy write/fix route.",
+    )
+    provider_add.add_argument("--economy-model", default="", help="Model label to record for the economy write/fix route.")
+    provider_add.add_argument("--economy-label", default="", help="Human-readable label for this low-cost economy route.")
     _add_json(provider_add)
 
     config_profile = config_sub.add_parser("profile", help="Apply or inspect recommended phase routing profiles.")

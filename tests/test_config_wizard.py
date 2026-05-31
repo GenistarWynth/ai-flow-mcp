@@ -116,6 +116,55 @@ class ConfigWizardTest(unittest.TestCase):
         )
         self.assertEqual(result["provider"], "local_writer")
 
+    def test_add_cli_provider_can_activate_economy_route(self) -> None:
+        from scripts.ai_flow.config import economy_target, load_config, resolve_phase
+        from scripts.ai_flow.config_wizard import run_config_wizard
+
+        self._make_git_repo()
+
+        result = run_config_wizard(
+            self.tmp,
+            provider_id="cheap_writer",
+            provider_roles=["write", "fix"],
+            provider_command=sys.executable,
+            provider_args=["writer.py"],
+            prompt_mode="stdin",
+            output_contract="writer_diff",
+            activate_economy=True,
+            economy_model="deepseek-chat",
+            economy_label="DeepSeek cheap writer",
+        )
+
+        self.assertTrue(result["activated_economy"])
+        self.assertEqual(result["status"]["profile"], "economy")
+        self.assertEqual(result["status"]["economy"]["target"]["provider"], "cheap_writer")
+        self.assertEqual(result["status"]["economy"]["target"]["model"], "deepseek-chat")
+        self.assertEqual(result["status"]["economy"]["target"]["label"], "DeepSeek cheap writer")
+        self.assertTrue(result["status"]["economy"]["command_ready"])
+        actions = {item["id"]: item for item in result["actions"]}
+        self.assertEqual(actions["start_new_task"]["kind"], "focus_composer")
+        self.assertNotIn("configure_reasonix_command", actions)
+
+        cfg = load_config(self.tmp)
+        target = economy_target(cfg)
+        self.assertEqual(target["provider"], "cheap_writer")
+        self.assertEqual(target["model"], "deepseek-chat")
+        self.assertEqual(target["label"], "DeepSeek cheap writer")
+        write = resolve_phase(cfg, "write")
+        fix = resolve_phase(cfg, "fix")
+        self.assertEqual(write["provider"], "cheap_writer")
+        self.assertEqual(write["model"], "deepseek-chat")
+        self.assertEqual(write["command_key"], "")
+        self.assertEqual(fix["provider"], "cheap_writer")
+        self.assertEqual(fix["model"], "deepseek-chat")
+        self.assertEqual(fix["command_key"], "")
+
+        text = (self.tmp / ".ai" / "patchbay.toml").read_text(encoding="utf-8")
+        self.assertIn("[providers.cheap_writer]", text)
+        self.assertIn("[profiles.economy]", text)
+        self.assertIn("[phases.write]", text)
+        self.assertIn("[phases.fix]", text)
+
     def test_add_cli_provider_rejects_invalid_definitions_without_writing(self) -> None:
         from scripts.ai_flow.errors import AiFlowError
         from scripts.ai_flow.config_wizard import run_config_wizard
@@ -167,6 +216,16 @@ class ConfigWizardTest(unittest.TestCase):
                 "prompt_mode": "stdin",
                 "output_contract": "raw_text",
                 "message": "output_contract",
+            },
+            {
+                "provider_id": "write_only",
+                "provider_roles": ["write"],
+                "provider_command": "python",
+                "provider_args": [],
+                "prompt_mode": "stdin",
+                "output_contract": "writer_diff",
+                "activate_economy": True,
+                "message": "both write and fix roles",
             },
         ]
         for case in cases:

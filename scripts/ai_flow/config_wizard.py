@@ -124,6 +124,9 @@ def run_config_wizard(
     provider_args: list[str] | None = None,
     prompt_mode: str = "stdin",
     output_contract: str = "",
+    activate_economy: bool = False,
+    economy_model: str = "",
+    economy_label: str = "",
     profile: str = "",
     show_profile: bool = False,
 ) -> dict[str, Any]:
@@ -173,6 +176,9 @@ def run_config_wizard(
             args=provider_args or [],
             prompt_mode=prompt_mode,
             output_contract=output_contract,
+            activate_economy=activate_economy,
+            economy_model=economy_model,
+            economy_label=economy_label,
         )
 
     if set_key:
@@ -237,18 +243,24 @@ def _add_cli_provider(
     args: list[str],
     prompt_mode: str,
     output_contract: str,
+    activate_economy: bool = False,
+    economy_model: str = "",
+    economy_label: str = "",
 ) -> dict[str, Any]:
     provider_id = provider_id.strip()
     roles = [str(role).strip() for role in roles if str(role).strip()]
     command = command.strip()
     prompt_mode = prompt_mode.strip()
     output_contract = output_contract.strip()
+    economy_model = economy_model.strip()
+    economy_label = economy_label.strip()
     _validate_cli_provider_input(
         provider_id=provider_id,
         roles=roles,
         command=command,
         prompt_mode=prompt_mode,
         output_contract=output_contract,
+        activate_economy=activate_economy,
     )
     provider_cfg = {
         "roles": roles,
@@ -258,8 +270,33 @@ def _add_cli_provider(
         "output_contract": output_contract,
     }
     cfg.setdefault("providers", {})[provider_id] = provider_cfg
-    _write_config_update(cfg_path, ("providers", provider_id), provider_cfg)
-    return {"config": str(cfg_path), "provider": provider_id, "updated": provider_cfg}
+    _register_custom_providers_for_status(cfg)
+    updates: list[tuple[tuple[str, ...], Any]] = [(("providers", provider_id), provider_cfg)]
+    economy_updates: dict[str, Any] = {}
+    if activate_economy:
+        economy_updates = _custom_economy_updates(
+            provider_id=provider_id,
+            model=economy_model,
+            label=economy_label or provider_id,
+        )
+        for key, value in economy_updates.items():
+            parts = tuple(key.split("."))
+            _set_nested(cfg, parts, value)
+            updates.append((parts, value))
+    _write_config_updates(cfg_path, updates)
+    result = {"config": str(cfg_path), "provider": provider_id, "updated": provider_cfg}
+    if activate_economy:
+        status = _profile_status(cfg)
+        result.update(
+            {
+                "activated_economy": True,
+                "economy_updated": economy_updates,
+                "status": status,
+                "next_actions": _profile_next_actions(status),
+                "actions": _profile_actions(status, include_validate=True),
+            }
+        )
+    return result
 
 
 def _validate_cli_provider_input(
@@ -269,6 +306,7 @@ def _validate_cli_provider_input(
     command: str,
     prompt_mode: str,
     output_contract: str,
+    activate_economy: bool = False,
 ) -> None:
     from .adapters import BUILTIN_PROVIDER_IDS, ROLE_FIX, ROLE_PLAN, ROLE_REVIEW, ROLE_WRITE
     from .errors import AiFlowError
@@ -293,6 +331,12 @@ def _validate_cli_provider_input(
             stage="config",
             suggested_next_action="Use one or more of: plan, write, review, fix.",
         )
+    if activate_economy and {ROLE_WRITE, ROLE_FIX} - role_set:
+        raise AiFlowError(
+            "Custom economy providers must declare both write and fix roles.",
+            stage="config",
+            suggested_next_action="Add `--roles write fix` before using --activate-economy.",
+        )
     if not command.strip():
         raise AiFlowError("Custom provider command cannot be empty.", stage="config")
     if prompt_mode not in {"stdin", "arg", "file"}:
@@ -302,6 +346,29 @@ def _validate_cli_provider_input(
             "Custom provider output_contract must be one of: plan_json, review_verdict, worktree_diff, writer_diff.",
             stage="config",
         )
+
+
+def _custom_economy_updates(*, provider_id: str, model: str, label: str) -> dict[str, Any]:
+    return {
+        "profiles.economy.provider": provider_id,
+        "profiles.economy.model": model,
+        "profiles.economy.command_key": "",
+        "profiles.economy.label": label,
+        "writer.provider": provider_id,
+        "models.writer": model,
+        "phases.write.provider": provider_id,
+        "phases.write.model": model,
+        "phases.write.command_key": "",
+        "phases.fix.provider": provider_id,
+        "phases.fix.model": model,
+        "phases.fix.command_key": "",
+    }
+
+
+def _register_custom_providers_for_status(cfg: dict[str, Any]) -> None:
+    from .adapters import register_custom_providers
+
+    register_custom_providers(cfg)
 
 
 def _economy_profile_definition(cfg: dict[str, Any]) -> dict[str, Any]:

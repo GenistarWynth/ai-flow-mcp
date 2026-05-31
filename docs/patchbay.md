@@ -244,4 +244,10 @@ Claude and Codex CLI providers request their native read-only/plan execution mod
 
 ## Custom Providers
 
-当前运行时已支持通过 `[providers.<id>]` 和 `patchbay config provider add-cli ...` 注册 CLI provider。Patchbay 会为每次自定义 CLI 调用设置 `PATCHBAY_USAGE_FILE`，并合并 stdout、stderr 和该 JSON sidecar 中的 token/cost 字段；这些数据会进入 `patchbay metrics`、`run_metrics.provider_usage`、`run_metrics.tier_usage` 和 Web 效率面板，用来验证 write/fix 是否真的由低成本 provider 承担，以及 economy 层在 token、成本和耗时中的实际占比。当自定义 provider 被设为 `[profiles.economy]` 时，doctor、profile status、metrics 和 write/fix 执行前门禁都会检查 `providers.<id>.command` 是否可执行；缺失时返回 `command_not_ready` 和 `inspect_economy_provider_command` 安全动作，并保持运行停在原状态而不是创建半成品 worktree。详见 [custom-providers-plan.md](custom-providers-plan.md) — 文档包含已实现的 CLI 基线，以及 HTTP/ACP 模式和更细安全约束的后续路线图。
+当前运行时已支持通过 `[providers.<id>]` 和 `patchbay config provider add-cli ...` 注册 CLI provider。若要让 DeepSeek 或其他便宜模型直接承担 write/fix，可一条命令注册并激活 economy 路由：
+
+```bash
+patchbay config provider add-cli cheap_writer --roles write fix --command deepseek-writer --output-contract writer_diff --activate-economy --economy-model deepseek-chat --economy-label "DeepSeek cheap writer"
+```
+
+Patchbay 会为每次自定义 CLI 调用设置 `PATCHBAY_USAGE_FILE`，并合并 stdout、stderr 和该 JSON sidecar 中的 token/cost 字段；这些数据会进入 `patchbay metrics`、`run_metrics.provider_usage`、`run_metrics.tier_usage` 和 Web 效率面板，用来验证 write/fix 是否真的由低成本 provider 承担，以及 economy 层在 token、成本和耗时中的实际占比。当自定义 provider 被设为 `[profiles.economy]` 时，doctor、profile status、metrics 和 write/fix 执行前门禁都会检查 `providers.<id>.command` 是否可执行；缺失时返回 `command_not_ready` 和 `inspect_economy_provider_command` 安全动作，并保持运行停在原状态而不是创建半成品 worktree。详见 [custom-providers-plan.md](custom-providers-plan.md) — 文档包含已实现的 CLI 基线，以及 HTTP/ACP 模式和更细安全约束的后续路线图。

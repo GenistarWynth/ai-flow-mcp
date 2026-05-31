@@ -446,8 +446,6 @@ def resolve_phase(cfg: dict[str, Any], phase: str) -> dict[str, Any]:
             command_key = str(inherited_write_phase.get("command_key", "") if inherited_write_phase else "")
         if not command_key:
             command_key = _PROVIDER_COMMAND_KEY_DEFAULTS.get(provider, "")
-        if not command_key:
-            command_key = _PHASE_COMMAND_KEY_DEFAULTS.get(phase, "")
     phase_cfg["command_key"] = command_key
 
     raw_env = phase_cfg.get("env", {})

@@ -215,6 +215,31 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertEqual(profile.profile_command, "apply")
         self.assertEqual(profile.profile, "economy")
 
+        provider = parser.parse_args([
+            "config",
+            "provider",
+            "add-cli",
+            "cheap_writer",
+            "--roles",
+            "write",
+            "fix",
+            "--command",
+            "deepseek-writer",
+            "--output-contract",
+            "writer_diff",
+            "--activate-economy",
+            "--economy-model",
+            "deepseek-chat",
+            "--economy-label",
+            "DeepSeek cheap writer",
+            "--json",
+        ])
+        self.assertEqual(provider.command, "config")
+        self.assertEqual(provider.config_command, "provider")
+        self.assertTrue(provider.activate_economy)
+        self.assertEqual(provider.economy_model, "deepseek-chat")
+        self.assertEqual(provider.economy_label, "DeepSeek cheap writer")
+
     def test_cli_doctor_skips_stdio_mcp_probe_by_default(self) -> None:
         from pathlib import Path
         from unittest import mock
