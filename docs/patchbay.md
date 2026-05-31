@@ -87,7 +87,15 @@ timeout = 900
 
 旧配置节 `[models]`、`[commands]` 和 `[writer].provider` 继续有效，作为未设置 phase 时的默认值。
 
-默认经济型分工是：规划/审查使用更强模型，写代码和修复这类大量重复工作走 Reasonix/DeepSeek writer。若本地配置偏离了这套分工，可运行 `patchbay config profile apply economy` 一键恢复。
+默认经济型分工是：规划/审查使用更强模型，写代码和修复这类大量重复工作走 Reasonix/DeepSeek writer。若本地配置偏离了这套分工，可运行 `patchbay config profile apply economy` 一键恢复。也可以用 `[profiles.economy]` 把 economy 目标改成任意低成本 provider/model；`apply economy profile`、doctor、metrics 和 Web workbench 都会按这个目标判断是否已走经济路由。
+
+```toml
+[profiles.economy]
+provider = "reasonix_cli"
+model = "deepseek-v4-pro"
+command_key = "reasonix"
+label = "Reasonix/DeepSeek"
+```
 
 Writer 实现入口：
 

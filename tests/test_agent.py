@@ -1367,6 +1367,57 @@ test = []
         self.assertEqual(routing["coverage"]["observed_economy_percent"], 50)
         self.assertIn("non-economy provider", routing["summary"])
 
+    def test_agent_metrics_uses_custom_economy_target_for_observed_routes(self) -> None:
+        from scripts.ai_flow.events import append_event
+
+        config_path = self.repo / ".ai" / "patchbay.toml"
+        with config_path.open("a", encoding="utf-8", newline="\n") as handle:
+            handle.write(
+                """
+
+[profiles.economy]
+provider = "mock"
+model = "mock"
+label = "Mock writer"
+"""
+            )
+        planned = agent_message(self.repo, "build custom target fixture")
+        run_path = self.repo / ".ai" / "runs" / planned["run_id"]
+        append_event(
+            run_path,
+            phase="write",
+            provider="mock",
+            model="mock",
+            action="success",
+            status="IMPLEMENTED",
+            detail="synthetic custom economy writer event",
+            duration_ms=1200,
+        )
+        append_event(
+            run_path,
+            phase="write",
+            provider="reasonix_cli",
+            model="deepseek-v4-pro",
+            action="retry",
+            status="IMPLEMENTED",
+            detail="synthetic default route drift",
+            duration_ms=800,
+        )
+
+        response = agent_message(self.repo, "cost", run_id=planned["run_id"])
+
+        routing = response["metrics"]["routing_evidence"]
+        self.assertEqual(routing["target"]["provider"], "mock")
+        self.assertEqual(routing["target"]["label"], "Mock writer")
+        self.assertTrue(routing["economy_configured"])
+        self.assertIsNone(routing["economy_command_ready"])
+        self.assertEqual(routing["phases"]["write"]["status"], "observed_mixed")
+        self.assertEqual(routing["observed_economy_phases"], ["write"])
+        self.assertEqual(routing["observed_non_economy_phases"], ["write"])
+        self.assertEqual(routing["economy_health"]["status"], "drift")
+        self.assertEqual(routing["phases"]["write"]["observed"][0]["provider"], "mock")
+        self.assertEqual(routing["phases"]["write"]["observed"][1]["provider"], "reasonix_cli")
+
     def test_mcp_patchbay_agent_continue_without_run_returns_guidance(self) -> None:
         from scripts.ai_flow import mcp_server
 

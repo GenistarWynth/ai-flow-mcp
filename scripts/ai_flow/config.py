@@ -55,6 +55,14 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "cargo test",
         ],
     },
+    "profiles": {
+        "economy": {
+            "provider": "reasonix_cli",
+            "model": "deepseek-v4-pro",
+            "command_key": "reasonix",
+            "label": "Reasonix/DeepSeek",
+        },
+    },
     "phases": {
         "plan": {
             "provider": "",
@@ -100,6 +108,48 @@ DEFAULT_CONFIG: dict[str, Any] = {
         },
     },
 }
+
+
+def economy_target(cfg: dict[str, Any]) -> dict[str, str]:
+    profiles = cfg.get("profiles", {}) if isinstance(cfg.get("profiles"), dict) else {}
+    raw = profiles.get("economy", {}) if isinstance(profiles.get("economy"), dict) else {}
+    provider = str(raw.get("provider") or "reasonix_cli").strip()
+    model = str(raw.get("model") or "").strip()
+    if not model and provider == "reasonix_cli":
+        model = "deepseek-v4-pro"
+    command_key = str(raw.get("command_key") or "").strip()
+    if not command_key:
+        command_key = _PROVIDER_COMMAND_KEY_DEFAULTS.get(provider, "")
+    label = str(raw.get("label") or "").strip()
+    if not label:
+        label = route_label({"provider": provider, "model": model, "command_key": command_key})
+    return {
+        "provider": provider,
+        "model": model,
+        "command_key": command_key,
+        "label": label,
+    }
+
+
+def route_label(route: dict[str, Any]) -> str:
+    provider = str(route.get("provider") or "").strip()
+    model = str(route.get("model") or "").strip()
+    command_key = str(route.get("command_key") or "").strip()
+    if provider and model:
+        return f"{provider}/{model}"
+    if provider and command_key:
+        return f"{provider}/{command_key}"
+    return provider or model or "configured economy target"
+
+
+def route_matches_economy(route: dict[str, Any], target: dict[str, Any]) -> bool:
+    provider = str(route.get("provider") or "").strip()
+    model = str(route.get("model") or "").strip()
+    target_provider = str(target.get("provider") or "").strip()
+    target_model = str(target.get("model") or "").strip()
+    if not target_provider or provider != target_provider:
+        return False
+    return not target_model or model == target_model
 
 
 def deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:

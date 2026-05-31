@@ -55,6 +55,7 @@ type DoctorProfileStatus = {
   recommendation?: string;
   economy?: {
     matches?: boolean;
+    target?: PhaseProvider;
     intent?: string;
     write?: PhaseProvider;
     fix?: PhaseProvider;
@@ -623,6 +624,7 @@ function doctorProfileStatus(report?: DoctorReport | null): DoctorProfileStatus 
 
 function routeSummary(route?: PhaseProvider) {
   if (!route) return "未配置";
+  if (route.label) return route.label;
   const provider = route.provider || "-";
   const model = route.model || route.command_key || "默认";
   return `${provider} / ${model}`;
@@ -706,7 +708,8 @@ function economyHealthLabel(routing?: RoutingEvidence | null) {
   return healthStatusLabel(health.status);
 }
 
-function healthActionFromNext(nextAction?: string): AgentHealthAction | null {
+function healthActionFromNext(nextAction?: string, target?: PhaseProvider): AgentHealthAction | null {
+  const targetLabel = target ? routeSummary(target) : "Reasonix/DeepSeek";
   if (nextAction === "configure_reasonix_command") {
     return {
       id: "configure_reasonix_command",
@@ -715,7 +718,7 @@ function healthActionFromNext(nextAction?: string): AgentHealthAction | null {
       message: "configure reasonix command",
       command: "patchbay config --set-key commands.reasonix --set-value reasonix",
       safe: true,
-      reason: "Set the default Reasonix executable so the Reasonix/DeepSeek write/fix economy route can actually run."
+      reason: `Set the default Reasonix executable so the ${targetLabel} write/fix economy route can actually run.`
     };
   }
   if (nextAction === "apply_economy_profile") {
@@ -725,7 +728,7 @@ function healthActionFromNext(nextAction?: string): AgentHealthAction | null {
       kind: "local_agent",
       message: "apply economy profile",
       safe: true,
-      reason: "Routes write/fix to the Reasonix/DeepSeek economy profile."
+      reason: `Routes write/fix to the ${targetLabel} economy profile.`
     };
   }
   if (nextAction === "inspect_routing_events") {
@@ -756,23 +759,25 @@ function profileStatusToRouting(result: ConfigProfileStatus): RoutingEvidence {
   const economy = status.economy ?? {};
   const write = economy.write ?? {};
   const fix = economy.fix ?? {};
+  const target = economy.target ?? { provider: "reasonix_cli", model: "deepseek-v4-pro" };
   const configuredEconomy = Boolean(economy.matches);
   const commandStatus = economy.command_status ?? {};
+  const matchesTarget = (route: PhaseProvider) => route.provider === target.provider && (!target.model || route.model === target.model);
   return {
     profile: status.profile ?? result.profile ?? (configuredEconomy ? "economy" : "custom"),
-    target: { provider: "reasonix_cli", model: "deepseek-v4-pro" },
+    target,
     economy_configured: configuredEconomy,
     economy_command_ready: typeof economy.command_ready === "boolean" ? economy.command_ready : null,
     phase_strategy: status.phase_strategy ?? result.phase_strategy,
     phases: {
       write: {
         configured: write,
-        configured_economy: write.provider === "reasonix_cli" && write.model === "deepseek-v4-pro",
+        configured_economy: matchesTarget(write),
         command_status: commandStatus.write
       },
       fix: {
         configured: fix,
-        configured_economy: fix.provider === "reasonix_cli" && fix.model === "deepseek-v4-pro",
+        configured_economy: matchesTarget(fix),
         command_status: commandStatus.fix
       }
     },
@@ -796,7 +801,9 @@ function economyHealthCard(status: RunStatus | null) {
       detail: health.summary ?? routing?.summary ?? "",
       recommendation: health.recommendation,
       next_action: health.next_action,
-      action: routing?.actions?.find((action) => action.safe !== false) ?? healthActionFromNext(health.next_action),
+      action:
+        routing?.actions?.find((action) => action.safe !== false) ??
+        healthActionFromNext(health.next_action, health.target ?? routing?.target),
       coverage_percent: routing?.coverage?.observed_economy_percent ?? null
     }
   ];
@@ -1943,7 +1950,8 @@ function MetricsGrid({
   const routingCoverage = routingCoverageLabel(routing);
   const economyHealth = economyHealthLabel(routing);
   const routingAction =
-    routing?.actions?.find((action) => action.safe !== false) ?? healthActionFromNext(routing?.economy_health?.next_action);
+    routing?.actions?.find((action) => action.safe !== false) ??
+    healthActionFromNext(routing?.economy_health?.next_action, routing?.economy_health?.target ?? routing?.target);
   return (
     <div className="metrics-panel">
       <div className="metric-row">

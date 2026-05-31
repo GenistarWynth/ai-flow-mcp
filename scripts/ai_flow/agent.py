@@ -11,7 +11,7 @@ from typing import Any
 
 from . import service
 from .artifacts import now_iso, read_text
-from .config import load_config
+from .config import economy_target, load_config, route_matches_economy
 from .config_wizard import run_config_wizard
 from .doctor import run_doctor
 from .errors import StateError
@@ -98,7 +98,7 @@ def agent_message(
     if intent == "doctor":
         return _doctor_response(root, text)
     if intent == "help":
-        return _help_response()
+        return _help_response(root)
     if intent == "runs":
         return _runs_response(root)
     if intent == "reasonix_command_configure":
@@ -1157,7 +1157,16 @@ def _is_doctor_intent(text: str) -> bool:
     return "doctor" in words and bool(words & (setup_words | {"run", "show"}))
 
 
-def _help_response() -> dict[str, Any]:
+def _safe_economy_target(root: Path) -> dict[str, Any]:
+    try:
+        return economy_target(load_config(root))
+    except Exception:
+        return {"provider": service.ECONOMY_PROVIDER, "model": service.ECONOMY_MODEL, "label": "Reasonix/DeepSeek"}
+
+
+def _help_response(root: Path) -> dict[str, Any]:
+    target = _safe_economy_target(root)
+    target_label = str(target.get("label") or _route_label(target))
     capabilities = [
         {
             "name": "setup",
@@ -1173,7 +1182,7 @@ def _help_response() -> dict[str, Any]:
         },
         {
             "name": "economy-profile",
-            "summary": "Send `show economy profile` or ask `what model will write/fix use` for a read-only routing check; send `apply economy profile` to route high-volume write/fix work to Reasonix/DeepSeek without starting a run.",
+            "summary": f"Send `show economy profile` or ask `what model will write/fix use` for a read-only routing check; send `apply economy profile` to route high-volume write/fix work to {target_label} without starting a run.",
         },
         {
             "name": "reasonix-command",
@@ -1196,16 +1205,26 @@ def _help_response() -> dict[str, Any]:
             "summary": "Send `apply` only after tests and review pass; it still requires apply_approved confirmation.",
         },
     ]
+    if target.get("provider") != "reasonix_cli":
+        capabilities = [item for item in capabilities if item["name"] != "reasonix-command"]
     return _stateless_response(
         action="help",
         reply="Patchbay Agent can run setup, start a gated run, report readiness, apply economy routing, list recent runs, continue a run, show artifacts/diff, and apply only after explicit approval.",
-        next_actions=["setup", "start", "readiness", "apply economy profile", "configure reasonix command", "runs"],
-        extra={"capabilities": capabilities, "actions": _help_actions()},
+        next_actions=_help_next_actions(target),
+        extra={"capabilities": capabilities, "actions": _help_actions(target)},
     )
 
 
-def _help_actions() -> list[dict[str, Any]]:
-    return [
+def _help_next_actions(target: dict[str, Any]) -> list[str]:
+    actions = ["setup", "start", "readiness", "apply economy profile", "runs"]
+    if target.get("provider") == "reasonix_cli":
+        actions.insert(4, "configure reasonix command")
+    return actions
+
+
+def _help_actions(target: dict[str, Any]) -> list[dict[str, Any]]:
+    target_label = str(target.get("label") or _route_label(target))
+    actions = [
         {
             "id": "run_setup",
             "label": "Run setup",
@@ -1235,16 +1254,7 @@ def _help_actions() -> list[dict[str, Any]]:
             "kind": "local_agent",
             "message": "apply economy profile",
             "safe": True,
-            "reason": "Route high-volume write/fix work to the Reasonix/DeepSeek economy profile.",
-        },
-        {
-            "id": "configure_reasonix_command",
-            "label": "Configure Reasonix",
-            "kind": "local_agent",
-            "message": "configure reasonix command",
-            "command": "patchbay config --set-key commands.reasonix --set-value reasonix",
-            "safe": True,
-            "reason": "Set the Reasonix executable used by the economy write/fix route.",
+            "reason": f"Route high-volume write/fix work to the {target_label} economy profile.",
         },
         {
             "id": "show_runs",
@@ -1255,6 +1265,20 @@ def _help_actions() -> list[dict[str, Any]]:
             "reason": "List recent Patchbay runs without advancing any run gate.",
         },
     ]
+    if target.get("provider") == "reasonix_cli":
+        actions.insert(
+            4,
+            {
+                "id": "configure_reasonix_command",
+                "label": "Configure Reasonix",
+                "kind": "local_agent",
+                "message": "configure reasonix command",
+                "command": "patchbay config --set-key commands.reasonix --set-value reasonix",
+                "safe": True,
+                "reason": "Set the Reasonix executable used by the economy write/fix route.",
+            },
+        )
+    return actions
 
 
 def _setup_response(root: Path, message: str) -> dict[str, Any]:
@@ -1679,6 +1703,9 @@ def _profile_routing_digest(profile_result: dict[str, Any]) -> dict[str, Any]:
     write = _phase_route_snapshot(economy.get("write") if isinstance(economy.get("write"), dict) else {})
     fix = _phase_route_snapshot(economy.get("fix") if isinstance(economy.get("fix"), dict) else {})
     economy_active = bool(economy.get("matches"))
+    target = _phase_route_snapshot(economy.get("target") if isinstance(economy.get("target"), dict) else {})
+    if isinstance(economy.get("target"), dict) and economy["target"].get("label"):
+        target["label"] = str(economy["target"].get("label") or "")
     command_status = economy.get("command_status") if isinstance(economy.get("command_status"), dict) else {}
     command_not_ready = [
         phase
@@ -1691,7 +1718,7 @@ def _profile_routing_digest(profile_result: dict[str, Any]) -> dict[str, Any]:
     recommendation = str(status.get("recommendation") or profile_result.get("recommendation") or "")
     return {
         "profile": status.get("profile") or profile_result.get("profile") or ("economy" if economy_active else "custom"),
-        "target": {"provider": service.ECONOMY_PROVIDER, "model": service.ECONOMY_MODEL},
+        "target": target if target.get("provider") else {"provider": service.ECONOMY_PROVIDER, "model": service.ECONOMY_MODEL},
         "economy_configured": economy_active,
         "economy_command_ready": bool(command_ready) if command_ready is not None else None,
         "command_not_ready_phases": command_not_ready,
@@ -1699,12 +1726,12 @@ def _profile_routing_digest(profile_result: dict[str, Any]) -> dict[str, Any]:
         "phases": {
             "write": {
                 "configured": write,
-                "configured_economy": _phase_is_economy(write),
+                "configured_economy": _phase_is_economy(write, target),
                 "command_status": command_status.get("write") if isinstance(command_status.get("write"), dict) else None,
             },
             "fix": {
                 "configured": fix,
-                "configured_economy": _phase_is_economy(fix),
+                "configured_economy": _phase_is_economy(fix, target),
                 "command_status": command_status.get("fix") if isinstance(command_status.get("fix"), dict) else None,
             },
         },
@@ -1721,11 +1748,15 @@ def _phase_route_snapshot(route: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _phase_is_economy(route: dict[str, Any]) -> bool:
-    return route.get("provider") == service.ECONOMY_PROVIDER and route.get("model") == service.ECONOMY_MODEL
+def _phase_is_economy(route: dict[str, Any], target: dict[str, Any]) -> bool:
+    if not target:
+        target = {"provider": service.ECONOMY_PROVIDER, "model": service.ECONOMY_MODEL}
+    return route_matches_economy(route, target)
 
 
 def _route_label(route: dict[str, Any]) -> str:
+    if route.get("label"):
+        return str(route.get("label"))
     provider = str(route.get("provider") or "-")
     model = str(route.get("model") or "")
     return f"{provider} / {model}" if model else provider
@@ -1742,9 +1773,11 @@ def _profile_apply_response(root: Path) -> dict[str, Any]:
     write = ((status.get("economy") or {}).get("write") or {})
     fix = ((status.get("economy") or {}).get("fix") or {})
     routing = _profile_routing_digest(result)
+    target = routing.get("target", {}) if isinstance(routing.get("target"), dict) else {}
+    target_label = str(target.get("label") or _route_label(target) or "the configured economy target")
     reply = (
         "Economy routing profile applied. High-volume write/fix work now routes to "
-        f"{write.get('provider') or 'reasonix_cli'} / {write.get('model') or 'deepseek-v4-pro'}."
+        f"{target_label}."
     )
     if fix:
         reply += f" Fix uses {fix.get('provider') or '-'} / {fix.get('model') or '-'}."
@@ -1770,9 +1803,11 @@ def _reasonix_command_configure_response(root: Path, message: str = "") -> dict[
     profile = run_config_wizard(root, show_profile=True)
     routing = _profile_routing_digest(profile)
     actions = list(profile.get("actions") or [])
+    target = routing.get("target", {}) if isinstance(routing.get("target"), dict) else {}
+    target_label = str(target.get("label") or _route_label(target) or "the active economy target")
     reply = (
         f"Reasonix command configured as `{command}`. "
-        "Patchbay will use it for the Reasonix/DeepSeek economy write/fix route when that profile is active."
+        f"Patchbay will use it for the {target_label} economy write/fix route when that profile is active."
     )
     if routing.get("economy_command_ready") is False:
         reply += " The command is saved, but it is not currently resolvable on PATH; install Reasonix or set the full executable path."

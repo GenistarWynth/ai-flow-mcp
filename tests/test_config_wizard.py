@@ -171,6 +171,53 @@ class ConfigWizardTest(unittest.TestCase):
         self.assertEqual(shown["next_actions"], ["configure reasonix command", "readiness"])
         self.assertEqual(shown_actions["configure_reasonix_command"]["label"], "Configure Reasonix")
 
+    def test_custom_economy_profile_target_applies_without_reasonix_action(self) -> None:
+        from scripts.ai_flow.config import load_config, resolve_phase
+        from scripts.ai_flow.config_wizard import run_config_wizard
+        self._make_git_repo()
+        config_path = self.tmp / ".ai" / "patchbay.toml"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            """
+[profiles.economy]
+provider = "mock"
+model = "mock"
+label = "Mock writer"
+
+[phases.write]
+provider = "reasonix_cli"
+model = "deepseek-v4-pro"
+command_key = "reasonix"
+
+[phases.fix]
+provider = "reasonix_cli"
+model = "deepseek-v4-pro"
+command_key = "reasonix"
+""".lstrip(),
+            encoding="utf-8",
+        )
+
+        result = run_config_wizard(self.tmp, profile="economy")
+        status = result["status"]
+
+        self.assertEqual(status["profile"], "economy")
+        self.assertEqual(status["economy"]["target"]["provider"], "mock")
+        self.assertEqual(status["economy"]["target"]["label"], "Mock writer")
+        self.assertTrue(status["economy"]["command_ready"])
+        self.assertEqual(status["phase_strategy"]["write"]["provider"], "mock")
+        self.assertEqual(status["phase_strategy"]["fix"]["model"], "mock")
+        self.assertNotIn("commands.reasonix", " ".join(result["next_actions"]))
+        actions = {item["id"]: item for item in result["actions"]}
+        self.assertNotIn("configure_reasonix_command", actions)
+        self.assertEqual(actions["start_new_task"]["kind"], "focus_composer")
+
+        cfg = load_config(self.tmp)
+        self.assertEqual(resolve_phase(cfg, "write")["provider"], "mock")
+        self.assertEqual(resolve_phase(cfg, "fix")["model"], "mock")
+
+        shown = run_config_wizard(self.tmp, show_profile=True)
+        self.assertEqual(shown["next_actions"], ["readiness", "start"])
+
     def test_economy_profile_allows_start_when_reasonix_command_is_resolved(self) -> None:
         from scripts.ai_flow.config_wizard import run_config_wizard
         self._make_git_repo()

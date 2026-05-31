@@ -42,10 +42,13 @@ from .config import (
     allowlisted_test_commands,
     configured_worktree_root,
     config_path,
+    economy_target,
     example_config_path,
     find_project_root,
     load_config,
     resolve_phase,
+    route_label,
+    route_matches_economy,
     split_command,
 )
 from .context import build_context
@@ -1706,6 +1709,7 @@ def _run_metrics(run_path: Path) -> dict[str, Any]:
 
 
 def _run_routing_evidence(run_metrics: dict[str, Any], effective: dict[str, Any], cfg: dict[str, Any] | None = None) -> dict[str, Any]:
+    target = economy_target(cfg or {})
     provider_usage = [
         entry
         for entry in run_metrics.get("provider_usage", [])
@@ -1724,9 +1728,9 @@ def _run_routing_evidence(run_metrics: dict[str, Any], effective: dict[str, Any]
             for entry in provider_usage
             if str(entry.get("phase") or "") == phase
         ]
-        configured_economy = _is_economy_route(configured)
-        observed_economy = any(_is_economy_route(entry) for entry in observed)
-        observed_other = any(not _is_economy_route(entry) for entry in observed)
+        configured_economy = _is_economy_route(configured, target)
+        observed_economy = any(_is_economy_route(entry, target) for entry in observed)
+        observed_other = any(not _is_economy_route(entry, target) for entry in observed)
         if configured_economy:
             configured_economy_phases.append(phase)
         if observed:
@@ -1785,10 +1789,11 @@ def _run_routing_evidence(run_metrics: dict[str, Any], effective: dict[str, Any]
         missing_evidence=missing_evidence,
         command_not_ready=command_not_ready,
         coverage=coverage,
+        target=target,
     )
     actions = _routing_health_actions(economy_health)
     return {
-        "target": {"provider": ECONOMY_PROVIDER, "model": ECONOMY_MODEL},
+        "target": target,
         "economy_configured": economy_configured,
         "economy_command_ready": economy_command_ready,
         "command_not_ready_phases": command_not_ready,
@@ -1807,12 +1812,15 @@ def _run_routing_evidence(run_metrics: dict[str, Any], effective: dict[str, Any]
             observed_non_economy_phases=observed_non_economy_phases,
             missing_evidence=missing_evidence,
             coverage=coverage,
+            target=target,
         ),
     }
 
 
 def _routing_health_actions(health: dict[str, Any]) -> list[dict[str, Any]]:
     next_action = str(health.get("next_action") or "")
+    target = health.get("target", {}) if isinstance(health.get("target"), dict) else {}
+    target_name = str(target.get("label") or route_label(target))
     if next_action == "configure_reasonix_command":
         return [
             {
@@ -1822,7 +1830,7 @@ def _routing_health_actions(health: dict[str, Any]) -> list[dict[str, Any]]:
                 "message": "configure reasonix command",
                 "command": "patchbay config --set-key commands.reasonix --set-value reasonix",
                 "safe": True,
-                "reason": "Set the default Reasonix executable so the Reasonix/DeepSeek write/fix economy route can actually run.",
+                "reason": f"Set the default Reasonix executable so the {target_name} write/fix economy route can actually run.",
             }
         ]
     if next_action == "apply_economy_profile":
@@ -1833,7 +1841,7 @@ def _routing_health_actions(health: dict[str, Any]) -> list[dict[str, Any]]:
                 "kind": "local_agent",
                 "message": "apply economy profile",
                 "safe": True,
-                "reason": "Route high-volume write/fix work to the Reasonix/DeepSeek economy profile.",
+                "reason": f"Route high-volume write/fix work to the configured {target_name} economy profile.",
             }
         ]
     if next_action == "inspect_routing_events":
@@ -1870,16 +1878,17 @@ def _economy_health(
     missing_evidence: list[str],
     command_not_ready: list[str],
     coverage: dict[str, Any],
+    target: dict[str, Any],
 ) -> dict[str, Any]:
     required_phases = ["write", "fix"]
     configured = set(configured_economy_phases)
     missing_config = [phase for phase in required_phases if phase not in configured]
     drift_phases = sorted(set(observed_non_economy_phases), key=required_phases.index)
     missing_observation = [phase for phase in required_phases if phase in set(missing_evidence)]
-    target = {"provider": ECONOMY_PROVIDER, "model": ECONOMY_MODEL}
+    target_name = str(target.get("label") or route_label(target))
 
     if missing_config:
-        summary = f"Economy route is missing for {'/'.join(missing_config)}; high-volume work may use higher-cost providers."
+        summary = f"Economy route is missing for {'/'.join(missing_config)}; high-volume work may use providers outside {target_name}."
         return {
             "status": "not_configured",
             "severity": "warning",
@@ -1891,11 +1900,11 @@ def _economy_health(
             "missing_evidence": missing_observation,
             "observed_economy_phases": observed_economy_phases,
             "summary": summary,
-            "recommendation": "Run `patchbay config profile apply economy` before write/fix so simple implementation and repair work routes to Reasonix/DeepSeek.",
+            "recommendation": f"Run `patchbay config profile apply economy` before write/fix so simple implementation and repair work routes to {target_name}.",
             "next_action": "apply_economy_profile",
         }
     if command_not_ready:
-        summary = f"Economy route is configured, but {'/'.join(command_not_ready)} cannot execute because the Reasonix command is not ready."
+        summary = f"Economy route is configured, but {'/'.join(command_not_ready)} cannot execute because the {target_name} command is not ready."
         return {
             "status": "command_not_ready",
             "severity": "warning",
@@ -1908,7 +1917,7 @@ def _economy_health(
             "missing_evidence": missing_observation,
             "observed_economy_phases": observed_economy_phases,
             "summary": summary,
-            "recommendation": "Set `commands.reasonix` before continuing high-volume write/fix work on the Reasonix/DeepSeek economy route.",
+            "recommendation": f"Set `commands.reasonix` before continuing high-volume write/fix work on the {target_name} economy route.",
             "next_action": "configure_reasonix_command",
         }
     if drift_phases:
@@ -1938,7 +1947,7 @@ def _economy_health(
             "drift_phases": [],
             "missing_evidence": [],
             "observed_economy_phases": observed_economy_phases,
-            "summary": "Economy route is configured and observed for all high-volume write/fix phases.",
+            "summary": f"Economy route is configured and observed on {target_name} for all high-volume write/fix phases.",
             "recommendation": "",
             "next_action": "none",
         }
@@ -2041,8 +2050,8 @@ def _routing_phase_command_status(cfg: dict[str, Any], phase: dict[str, Any]) ->
     }
 
 
-def _is_economy_route(route: dict[str, Any]) -> bool:
-    return route.get("provider") == ECONOMY_PROVIDER and route.get("model") == ECONOMY_MODEL
+def _is_economy_route(route: dict[str, Any], target: dict[str, Any]) -> bool:
+    return route_matches_economy(route, target)
 
 
 def _routing_evidence_summary(
@@ -2052,13 +2061,15 @@ def _routing_evidence_summary(
     observed_non_economy_phases: list[str],
     missing_evidence: list[str],
     coverage: dict[str, Any],
+    target: dict[str, Any],
 ) -> str:
     coverage_label = str(coverage.get("label") or "").strip()
+    target_name = str(target.get("label") or route_label(target))
     if economy_configured and observed_non_economy_phases:
         observed_other = "/".join(observed_non_economy_phases)
         return f"Economy route configured, but {observed_other} observed a non-economy provider; {coverage_label}."
     if economy_configured and set(observed_economy_phases) == {"write", "fix"}:
-        return "Economy route configured and observed for write/fix."
+        return f"Economy route configured and observed on {target_name} for write/fix."
     if economy_configured and observed_economy_phases:
         missing = "/".join(missing_evidence) if missing_evidence else "remaining phases"
         observed = "/".join(observed_economy_phases)
@@ -2067,7 +2078,7 @@ def _routing_evidence_summary(
         return "Economy route configured for write/fix; provider evidence is not observed yet."
     if observed_economy_phases:
         observed = "/".join(observed_economy_phases)
-        return f"Observed {observed} on Reasonix/DeepSeek, but current write/fix config is not fully economy."
+        return f"Observed {observed} on {target_name}, but current write/fix config is not fully economy."
     return "Economy route is not configured or not observed for write/fix."
 
 
@@ -2465,6 +2476,12 @@ max_context_files = 30
 max_patch_attempts = 3
 max_repair_iterations = 2
 
+[profiles.economy]
+provider = "reasonix_cli"
+model = "deepseek-v4-pro"
+command_key = "reasonix"
+label = "Reasonix/DeepSeek"
+
 [workflow]
 require_plan_approval = true
 default_branch_prefix = "patchbay"
@@ -2583,6 +2600,8 @@ cp .ai/patchbay.example.toml .ai/patchbay.toml
 按需编辑 `.ai/patchbay.toml`，尤其是 writer provider、命令路径和测试 allowlist。
 
 Writer 使用 Reasonix ACP coding agent（`reasonix acp`），由 Reasonix 自己的文件系统工具修改独立 worktree，Patchbay 只负责审批权限并捕获最终 `git diff`。
+
+`[profiles.economy]` 定义 `apply economy profile` 的目标 provider/model；默认是 Reasonix/DeepSeek，也可以改成任意低成本 writer。doctor、metrics 和 Web workbench 会按这个目标判断 write/fix 是否真的走了经济路由。
 
 ## 常用命令
 

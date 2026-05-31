@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from .config import config_path, example_config_path, find_project_root, load_config
+from .config import config_path, example_config_path, find_project_root, load_config, route_label
 from .config_wizard import _configure_reasonix_action, _profile_status, _run_doctor as run_config_doctor
 from .mcp_install import normalize_mcp_host, run_mcp_doctor
 from .skill_install import run_skill_doctor
@@ -165,14 +165,16 @@ def _recommendations(checks: dict[str, Any]) -> list[str]:
     recommendations: list[str] = []
     config = checks.get("config", {})
     profile = config.get("profile", {})
+    economy = profile.get("economy", {}) if isinstance(profile.get("economy"), dict) else {}
+    target = economy.get("target", {}) if isinstance(economy.get("target"), dict) else {}
+    target_name = str(target.get("label") or route_label(target))
     if config.get("ok") and profile.get("profile") == "custom":
         recommendations.append(
-            "Run `patchbay config profile apply economy` to route write/fix implementation work to Reasonix/DeepSeek."
+            f"Run `patchbay config profile apply economy` to route write/fix implementation work to {target_name}."
         )
-    economy = profile.get("economy", {}) if isinstance(profile.get("economy"), dict) else {}
     if config.get("ok") and economy.get("matches") and economy.get("command_ready") is False:
         recommendations.append(
-            "Set `commands.reasonix` so the Reasonix/DeepSeek write/fix economy route can actually execute."
+            f"Set `commands.reasonix` so the {target_name} write/fix economy route can actually execute."
         )
     return recommendations
 
@@ -190,6 +192,10 @@ def _structured_actions(
     cli = checks.get("cli", {})
     mcp = checks.get("mcp", {})
     skill = checks.get("skill", {})
+    profile = config.get("profile", {}) if isinstance(config.get("profile"), dict) else {}
+    economy = profile.get("economy", {}) if isinstance(profile.get("economy"), dict) else {}
+    target = economy.get("target", {}) if isinstance(economy.get("target"), dict) else {}
+    target_name = str(target.get("label") or route_label(target))
 
     if repo.get("missing_files") or not config.get("config_exists"):
         actions.append(
@@ -257,11 +263,11 @@ def _structured_actions(
                 "kind": "local_agent",
                 "message": "apply economy profile",
                 "safe": True,
-                "reason": "Route high-volume write/fix implementation work to Reasonix/DeepSeek.",
+                "reason": f"Route high-volume write/fix implementation work to {target_name}.",
             }
         )
     if any("commands.reasonix" in item for item in recommendations):
-        actions.append(_configure_reasonix_action())
+        actions.append(_configure_reasonix_action(target_name))
     if next_actions or recommendations:
         actions.append(
             {

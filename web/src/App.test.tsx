@@ -2351,6 +2351,83 @@ describe("Workbench", () => {
     expect(client.getConfig).toHaveBeenCalled();
   });
 
+  it("renders custom economy targets from profile status", async () => {
+    const applyConfigProfile = vi.fn().mockResolvedValue({
+      profile: "economy",
+      status: {
+        profile: "economy",
+        economy: {
+          matches: true,
+          target: { provider: "local_writer", model: "cheap-model", label: "Local cheap writer" },
+          write: { provider: "local_writer", model: "cheap-model" },
+          fix: { provider: "local_writer", model: "cheap-model" },
+          command_ready: true
+        },
+        phase_strategy: {
+          plan: { provider: "claude_cli", model: "opus", tier: "supervision", reason: "Use a stronger planner." },
+          write: { provider: "local_writer", model: "cheap-model", tier: "economy", economy_route: true },
+          fix: { provider: "local_writer", model: "cheap-model", tier: "economy", economy_route: true },
+          review: { provider: "codex_cli", model: "gpt-5", tier: "supervision", reason: "Use a stronger reviewer." }
+        }
+      },
+      next_actions: ["readiness", "start"],
+      actions: [
+        {
+          id: "open_readiness",
+          label: "Open readiness",
+          kind: "local_agent",
+          message: "readiness",
+          safe: true,
+          reason: "Inspect setup and resolved write/fix routing."
+        }
+      ]
+    });
+    const getDoctor = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        root: "C:/repo",
+        checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true } },
+        next_actions: [],
+        recommendations: ["Run `patchbay config profile apply economy` to route write/fix implementation work to Local cheap writer."],
+        actions: [
+          {
+            id: "apply_economy_profile",
+            label: "Apply economy profile",
+            kind: "local_agent",
+            message: "apply economy profile",
+            safe: true,
+            reason: "Route high-volume write/fix work to Local cheap writer."
+          }
+        ]
+      })
+      .mockResolvedValue({
+        ok: true,
+        root: "C:/repo",
+        checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true } },
+        next_actions: [],
+        recommendations: []
+      });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      getDoctor,
+      applyConfigProfile
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Apply economy profile" }));
+
+    await waitFor(() => expect(applyConfigProfile).toHaveBeenCalledWith("economy"));
+    expect(await screen.findByText("Economy routing profile applied.")).toBeVisible();
+    const routingResult = await screen.findByLabelText("Routing result");
+    expect(within(routingResult).getAllByText("local_writer / cheap-model")).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "Configure Reasonix" })).not.toBeInTheDocument();
+  });
+
   it("shows Reasonix command readiness without offering economy reapply", async () => {
     const applyConfigProfile = vi.fn();
     const agentMessage = vi.fn().mockResolvedValue({

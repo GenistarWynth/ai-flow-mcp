@@ -18,17 +18,7 @@ import tomlkit
 
 ECONOMY_PROFILE = {
     "profile": "economy",
-    "summary": "Route high-volume implementation and repair work to the low-cost Reasonix/DeepSeek writer while leaving plan/review choices unchanged.",
-    "updates": {
-        ("writer", "provider"): "reasonix_cli",
-        ("models", "writer"): "deepseek-v4-pro",
-        ("phases", "write", "provider"): "reasonix_cli",
-        ("phases", "write", "model"): "deepseek-v4-pro",
-        ("phases", "write", "command_key"): "reasonix",
-        ("phases", "fix", "provider"): "reasonix_cli",
-        ("phases", "fix", "model"): "deepseek-v4-pro",
-        ("phases", "fix", "command_key"): "reasonix",
-    },
+    "summary": "Route high-volume implementation and repair work to the configured low-cost writer while leaving plan/review choices unchanged.",
 }
 
 CONFIG_PROFILES = {"economy": ECONOMY_PROFILE}
@@ -261,9 +251,41 @@ def _add_cli_provider(
     return {"config": str(cfg_path), "provider": provider_id, "updated": provider_cfg}
 
 
+def _economy_profile_definition(cfg: dict[str, Any]) -> dict[str, Any]:
+    from .config import economy_target
+
+    target = economy_target(cfg)
+    provider = target["provider"]
+    model = target["model"]
+    command_key = target["command_key"]
+    updates: dict[tuple[str, ...], str] = {
+        ("writer", "provider"): provider,
+        ("phases", "write", "provider"): provider,
+        ("phases", "fix", "provider"): provider,
+    }
+    if model:
+        updates[("models", "writer")] = model
+        updates[("phases", "write", "model")] = model
+        updates[("phases", "fix", "model")] = model
+    if command_key:
+        updates[("phases", "write", "command_key")] = command_key
+        updates[("phases", "fix", "command_key")] = command_key
+    return {
+        "profile": "economy",
+        "summary": f"Route high-volume implementation and repair work to {target['label']} while leaving plan/review choices unchanged.",
+        "updates": updates,
+    }
+
+
+def _profile_definition(cfg: dict[str, Any], profile: str) -> dict[str, Any] | None:
+    if profile == "economy":
+        return _economy_profile_definition(cfg)
+    return CONFIG_PROFILES.get(profile)
+
+
 def _apply_profile(cfg_path: Path, cfg: dict[str, Any], profile: str) -> dict[str, Any]:
     name = profile.strip().lower()
-    definition = CONFIG_PROFILES.get(name)
+    definition = _profile_definition(cfg, name)
     if definition is None:
         from .errors import AiFlowError
         raise AiFlowError(
@@ -276,6 +298,11 @@ def _apply_profile(cfg_path: Path, cfg: dict[str, Any], profile: str) -> dict[st
         _set_nested(cfg, parts, value)
     _write_config_updates(cfg_path, updates)
     status = _profile_status(cfg)
+    economy = status.get("economy", {}) if isinstance(status.get("economy"), dict) else {}
+    target = economy.get("target", {}) if isinstance(economy.get("target"), dict) else {}
+    next_actions = ["Run `patchbay config --doctor --json` to validate the resolved routing."]
+    if target.get("provider") == "reasonix_cli":
+        next_actions.insert(0, "Set `commands.reasonix` if Reasonix is not on PATH.")
     return {
         "config": str(cfg_path),
         "profile": name,
@@ -284,10 +311,7 @@ def _apply_profile(cfg_path: Path, cfg: dict[str, Any], profile: str) -> dict[st
             ".".join(parts): value for parts, value in updates
         },
         "status": status,
-        "next_actions": [
-            "Set `commands.reasonix` if Reasonix is not on PATH.",
-            "Run `patchbay config --doctor --json` to validate the resolved routing.",
-        ],
+        "next_actions": next_actions,
         "actions": _profile_actions(status, include_validate=True),
     }
 
@@ -297,7 +321,9 @@ def _profile_next_actions(status: dict[str, Any]) -> list[str]:
     if profile == "economy":
         economy = status.get("economy", {}) if isinstance(status.get("economy"), dict) else {}
         if economy.get("command_ready") is False:
-            return ["configure reasonix command", "readiness"]
+            target = economy.get("target", {}) if isinstance(economy.get("target"), dict) else {}
+            if target.get("provider") == "reasonix_cli":
+                return ["configure reasonix command", "readiness"]
         return ["readiness", "start"]
     if profile == "custom":
         return ["apply economy profile", "readiness"]
@@ -320,7 +346,20 @@ def _profile_actions(status: dict[str, Any], *, include_validate: bool = False) 
         ]
         economy = status.get("economy", {}) if isinstance(status.get("economy"), dict) else {}
         if economy.get("command_ready") is False:
-            actions.append(_configure_reasonix_action())
+            target = economy.get("target", {}) if isinstance(economy.get("target"), dict) else {}
+            if target.get("provider") == "reasonix_cli":
+                actions.append(_configure_reasonix_action(str(target.get("label") or "Reasonix/DeepSeek")))
+            else:
+                actions.append(
+                    {
+                        "id": "open_readiness",
+                        "label": "Open readiness",
+                        "kind": "local_agent",
+                        "message": "readiness",
+                        "safe": True,
+                        "reason": "Inspect the command or provider setup for the configured economy target.",
+                    }
+                )
         else:
             actions.append(
                 {
@@ -339,7 +378,7 @@ def _profile_actions(status: dict[str, Any], *, include_validate: bool = False) 
                 "kind": "local_agent",
                 "message": "apply economy profile",
                 "safe": True,
-                "reason": "Route high-volume write/fix work to the Reasonix/DeepSeek economy profile.",
+                "reason": "Route high-volume write/fix work to the configured economy profile.",
             },
             {
                 "id": "open_readiness",
@@ -375,7 +414,7 @@ def _profile_actions(status: dict[str, Any], *, include_validate: bool = False) 
     return actions
 
 
-def _configure_reasonix_action() -> dict[str, Any]:
+def _configure_reasonix_action(target_label: str = "Reasonix/DeepSeek") -> dict[str, Any]:
     return {
         "id": "configure_reasonix_command",
         "label": "Configure Reasonix",
@@ -383,7 +422,7 @@ def _configure_reasonix_action() -> dict[str, Any]:
         "message": "configure reasonix command",
         "command": "patchbay config --set-key commands.reasonix --set-value reasonix",
         "safe": True,
-        "reason": "Set the default Reasonix executable so the Reasonix/DeepSeek write/fix economy route can actually run.",
+        "reason": f"Set the default Reasonix executable so the {target_label} write/fix economy route can actually run.",
     }
 
 
@@ -395,8 +434,9 @@ def _set_nested(cfg: dict[str, Any], parts: tuple[str, ...], value: Any) -> None
 
 
 def _profile_status(cfg: dict[str, Any]) -> dict[str, Any]:
-    from .config import resolve_phase
+    from .config import economy_target, resolve_phase, route_matches_economy
 
+    target = economy_target(cfg)
     try:
         write = _public_phase(resolve_phase(cfg, "write"))
         fix = _public_phase(resolve_phase(cfg, "fix"))
@@ -407,10 +447,8 @@ def _profile_status(cfg: dict[str, Any]) -> dict[str, Any]:
             "recommendation": "Fix phase configuration errors before applying a routing profile.",
         }
     economy_matches = (
-        write.get("provider") == "reasonix_cli"
-        and write.get("model") == "deepseek-v4-pro"
-        and fix.get("provider") == "reasonix_cli"
-        and fix.get("model") == "deepseek-v4-pro"
+        route_matches_economy(write, target)
+        and route_matches_economy(fix, target)
     )
     command_status = {
         "write": _phase_command_status(cfg, write),
@@ -423,22 +461,24 @@ def _profile_status(cfg: dict[str, Any]) -> dict[str, Any]:
         "profile": "economy" if economy_matches else "custom",
         "economy": {
             "matches": economy_matches,
+            "target": target,
             "write": write,
             "fix": fix,
             "command_ready": command_ready,
             "command_status": command_status,
-            "intent": "High-volume write/fix work runs on the low-cost Reasonix/DeepSeek route.",
+            "intent": f"High-volume write/fix work runs on the configured low-cost {target['label']} route.",
         },
         "phase_strategy": _phase_strategy(cfg),
         "recommendation": ""
         if economy_matches
-        else "Run `patchbay config profile apply economy` to route write/fix work to Reasonix/DeepSeek.",
+        else f"Run `patchbay config profile apply economy` to route write/fix work to {target['label']}.",
     }
 
 
 def _phase_strategy(cfg: dict[str, Any]) -> dict[str, Any]:
-    from .config import resolve_phase
+    from .config import economy_target, resolve_phase, route_matches_economy
 
+    target = economy_target(cfg)
     roles = {
         "plan": ("supervision", "Use a stronger model for task decomposition, constraints, and the execution plan."),
         "write": ("economy", "Route high-volume implementation work to the low-cost writer."),
@@ -449,13 +489,11 @@ def _phase_strategy(cfg: dict[str, Any]) -> dict[str, Any]:
     for phase, (tier, reason) in roles.items():
         try:
             resolved = _public_phase(resolve_phase(cfg, phase))
-            provider = str(resolved.get("provider") or "")
-            model = str(resolved.get("model") or "")
             strategy[phase] = {
                 **resolved,
                 "tier": tier,
                 "reason": reason,
-                "economy_route": provider == "reasonix_cli" and model == "deepseek-v4-pro",
+                "economy_route": route_matches_economy(resolved, target),
             }
             command_status = _phase_command_status(cfg, resolved)
             if command_status.get("required"):

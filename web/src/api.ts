@@ -46,6 +46,7 @@ export type PhaseProvider = {
   provider?: string;
   model?: string;
   command_key?: string;
+  label?: string;
 };
 
 export type CommandStatus = {
@@ -245,6 +246,7 @@ export type ConfigProfileStatus = {
   profile?: string;
   economy?: {
     matches?: boolean;
+    target?: PhaseProvider;
     intent?: string;
     write?: PhaseProvider;
     fix?: PhaseProvider;
