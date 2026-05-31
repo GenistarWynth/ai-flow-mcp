@@ -1767,6 +1767,15 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     setNewTaskReply(null);
   };
 
+  const openBackgroundActivity = () => {
+    setDiagnosticsOpen(true);
+    setActiveTab("Trace");
+  };
+
+  const refreshBackgroundJob = () => {
+    if (selectedRun) void refreshRun(selectedRun);
+  };
+
   return (
     <main className={`workbench ${diagnosticsOpen ? "diagnostics-open" : ""}`}>
       <aside className="sidebar">
@@ -1894,13 +1903,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
               />
               <BackgroundJobCard
                 job={backgroundJob}
-                onOpenActivity={() => {
-                  setDiagnosticsOpen(true);
-                  setActiveTab("Trace");
-                }}
-                onRefresh={() => {
-                  if (selectedRun) void refreshRun(selectedRun);
-                }}
+                onOpenActivity={openBackgroundActivity}
+                onRefresh={refreshBackgroundJob}
               />
               {messages.map((message) => (
                 <AgentEventBubble key={message.id} message={message} selected={selectedMessage?.id === message.id} onSelect={() => setSelectedMessage(message)} />
@@ -1999,6 +2003,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
               onApplyEconomy={applyEconomyProfileAction}
               onDoctorAction={(action) => void runDoctorAction(action)}
               onHealthAction={(action) => void runHealthAction(action)}
+              onOpenBackgroundActivity={openBackgroundActivity}
+              onRefreshBackgroundJob={refreshBackgroundJob}
               setupBusy={setupInFlight}
               profileBusy={profileInFlight}
               status={activeStatus}
@@ -3009,6 +3015,8 @@ function DetailPanel({
   onApplyEconomy,
   onDoctorAction,
   onHealthAction,
+  onOpenBackgroundActivity,
+  onRefreshBackgroundJob,
   setupBusy,
   profileBusy,
   status,
@@ -3029,6 +3037,8 @@ function DetailPanel({
   onApplyEconomy?: () => void;
   onDoctorAction?: (action: AgentHealthAction) => void;
   onHealthAction?: (action: AgentHealthAction) => void;
+  onOpenBackgroundActivity?: () => void;
+  onRefreshBackgroundJob?: () => void;
   setupBusy?: boolean;
   profileBusy?: boolean;
   status: RunStatus | null;
@@ -3048,7 +3058,7 @@ function DetailPanel({
         {backgroundJob ? (
           <section>
             <h2>后台任务</h2>
-            <BackgroundJobCard job={backgroundJob} />
+            <BackgroundJobCard job={backgroundJob} onOpenActivity={onOpenBackgroundActivity} onRefresh={onRefreshBackgroundJob} />
           </section>
         ) : null}
         {hasStrategy ? (
