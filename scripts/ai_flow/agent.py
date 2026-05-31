@@ -103,6 +103,8 @@ def agent_message(
         return _runs_response(root)
     if intent == "reasonix_command_configure":
         return _reasonix_command_configure_response(root, text)
+    if intent == "custom_provider_command_configure":
+        return _custom_provider_command_configure_response(root, text)
     if intent == "custom_provider_setup":
         return _custom_provider_setup_response(root, text)
     if intent == "profile_apply":
@@ -687,6 +689,8 @@ def _classify_intent(message: str, *, has_run: bool, confirmation: str) -> str:
         return "apply"
     if _is_reasonix_command_configure_intent(text):
         return "reasonix_command_configure"
+    if _is_custom_provider_command_configure_intent(text):
+        return "custom_provider_command_configure"
     if _is_custom_economy_provider_setup_intent(text):
         return "custom_provider_setup"
     profile_intent = _config_profile_intent(text)
@@ -863,6 +867,10 @@ def _config_profile_intent(text: str) -> str | None:
     }:
         return "profile_show"
     words = _words(text)
+    if re.search(r"providers\.[a-z0-9_-]+\.command", text) and bool(
+        words & {"current", "is", "missing", "read", "show", "status", "what", "why", "inspect"}
+    ):
+        return "profile_show"
     if _is_routing_show_query(text, words):
         return "profile_show"
     if text in {
@@ -961,6 +969,22 @@ def _is_custom_economy_provider_setup_intent(text: str) -> bool:
     return _has_any(text, ("配置", "注册", "安装", "接入")) and _has_any(
         text, ("deepseek", "便宜", "低成本", "经济", "省钱", "性价比")
     ) and _has_any(text, ("provider", "cli", "wrapper", "写手", "写代码", "实现", "修复"))
+
+
+def _is_custom_provider_command_configure_intent(text: str) -> bool:
+    if not text or _has_task_intent(text):
+        return False
+    if "configure_economy_provider_command" in text:
+        return True
+    if "--set-value" in text and re.search(r"providers\.[a-z0-9_-]+\.command", text):
+        return True
+    if re.search(r"providers\.[a-z0-9_-]+\.command\s*(?:=|to|as)\s+\S", text):
+        return True
+    words = _words(text)
+    command_scope = bool(words & {"command", "cmd", "executable", "path", "wrapper"})
+    provider_scope = bool(words & {"provider", "providers", "economy", "cheap_writer", "writer", "wrapper"})
+    setup_scope = bool(words & {"configure", "set", "setup", "install", "use", "using"})
+    return command_scope and provider_scope and setup_scope
 
 
 def _is_reasonix_command_configure_intent(text: str) -> bool:
@@ -1229,7 +1253,7 @@ def _help_response(root: Path) -> dict[str, Any]:
         },
         {
             "name": "custom-economy-provider",
-            "summary": "Send `configure DeepSeek provider` to get the safe one-command template for registering a low-cost CLI writer, or `configure DeepSeek provider to <command>` to register the command immediately. If the custom provider command later fails readiness or metrics checks, clients should render the returned `configure_economy_provider_command` command action before falling back to inspection.",
+            "summary": "Send `configure DeepSeek provider` to get the safe one-command template for registering a low-cost CLI writer, `configure DeepSeek provider to <command>` to register it immediately, or `configure economy provider command to <path>` to repair the active custom provider command without starting a run. If the custom provider command later fails readiness or metrics checks, clients should render the returned `configure_economy_provider_command` command action before falling back to inspection.",
         },
         {
             "name": "reasonix-command",
@@ -1351,7 +1375,9 @@ def _custom_provider_setup_command() -> str:
 def _custom_provider_command_from_message(message: str) -> str:
     text = (message or "").strip()
     patterns = (
+        r"--set-value\s+(.+)$",
         r"--command\s+(.+?)(?:\s+--[a-z0-9-]+|$)",
+        r"providers\.[a-z0-9_-]+\.command\s*(?:=|to|as)\s*(.+)$",
         r"\bdeepseek\s+provider\s+(?:command|cmd|executable|wrapper)\s+(.+)$",
         r"\b(?:with|using|use)\s+(?:command|cmd|executable|wrapper)\s+(.+)$",
         r"\b(?:command|cmd|executable|wrapper|path)\s+(.+)$",
@@ -1375,6 +1401,8 @@ def _clean_custom_provider_command_value(value: str) -> str:
         "deepseek provider",
         "provider",
         "writer",
+        "<command>",
+        "<deepseek-writer-command>",
     }:
         return ""
     return cleaned
@@ -2144,6 +2172,120 @@ def _custom_provider_setup_response(root: Path, message: str) -> dict[str, Any]:
             },
         },
     )
+
+
+def _custom_provider_command_configure_response(root: Path, message: str) -> dict[str, Any]:
+    cfg = load_config(root)
+    target = economy_target(cfg)
+    provider_id = _custom_provider_id_from_message(message, cfg, target)
+    command = _custom_provider_command_from_message(message)
+    if provider_id == service.ECONOMY_PROVIDER:
+        return _reasonix_command_configure_response(root, message)
+
+    if not provider_id:
+        action = _custom_provider_setup_action()
+        return _stateless_response(
+            action="custom_provider_command_configure",
+            reply=(
+                "No custom economy provider is active yet. Register one first, or use the command action template "
+                "to create `cheap_writer` for high-volume write/fix work."
+            ),
+            next_actions=["copy custom provider command", "readiness", "show economy profile"],
+            ok=False,
+            error="custom economy provider not configured",
+            extra={"actions": [action], "target": target},
+        )
+
+    providers = cfg.get("providers", {}) if isinstance(cfg.get("providers"), dict) else {}
+    if provider_id not in providers:
+        if provider_id == "cheap_writer" and command:
+            return _custom_provider_setup_response(root, f"configure DeepSeek provider to {command}")
+        action = _custom_provider_setup_action()
+        return _stateless_response(
+            action="custom_provider_command_configure",
+            reply=(
+                f"`providers.{provider_id}` is not configured yet. Register the provider before setting "
+                f"`providers.{provider_id}.command`, or use the `cheap_writer` setup template."
+            ),
+            next_actions=["copy custom provider command", "readiness", "show economy profile"],
+            ok=False,
+            error=f"providers.{provider_id} is not configured",
+            extra={
+                "actions": [action],
+                "custom_provider": {"provider_id": provider_id, "source": f"providers.{provider_id}.command"},
+                "target": target,
+            },
+        )
+
+    source = f"providers.{provider_id}.command"
+    target_label = str(target.get("label") or _route_label(target)) if str(target.get("provider") or "") == provider_id else provider_id
+    if not command:
+        action = _provider_command_copy_action(source, target_label)
+        return _stateless_response(
+            action="custom_provider_command_configure",
+            reply=f"Provide the executable or wrapper command to set `{source}` for the {target_label} economy route.",
+            next_actions=["copy provider command", "readiness", "show economy profile"],
+            ok=False,
+            error="provider command value missing",
+            extra={
+                "actions": [action],
+                "custom_provider": {"provider_id": provider_id, "source": source},
+                "target": target,
+            },
+        )
+
+    result = run_config_wizard(root, set_key=source, set_value=command)
+    profile = run_config_wizard(root, show_profile=True)
+    routing = _profile_routing_digest(profile)
+    reply = (
+        f"Custom economy provider `{provider_id}` command configured as `{command}`. "
+        f"Patchbay will use it for the {target_label} write/fix economy route when that profile is active. "
+        f"{routing['summary']}"
+    )
+    if routing.get("economy_command_ready") is False:
+        reply += " " + _economy_command_not_ready_sentence(routing)
+    return _stateless_response(
+        action="custom_provider_command_configure",
+        reply=reply,
+        next_actions=list(profile.get("next_actions") or ["readiness", "start"]),
+        extra={
+            "config_update": result,
+            "profile": profile,
+            "routing": routing,
+            "actions": list(profile.get("actions") or []),
+            "custom_provider": {"provider_id": provider_id, "command": command, "source": source},
+        },
+    )
+
+
+def _custom_provider_id_from_message(message: str, cfg: dict[str, Any], target: dict[str, Any]) -> str:
+    text = (message or "").strip().lower()
+    match = re.search(r"providers\.([a-z0-9_-]+)\.command", text)
+    if match:
+        return match.group(1)
+    providers = cfg.get("providers", {}) if isinstance(cfg.get("providers"), dict) else {}
+    for provider_id in sorted((str(key) for key in providers.keys()), key=len, reverse=True):
+        candidate = provider_id.lower()
+        if re.search(rf"\b{re.escape(candidate)}\b", text) or candidate.replace("_", " ") in text:
+            return provider_id
+    target_provider = str(target.get("provider") or "").strip()
+    if target_provider and target_provider != service.ECONOMY_PROVIDER:
+        return target_provider
+    words = _words(text)
+    if "cheap_writer" in words or "cheap writer" in text or ("deepseek" in words and "provider" in words):
+        return "cheap_writer"
+    return service.ECONOMY_PROVIDER if target_provider == service.ECONOMY_PROVIDER else ""
+
+
+def _provider_command_copy_action(source: str, target_label: str) -> dict[str, Any]:
+    return {
+        "id": "configure_economy_provider_command",
+        "label": "Copy provider command",
+        "kind": "command",
+        "command": f"patchbay config --set-key {source} --set-value <command>",
+        "safe": True,
+        "reason": f"Copy the command for the {target_label} economy provider into .ai/patchbay.toml.",
+    }
 
 
 def _reasonix_command_configure_response(root: Path, message: str = "") -> dict[str, Any]:

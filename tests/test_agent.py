@@ -364,6 +364,55 @@ test = []
             "patchbay config --set-key providers.cheap_writer.command --set-value <command>",
         )
 
+    def test_agent_provider_command_question_is_read_only_profile(self) -> None:
+        from scripts.ai_flow.config import load_config
+
+        agent_message(self.repo, "configure DeepSeek provider to definitely-missing-cheap-writer")
+        response = agent_message(self.repo, "why is providers.cheap_writer.command missing")
+
+        self.assertEqual(response["action"], "profile_show")
+        self.assertIsNone(response["run_id"])
+        self.assertIn("providers.cheap_writer.command", response["reply"])
+        self.assertEqual(load_config(self.repo)["providers"]["cheap_writer"]["command"], "definitely-missing-cheap-writer")
+        self.assertFalse((self.repo / ".ai" / "runs").exists())
+
+    def test_agent_can_repair_custom_provider_command_without_starting_run(self) -> None:
+        from scripts.ai_flow.config import load_config, resolve_phase
+
+        agent_message(self.repo, "configure DeepSeek provider to definitely-missing-cheap-writer")
+        raw_command = sys.executable
+        expected_command = f'"{raw_command}"' if " " in raw_command else raw_command
+        response = agent_message(self.repo, f'configure cheap_writer command to "{raw_command}"')
+
+        self.assertEqual(response["action"], "custom_provider_command_configure")
+        self.assertIsNone(response["run_id"])
+        self.assertEqual(response["config_update"]["set"]["providers.cheap_writer.command"], expected_command)
+        self.assertEqual(response["custom_provider"]["source"], "providers.cheap_writer.command")
+        self.assertTrue(response["routing"]["economy_command_ready"])
+        actions = {item["id"]: item for item in response["actions"]}
+        self.assertNotIn("configure_economy_provider_command", actions)
+
+        cfg = load_config(self.repo)
+        self.assertEqual(cfg["providers"]["cheap_writer"]["command"], expected_command)
+        self.assertEqual(resolve_phase(cfg, "write")["provider"], "cheap_writer")
+        self.assertFalse((self.repo / ".ai" / "runs").exists())
+
+    def test_agent_accepts_provider_command_copy_action_as_conversation(self) -> None:
+        from scripts.ai_flow.config import load_config
+
+        agent_message(self.repo, "configure DeepSeek provider to definitely-missing-cheap-writer")
+        raw_command = sys.executable
+        expected_command = f'"{raw_command}"' if " " in raw_command else raw_command
+        response = agent_message(
+            self.repo,
+            f'patchbay config --set-key providers.cheap_writer.command --set-value "{raw_command}"',
+        )
+
+        self.assertEqual(response["action"], "custom_provider_command_configure")
+        self.assertEqual(response["config_update"]["set"]["providers.cheap_writer.command"], expected_command)
+        self.assertEqual(load_config(self.repo)["providers"]["cheap_writer"]["command"], expected_command)
+        self.assertFalse((self.repo / ".ai" / "runs").exists())
+
     def test_agent_can_configure_reasonix_command_without_starting_run(self) -> None:
         from scripts.ai_flow.config import load_config
 
@@ -470,6 +519,7 @@ test = []
         self.assertIn("Gemini CLI", setup_capability["summary"])
         custom_capability = next(item for item in response["capabilities"] if item["name"] == "custom-economy-provider")
         self.assertIn("configure DeepSeek provider to <command>", custom_capability["summary"])
+        self.assertIn("configure economy provider command to <path>", custom_capability["summary"])
         self.assertIn("configure_economy_provider_command", custom_capability["summary"])
         actions = {item["id"]: item for item in response["actions"]}
         self.assertEqual(actions["run_setup"]["kind"], "local_agent")
@@ -1700,6 +1750,20 @@ model = "cheap-model"
         cfg = load_config(self.repo)
         self.assertEqual(cfg["providers"]["cheap_writer"]["command"], expected_command)
         self.assertEqual(resolve_phase(cfg, "write")["provider"], "cheap_writer")
+
+    def test_cli_agent_repairs_custom_provider_command(self) -> None:
+        from scripts.ai_flow.config import load_config
+
+        self.cli_json("agent", "message", "configure DeepSeek provider to definitely-missing-cheap-writer")
+        raw_command = sys.executable
+        expected_command = f'"{raw_command}"' if " " in raw_command else raw_command
+        response = self.cli_json("agent", "message", f'configure economy provider command to "{raw_command}"')
+
+        self.assertEqual(response["action"], "custom_provider_command_configure")
+        self.assertEqual(response["config_update"]["set"]["providers.cheap_writer.command"], expected_command)
+        self.assertTrue(response["routing"]["economy_command_ready"])
+        self.assertEqual(load_config(self.repo)["providers"]["cheap_writer"]["command"], expected_command)
+        self.assertIsNone(response["run_id"])
 
     def test_cli_agent_patchbay_setup_runs_setup_without_starting_run(self) -> None:
         codex_home = self.tempdir / "cli-codex-home"
