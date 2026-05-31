@@ -464,6 +464,9 @@ def _health_cards(status_data: dict[str, Any]) -> list[dict[str, Any]]:
                 "coverage_percent": percent if isinstance(percent, (int, float)) else None,
             }
         )
+    efficiency = _efficiency_summary_health_card(status_data, run_metrics)
+    if efficiency:
+        cards.append(efficiency)
     economy_load = _economy_load_health_card(run_metrics)
     if economy_load:
         cards.append(economy_load)
@@ -528,6 +531,38 @@ def _economy_load_health_card(run_metrics: dict[str, Any]) -> dict[str, Any] | N
         "next_action": "",
         "action": None,
     }
+
+
+def _efficiency_summary_health_card(status_data: dict[str, Any], run_metrics: dict[str, Any]) -> dict[str, Any] | None:
+    summary = status_data.get("efficiency_summary")
+    if not isinstance(summary, dict):
+        summary = run_metrics.get("efficiency_summary") if isinstance(run_metrics.get("efficiency_summary"), dict) else {}
+    if not summary.get("summary"):
+        return None
+    coverage = summary.get("coverage") if isinstance(summary.get("coverage"), dict) else {}
+    percent = coverage.get("observed_economy_percent")
+    status = str(summary.get("status") or "unknown")
+    return {
+        "key": "economy_efficiency",
+        "label": "Economy efficiency",
+        "status": status,
+        "tone": _efficiency_tone(status),
+        "detail": str(summary.get("summary") or ""),
+        "recommendation": str(summary.get("recommendation") or ""),
+        "next_action": "",
+        "action": None,
+        "coverage_percent": percent if isinstance(percent, (int, float)) else None,
+    }
+
+
+def _efficiency_tone(status: str) -> str:
+    if status == "verified_economy":
+        return "success"
+    if status in {"pending_evidence", "missing_usage"}:
+        return "ready"
+    if status in {"command_not_ready", "drift", "not_configured"}:
+        return "blocked"
+    return "idle"
 
 
 def _format_metric_number(value: Any) -> str:
