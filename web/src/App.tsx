@@ -2921,7 +2921,7 @@ function DetailPanel({
     const currentPhase = context?.current_phase ?? status?.current_phase ?? "";
     const currentStatus = context?.status ?? status?.status ?? "";
     const metrics = context?.run_metrics ?? status?.run_metrics;
-    const routing = metrics?.routing_evidence ?? status?.routing_evidence;
+    const routing = context?.routing_evidence ?? metrics?.routing_evidence ?? status?.routing_evidence;
     const effectiveProviders = status?.effective_phase_providers ?? {};
     const hasStrategy = phaseStrategyEntries(undefined, routing, effectiveProviders).length > 0;
     const backgroundJob = context?.background_job ?? activity.background_job ?? status?.background_job ?? null;

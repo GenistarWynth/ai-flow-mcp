@@ -81,6 +81,8 @@ class HandoffContextTest(unittest.TestCase):
         self.assertEqual(metrics["event_count"], 2)
         self.assertEqual(metrics["trace_count"], 0)
         self.assertFalse(metrics["cost"]["known"])
+        self.assertEqual(context["routing_evidence"], metrics["routing_evidence"])
+        self.assertEqual(context["efficiency_summary"], metrics["efficiency_summary"])
         activity = context["agent_activity"]
         self.assertIn("Patchbay Agent", activity["headline"])
         self.assertEqual(activity["tone"], "ready")

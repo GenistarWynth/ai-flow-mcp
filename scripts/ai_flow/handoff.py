@@ -114,6 +114,17 @@ def build_handoff_context(
     provider_trail = _provider_trail(run_path)
     next_actions = annotate_next_actions(status_data)
     artifacts = describe_artifacts(run_path, status_data.get("artifacts", []))
+    run_metrics = status_data.get("run_metrics") if isinstance(status_data.get("run_metrics"), dict) else {}
+    routing_evidence = (
+        status_data.get("routing_evidence")
+        if isinstance(status_data.get("routing_evidence"), dict)
+        else run_metrics.get("routing_evidence", {})
+    )
+    efficiency_summary = (
+        status_data.get("efficiency_summary")
+        if isinstance(status_data.get("efficiency_summary"), dict)
+        else run_metrics.get("efficiency_summary", {})
+    )
     return {
         "run_id": status_data.get("run_id", run_path.name),
         "handoff_summary": _handoff_summary(status_data, next_actions),
@@ -122,7 +133,9 @@ def build_handoff_context(
         "gate_state": status_data.get("gate_state", {}),
         "failure_recovery": status_data.get("failure_recovery"),
         "background_job": status_data.get("background_job"),
-        "run_metrics": status_data.get("run_metrics", {}),
+        "run_metrics": run_metrics,
+        "routing_evidence": routing_evidence,
+        "efficiency_summary": efficiency_summary,
         "next_actions": next_actions,
         "provider_trail": provider_trail,
         "artifacts": artifacts,

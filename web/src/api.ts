@@ -541,6 +541,8 @@ export type HandoffContext = {
   failure_recovery?: FailureRecovery | null;
   background_job?: BackgroundJob | null;
   run_metrics?: RunMetrics;
+  routing_evidence?: RoutingEvidence;
+  efficiency_summary?: EfficiencySummary;
   next_actions?: NextAction[];
   provider_trail?: ProviderTrailEntry[];
   artifacts?: HandoffArtifact[];
