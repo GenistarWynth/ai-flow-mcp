@@ -1611,6 +1611,35 @@ def _failure_artifacts_for_stage(stage: str, artifacts: list[str]) -> list[str]:
     return fallback[:6]
 
 
+_PHASE_TIER_BY_PHASE = {
+    "write": "economy",
+    "fix": "economy",
+    "plan": "supervision",
+    "review": "supervision",
+    "test": "execution",
+    "apply": "execution",
+}
+_CANONICAL_TIER_PHASES = {
+    "economy": ["write", "fix"],
+    "supervision": ["plan", "review"],
+    "execution": ["test", "apply"],
+}
+_TIER_LABELS = {
+    "economy": "Economy write/fix",
+    "supervision": "Supervision plan/review",
+    "execution": "Execution gates",
+    "other": "Other phases",
+}
+_PHASE_SORT_ORDER = {
+    "plan": 0,
+    "write": 1,
+    "test": 2,
+    "review": 3,
+    "fix": 4,
+    "apply": 5,
+}
+
+
 def _run_metrics(run_path: Path) -> dict[str, Any]:
     entries = list_events(run_path)
     phase_durations: dict[str, int] = {}
@@ -1693,6 +1722,15 @@ def _run_metrics(run_path: Path) -> dict[str, Any]:
             _accumulate_phase_cost(cost_by_phase, phase, cost)
 
     total_duration_ms = sum(phase_durations.values()) if phase_durations else None
+    tier_usage = _run_tier_usage(
+        phase_durations=phase_durations,
+        total_duration_ms=total_duration_ms,
+        token_by_phase=token_by_phase,
+        total_tokens=token_totals["total_tokens"] if token_known else None,
+        cost_by_phase=cost_by_phase,
+        total_cost=cost_total if cost_known else None,
+        currency=cost_currency,
+    )
     return {
         "duration_known": bool(phase_durations),
         "duration_source": "event_or_timestamp" if phase_durations else "unknown",
@@ -1716,7 +1754,124 @@ def _run_metrics(run_path: Path) -> dict[str, Any]:
             "total_tokens": token_totals["total_tokens"] if token_known else None,
             "by_phase": token_by_phase,
         },
+        "tier_usage": tier_usage,
     }
+
+
+def _run_tier_usage(
+    *,
+    phase_durations: dict[str, int],
+    total_duration_ms: int | None,
+    token_by_phase: dict[str, dict[str, Any]],
+    total_tokens: int | None,
+    cost_by_phase: dict[str, dict[str, Any]],
+    total_cost: float | None,
+    currency: str,
+) -> dict[str, dict[str, Any]]:
+    tiers = {
+        tier: _empty_tier_usage(tier, currency)
+        for tier in ("economy", "supervision", "execution")
+    }
+    phases = sorted(
+        set(phase_durations) | set(token_by_phase) | set(cost_by_phase),
+        key=lambda phase: (_PHASE_SORT_ORDER.get(phase, 999), phase),
+    )
+    for phase in phases:
+        tier = _phase_tier(phase)
+        bucket = tiers.setdefault(tier, _empty_tier_usage(tier, currency))
+        if phase not in bucket["phases"]:
+            bucket["phases"].append(phase)
+
+        duration = phase_durations.get(phase)
+        if duration is not None:
+            bucket["duration_known"] = True
+            bucket["duration_ms"] += int(duration)
+            bucket["phase_durations_ms"][phase] = int(duration)
+
+        token_usage = token_by_phase.get(phase)
+        if isinstance(token_usage, dict) and token_usage.get("known"):
+            _accumulate_tier_tokens(bucket["token_usage"], token_usage)
+
+        cost = cost_by_phase.get(phase)
+        if isinstance(cost, dict) and cost.get("known"):
+            _accumulate_tier_cost(bucket["cost"], cost)
+
+    for bucket in tiers.values():
+        if bucket["duration_known"]:
+            bucket["duration_percent"] = _percent(bucket["duration_ms"], total_duration_ms)
+        else:
+            bucket["duration_ms"] = None
+            bucket["duration_percent"] = None
+
+        token_usage = bucket["token_usage"]
+        if token_usage["known"]:
+            token_usage["token_percent"] = _percent(token_usage["total_tokens"], total_tokens)
+        else:
+            for field in ("input_tokens", "output_tokens", "cached_tokens", "total_tokens"):
+                token_usage[field] = None
+            token_usage["token_percent"] = None
+
+        cost = bucket["cost"]
+        if cost["known"]:
+            cost["estimated_total"] = round(float(cost["estimated_total"]), 6)
+            cost["cost_percent"] = _percent(cost["estimated_total"], total_cost)
+        else:
+            cost["estimated_total"] = None
+            cost["cost_percent"] = None
+
+    return tiers
+
+
+def _empty_tier_usage(tier: str, currency: str) -> dict[str, Any]:
+    return {
+        "tier": tier,
+        "label": _TIER_LABELS.get(tier, tier),
+        "phases": list(_CANONICAL_TIER_PHASES.get(tier, [])),
+        "duration_known": False,
+        "duration_ms": 0,
+        "duration_percent": None,
+        "phase_durations_ms": {},
+        "token_usage": {
+            "known": False,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cached_tokens": 0,
+            "total_tokens": 0,
+            "token_percent": None,
+        },
+        "cost": {
+            "known": False,
+            "currency": currency or "USD",
+            "estimated_total": 0.0,
+            "cost_percent": None,
+        },
+    }
+
+
+def _phase_tier(phase: str) -> str:
+    return _PHASE_TIER_BY_PHASE.get(phase or "", "other")
+
+
+def _percent(value: int | float | None, total: int | float | None) -> float | None:
+    if value is None or total in (None, 0):
+        return None
+    return round((float(value) / float(total)) * 100, 1)
+
+
+def _accumulate_tier_tokens(bucket: dict[str, Any], token_usage: dict[str, Any]) -> None:
+    bucket["known"] = True
+    for field in ("input_tokens", "output_tokens", "cached_tokens", "total_tokens"):
+        value = token_usage.get(field)
+        if value is not None:
+            bucket[field] += int(value)
+
+
+def _accumulate_tier_cost(bucket: dict[str, Any], cost: dict[str, Any]) -> None:
+    bucket["known"] = True
+    estimated = cost.get("estimated_total")
+    if estimated is not None:
+        bucket["estimated_total"] += float(estimated)
+    bucket["currency"] = str(cost.get("currency") or bucket.get("currency") or "USD")
 
 
 def _run_routing_evidence(run_metrics: dict[str, Any], effective: dict[str, Any], cfg: dict[str, Any] | None = None) -> dict[str, Any]:

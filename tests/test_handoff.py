@@ -339,6 +339,59 @@ class HandoffContextTest(unittest.TestCase):
         payload = json.loads(response["result"]["content"][0]["text"])
         self.assertEqual(payload["run_metrics"]["event_count"], cli_metrics["run_metrics"]["event_count"])
 
+    def test_metrics_groups_usage_by_phase_tier(self) -> None:
+        planned = self.cli_json("plan", "--task", "tier usage digest", "--mock")
+        run_id = planned["run_id"]
+        run_dir = self.repo / ".ai" / "runs" / run_id
+        append_event(
+            run_dir,
+            phase="write",
+            provider="reasonix_cli",
+            model="deepseek-v4-pro",
+            action="success",
+            status="IMPLEMENTED",
+            run_id=run_id,
+            duration_ms=2000,
+            token_usage={"input_tokens": 450, "output_tokens": 150, "cached_tokens": 0, "total_tokens": 600},
+            cost={"currency": "USD", "estimated_total": 0.03},
+        )
+        append_event(
+            run_dir,
+            phase="fix",
+            provider="reasonix_cli",
+            model="deepseek-v4-pro",
+            action="success",
+            status="IMPLEMENTED",
+            run_id=run_id,
+            duration_ms=1000,
+            token_usage={"input_tokens": 300, "output_tokens": 100, "cached_tokens": 0, "total_tokens": 400},
+            cost={"currency": "USD", "estimated_total": 0.02},
+        )
+        append_event(
+            run_dir,
+            phase="review",
+            provider="codex_cli",
+            model="gpt-5",
+            action="success",
+            status="REVIEWED_PASS",
+            run_id=run_id,
+            duration_ms=1200,
+            token_usage={"input_tokens": 800, "output_tokens": 200, "cached_tokens": 0, "total_tokens": 1000},
+            cost={"currency": "USD", "estimated_total": 0.20},
+        )
+
+        cli_metrics = self.cli_json("metrics", run_id)
+
+        tiers = cli_metrics["run_metrics"]["tier_usage"]
+        self.assertEqual(tiers["economy"]["phases"], ["write", "fix"])
+        self.assertEqual(tiers["economy"]["duration_ms"], 3000)
+        self.assertEqual(tiers["economy"]["token_usage"]["total_tokens"], 1000)
+        self.assertEqual(tiers["economy"]["token_usage"]["token_percent"], 50.0)
+        self.assertEqual(tiers["economy"]["cost"]["estimated_total"], 0.05)
+        self.assertEqual(tiers["economy"]["cost"]["cost_percent"], 20.0)
+        self.assertEqual(tiers["supervision"]["token_usage"]["total_tokens"], 1000)
+        self.assertEqual(tiers["supervision"]["cost"]["estimated_total"], 0.2)
+
     def test_metrics_exposes_not_configured_economy_health(self) -> None:
         (self.repo / ".ai" / "patchbay.toml").write_text(
             "[workflow]\nallow_apply_without_tests = true\n\n"

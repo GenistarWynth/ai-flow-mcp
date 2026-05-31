@@ -1501,6 +1501,7 @@ def _metrics_response(root: Path, run_id: str) -> dict[str, Any]:
     providers = [item for item in (run_metrics.get("provider_usage") or []) if item.get("provider") or item.get("model")]
     cost = run_metrics.get("cost") or {}
     token_usage = run_metrics.get("token_usage") or {}
+    tier_usage = run_metrics.get("tier_usage") or {}
     routing = result.get("routing_evidence") or run_metrics.get("routing_evidence") or {}
     signals = [
         f"{attempts} phase attempt{'s' if attempts != 1 else ''}",
@@ -1508,6 +1509,12 @@ def _metrics_response(root: Path, run_id: str) -> dict[str, Any]:
         "cost known" if cost.get("known") else "cost not reported",
         "tokens known" if token_usage.get("known") else "tokens not reported",
     ]
+    economy_tier = tier_usage.get("economy") if isinstance(tier_usage, dict) else {}
+    economy_tokens = economy_tier.get("token_usage") if isinstance(economy_tier, dict) else {}
+    if isinstance(economy_tokens, dict) and economy_tokens.get("known"):
+        token_percent = economy_tokens.get("token_percent")
+        percent_label = f"{token_percent}% tokens" if token_percent is not None else f"{economy_tokens.get('total_tokens')} tokens"
+        signals.append(f"economy tier {percent_label}")
     if isinstance(routing, dict) and routing.get("summary"):
         health = routing.get("economy_health") if isinstance(routing.get("economy_health"), dict) else {}
         if health.get("status"):

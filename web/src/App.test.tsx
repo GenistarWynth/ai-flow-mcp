@@ -403,6 +403,44 @@ describe("Workbench", () => {
           by_phase: { review: { known: true, input_tokens: 3000, output_tokens: 1000, cached_tokens: 0, total_tokens: 4000 } }
         },
         cost: { known: true, currency: "USD", estimated_total: 0.42, by_phase: { review: { known: true, currency: "USD", estimated_total: 0.12 } } },
+        tier_usage: {
+          economy: {
+            tier: "economy",
+            label: "Economy write/fix",
+            phases: ["write", "fix"],
+            duration_known: true,
+            duration_ms: 5100,
+            duration_percent: 41.3,
+            phase_durations_ms: { write: 4000, fix: 1100 },
+            token_usage: {
+              known: true,
+              input_tokens: 6200,
+              output_tokens: 2100,
+              cached_tokens: 0,
+              total_tokens: 8300,
+              token_percent: 67.5
+            },
+            cost: { known: true, currency: "USD", estimated_total: 0.3, cost_percent: 71.4 }
+          },
+          supervision: {
+            tier: "supervision",
+            label: "Supervision plan/review",
+            phases: ["plan", "review"],
+            duration_known: true,
+            duration_ms: 3400,
+            duration_percent: 27.6,
+            phase_durations_ms: { review: 2200, plan: 1200 },
+            token_usage: {
+              known: true,
+              input_tokens: 3000,
+              output_tokens: 1000,
+              cached_tokens: 0,
+              total_tokens: 4000,
+              token_percent: 32.5
+            },
+            cost: { known: true, currency: "USD", estimated_total: 0.12, cost_percent: 28.6 }
+          }
+        },
         routing_evidence: {
           economy_configured: true,
           summary: "Economy route configured; observed write, fix not observed yet.",
@@ -475,6 +513,8 @@ describe("Workbench", () => {
     expect(screen.getByText("审查 4.0k")).toBeVisible();
     expect(screen.getByText("审查 USD 0.12")).toBeVisible();
     expect(screen.getByText("审查 / codex_cli 4.0k tok | USD 0.12")).toBeVisible();
+    expect(screen.getByText("经济层 8.3k tok / 67.5% | USD 0.3 / 71.4% | 5.1s / 41.3%")).toBeVisible();
+    expect(screen.getByText("监督层 4.0k tok / 32.5% | USD 0.12 / 28.6% | 3.4s / 27.6%")).toBeVisible();
     expect(screen.getByText("Economy route configured; observed write, fix not observed yet.")).toBeVisible();
     const healthSection = screen.getByRole("heading", { name: "健康" }).closest("section")!;
     expect(within(healthSection).getByText("Economy route")).toBeVisible();

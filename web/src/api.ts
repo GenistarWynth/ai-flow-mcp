@@ -93,6 +93,30 @@ export type ProviderUsage = {
   };
 };
 
+export type TierUsage = {
+  tier?: string;
+  label?: string;
+  phases?: string[];
+  duration_known?: boolean;
+  duration_ms?: number | null;
+  duration_percent?: number | null;
+  phase_durations_ms?: Record<string, number>;
+  token_usage?: {
+    known?: boolean;
+    input_tokens?: number | null;
+    output_tokens?: number | null;
+    cached_tokens?: number | null;
+    total_tokens?: number | null;
+    token_percent?: number | null;
+  };
+  cost?: {
+    known?: boolean;
+    currency?: string;
+    estimated_total?: number | null;
+    cost_percent?: number | null;
+  };
+};
+
 export type RoutingEvidencePhase = {
   configured?: PhaseProvider;
   command_status?: CommandStatus | null;
@@ -185,6 +209,7 @@ export type RunMetrics = {
     }>;
   };
   routing_evidence?: RoutingEvidence;
+  tier_usage?: Record<string, TierUsage>;
 };
 
 export type BackgroundJob = {

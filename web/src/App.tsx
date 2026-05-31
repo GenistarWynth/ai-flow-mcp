@@ -43,6 +43,7 @@ import {
   RunStatus,
   RunSummary,
   SuggestedAction,
+  TierUsage,
   TraceEntry
 } from "./api";
 import "./styles.css";
@@ -437,8 +438,38 @@ function costEntries(metrics?: RunMetrics | null) {
   return Object.entries(metrics?.cost?.by_phase ?? {}).filter(([, usage]) => Boolean(usage?.known));
 }
 
+function tierMetricEntries(metrics?: RunMetrics | null) {
+  return Object.entries(metrics?.tier_usage ?? {}).filter(([, usage]) =>
+    Boolean(usage?.duration_known || usage?.token_usage?.known || usage?.cost?.known)
+  );
+}
+
 function providerMetricEntries(metrics?: RunMetrics | null) {
   return (metrics?.provider_usage ?? []).filter((item) => Boolean(item.token_usage?.known || item.cost?.known));
+}
+
+function tierMetricName(tier: string, usage: TierUsage) {
+  if (tier === "economy") return "经济层";
+  if (tier === "supervision") return "监督层";
+  if (tier === "execution") return "执行层";
+  return usage.label || tier;
+}
+
+function tierMetricLabel(tier: string, usage: TierUsage) {
+  const signals: string[] = [];
+  if (usage.token_usage?.known) {
+    const percent = usage.token_usage.token_percent;
+    signals.push(`${compactNumber(usage.token_usage.total_tokens)} tok${percent !== undefined && percent !== null ? ` / ${percent}%` : ""}`);
+  }
+  if (usage.cost?.known) {
+    const percent = usage.cost.cost_percent;
+    signals.push(`${usage.cost.currency ?? "USD"} ${compactNumber(usage.cost.estimated_total ?? 0)}${percent !== undefined && percent !== null ? ` / ${percent}%` : ""}`);
+  }
+  if (usage.duration_known) {
+    const percent = usage.duration_percent;
+    signals.push(`${compactDuration(usage.duration_ms)}${percent !== undefined && percent !== null ? ` / ${percent}%` : ""}`);
+  }
+  return `${tierMetricName(tier, usage)} ${signals.join(" | ")}`;
 }
 
 function providerMetricLabel(item: ProviderUsage) {
@@ -1954,6 +1985,7 @@ function MetricsGrid({
   const retries = retryEntries(metrics);
   const tokenByPhase = tokenEntries(metrics);
   const costByPhase = costEntries(metrics);
+  const tierMetrics = tierMetricEntries(metrics);
   const providerMetrics = providerMetricEntries(metrics);
   const providerCount = metrics?.provider_usage?.filter((item) => item.provider || item.model).length ?? 0;
   const routing = metrics?.routing_evidence;
@@ -2002,6 +2034,13 @@ function MetricsGrid({
         <div className="metric-row">
           <span>经济健康</span>
           <strong>{economyHealth}</strong>
+        </div>
+      ) : null}
+      {tierMetrics.length ? (
+        <div className="phase-metrics" aria-label="Tier 消耗">
+          {tierMetrics.map(([tier, usage]) => (
+            <span key={tier}>{tierMetricLabel(tier, usage)}</span>
+          ))}
         </div>
       ) : null}
       {routingAction ? (

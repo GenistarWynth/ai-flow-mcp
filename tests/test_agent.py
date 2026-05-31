@@ -1254,11 +1254,16 @@ test = []
             status="IMPLEMENTED",
             detail="synthetic economy writer event",
             duration_ms=1200,
+            token_usage={"input_tokens": 500, "output_tokens": 200, "cached_tokens": 0, "total_tokens": 700},
+            cost={"currency": "USD", "estimated_total": 0.01},
         )
 
         response = agent_message(self.repo, "cost", run_id=planned["run_id"])
 
         routing = response["metrics"]["routing_evidence"]
+        tier_usage = response["metrics"]["run_metrics"]["tier_usage"]
+        self.assertEqual(tier_usage["economy"]["token_usage"]["total_tokens"], 700)
+        self.assertIn("economy tier 100.0% tokens", response["reply"])
         self.assertTrue(routing["economy_configured"])
         self.assertTrue(routing["economy_command_ready"])
         self.assertEqual(routing["command_not_ready_phases"], [])
