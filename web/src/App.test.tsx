@@ -3639,6 +3639,11 @@ describe("Workbench", () => {
     expect(screen.getAllByLabelText("Background job status")).toHaveLength(2);
     expect(screen.getAllByText(/后台运行中/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/pid 4321/).length).toBeGreaterThan(0);
+    await userEvent.click(screen.getByRole("button", { name: "Open background activity" }));
+    expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("活动");
+    const statusCalls = vi.mocked(client.getStatus).mock.calls.length;
+    await userEvent.click(screen.getByRole("button", { name: "Refresh background status" }));
+    await waitFor(() => expect(client.getStatus).toHaveBeenCalledTimes(statusCalls + 1));
     expect(screen.getAllByText(/1.5s/).length).toBeGreaterThan(0);
     expect(screen.getByText("后台任务运行中")).toBeInTheDocument();
     expect(screen.getByText("运行中 · 实现")).toBeInTheDocument();

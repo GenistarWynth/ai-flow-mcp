@@ -1892,7 +1892,16 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                 body={conversationState?.next_step ?? activity.current_step?.summary}
                 tone={activity.tone}
               />
-              <BackgroundJobCard job={backgroundJob} />
+              <BackgroundJobCard
+                job={backgroundJob}
+                onOpenActivity={() => {
+                  setDiagnosticsOpen(true);
+                  setActiveTab("Trace");
+                }}
+                onRefresh={() => {
+                  if (selectedRun) void refreshRun(selectedRun);
+                }}
+              />
               {messages.map((message) => (
                 <AgentEventBubble key={message.id} message={message} selected={selectedMessage?.id === message.id} onSelect={() => setSelectedMessage(message)} />
               ))}
@@ -2083,11 +2092,20 @@ function BackgroundJobBadge({ job }: { job?: BackgroundJob | null }) {
   );
 }
 
-function BackgroundJobCard({ job }: { job?: BackgroundJob | null }) {
+function BackgroundJobCard({
+  job,
+  onOpenActivity,
+  onRefresh
+}: {
+  job?: BackgroundJob | null;
+  onOpenActivity?: () => void;
+  onRefresh?: () => void;
+}) {
   if (!job) return null;
   const tone = backgroundJobTone(job);
   const detail = backgroundJobDetail(job);
   const Icon = tone === "failed" ? AlertTriangle : tone === "success" ? Check : RefreshCw;
+  const hasActions = Boolean(onOpenActivity || onRefresh);
   return (
     <div className={`background-job-card tone-${tone}`} aria-label="Background job status">
       <Icon size={16} />
@@ -2095,6 +2113,22 @@ function BackgroundJobCard({ job }: { job?: BackgroundJob | null }) {
         <strong>{backgroundJobTitle(job)}</strong>
         {detail ? <span>{detail}</span> : null}
         {job.error ? <p>{job.error}</p> : null}
+        {hasActions ? (
+          <div className="background-job-actions">
+            {onOpenActivity ? (
+              <button type="button" onClick={onOpenActivity} aria-label="Open background activity">
+                <Search size={13} />
+                Activity
+              </button>
+            ) : null}
+            {onRefresh ? (
+              <button type="button" onClick={onRefresh} aria-label="Refresh background status">
+                <RefreshCw size={13} />
+                Refresh
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );

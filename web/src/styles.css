@@ -506,6 +506,26 @@ textarea { resize: none; }
 }
 .background-job-card span { margin-top: 3px; color: #647083; font-size: 12px; }
 .background-job-card p { margin: 6px 0 0; color: #b42318; font-size: 12px; overflow-wrap: anywhere; }
+.background-job-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.background-job-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid #cdd5df;
+  border-radius: 8px;
+  padding: 5px 8px;
+  background: #ffffff;
+  color: #344054;
+  font-weight: 800;
+  font-size: 12px;
+  cursor: pointer;
+}
+.background-job-actions button:hover { border-color: #8a94a6; }
 
 .next-card {
   justify-self: start;
