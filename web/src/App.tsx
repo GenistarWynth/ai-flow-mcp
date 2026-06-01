@@ -51,7 +51,7 @@ import "./styles.css";
 
 type TabName = "Overview" | "Readiness" | "Trace" | "Log" | "Diff" | "Artifacts" | "Config" | "Providers";
 type ConfirmState = { action: string; title: string; body: string; safe: boolean; confirmLabel?: string } | null;
-type LocalMessage = { id: string; body: string; timestamp: string; role?: "user" | "assistant"; response?: AgentResponse };
+type LocalMessage = { id: string; body: string; timestamp: string; role?: "user" | "assistant"; response?: AgentResponse; hideBubble?: boolean };
 type DoctorProfileStatus = {
   profile?: string;
   recommendation?: string;
@@ -800,6 +800,42 @@ function mergeContext(current: HandoffContext | null, next: HandoffContext): Han
   return { ...current, ...next, agent_activity: agentActivity };
 }
 
+function normalizeMessageText(value?: string | null) {
+  return (value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function localMessageCoveredByActivity(message: LocalMessage, activityMessages: AgentMessage[]) {
+  const localBody = normalizeMessageText(message.body);
+  if (!localBody) return false;
+  return activityMessages.some((activityMessage) => {
+    const body = normalizeMessageText(activityMessage.body);
+    if (!body) return false;
+    return body === localBody || body.includes(localBody) || localBody.includes(body);
+  });
+}
+
+function localMessageHasDetails(message: LocalMessage) {
+  return Boolean(
+    message.response?.gate_diagnosis ||
+      message.response?.setup ||
+      message.response?.routing ||
+      message.response?.metrics?.routing_evidence ||
+      message.response?.efficiency_summary ||
+      message.response?.metrics?.efficiency_summary ||
+      (message.response?.actions?.length ?? 0) > 0 ||
+      (message.response?.next_actions?.length ?? 0) > 0
+  );
+}
+
+function visibleLocalMessages(localMessages: LocalMessage[], activityMessages: AgentMessage[]) {
+  return localMessages
+    .map((message) => {
+      if (!localMessageCoveredByActivity(message, activityMessages)) return message;
+      return localMessageHasDetails(message) ? { ...message, hideBubble: true } : null;
+    })
+    .filter(Boolean) as LocalMessage[];
+}
+
 function fallbackActivity(context: HandoffContext | null, status: RunStatus | null): AgentActivity {
   const fallbackActions: NextAction[] = (status?.next_commands ?? []).map((name) => {
     const safe = name === "apply" ? Boolean(status?.gate_state?.ready_to_apply && status?.review_result === "PASS" && status?.tests_passed) : true;
@@ -1418,7 +1454,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const failureRecovery = loadedStatus === "FAILED" ? activeContext?.failure_recovery ?? activeStatus?.failure_recovery ?? undefined : undefined;
   const selectedTask = conversationState?.task ?? activeStatus?.task ?? selectedSummary?.task ?? "";
   const runKey = selectedRun || "__new__";
-  const localRunMessages = localMessages[runKey] ?? [];
+  const localRunMessages = visibleLocalMessages(localMessages[runKey] ?? [], messages);
   const composerPlaceholder = selectedRun
     ? conversationState?.composer_placeholder ?? "输入“继续”，或写下本地备注"
     : "描述一个新任务，Patchbay Agent 会先生成计划";
@@ -1895,6 +1931,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
           return;
         }
         setNewTaskMode(false);
+        appendLocalMessage(text, created.run_id);
+        appendLocalAgentReply(created, created.run_id);
         await loadRuns(created.run_id);
         return;
       }
@@ -2036,13 +2074,15 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
               </div>
               {localRunMessages.map((message) => (
                 <Fragment key={message.id}>
-                  <ChatBubble
-                    role={message.role ?? "user"}
-                    title={message.role === "assistant" ? "Patchbay Agent" : "本地消息"}
-                    body={message.body}
-                    timestamp={message.timestamp}
-                    tone={message.response?.ok === false ? "failed" : message.role === "assistant" ? "ready" : undefined}
-                  />
+                  {message.hideBubble ? null : (
+                    <ChatBubble
+                      role={message.role ?? "user"}
+                      title={message.role === "assistant" ? "Patchbay Agent" : "本地消息"}
+                      body={message.body}
+                      timestamp={message.timestamp}
+                      tone={message.response?.ok === false ? "failed" : message.role === "assistant" ? "ready" : undefined}
+                    />
+                  )}
                   <LocalAgentResponseDetails
                     response={message.response}
                     onAction={(action) => void runLocalReplyAction(action)}
@@ -2077,13 +2117,15 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
               ))}
               {localRunMessages.map((message) => (
                 <Fragment key={message.id}>
-                  <ChatBubble
-                    role={message.role ?? "user"}
-                    title={message.role === "assistant" ? "Patchbay Agent" : "本地消息"}
-                    body={message.body}
-                    timestamp={message.timestamp}
-                    tone={message.response?.ok === false ? "failed" : message.role === "assistant" ? "ready" : undefined}
-                  />
+                  {message.hideBubble ? null : (
+                    <ChatBubble
+                      role={message.role ?? "user"}
+                      title={message.role === "assistant" ? "Patchbay Agent" : "本地消息"}
+                      body={message.body}
+                      timestamp={message.timestamp}
+                      tone={message.response?.ok === false ? "failed" : message.role === "assistant" ? "ready" : undefined}
+                    />
+                  )}
                   <LocalAgentResponseDetails
                     response={message.response}
                     onAction={(action) => void runLocalReplyAction(action)}

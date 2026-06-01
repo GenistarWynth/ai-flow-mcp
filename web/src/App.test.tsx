@@ -1166,6 +1166,109 @@ describe("Workbench", () => {
     expect(await screen.findByRole("heading", { name: "Build a chat thread" })).toBeInTheDocument();
   });
 
+  it("keeps start-time economy routing preview visible after selecting the new run", async () => {
+    const applyConfigProfile = vi.fn().mockResolvedValue({
+      profile: "economy",
+      status: {
+        profile: "economy",
+        economy: {
+          matches: true,
+          write: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" },
+          fix: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" }
+        }
+      },
+      next_actions: ["readiness", "start"]
+    });
+    const client = createClient({
+      listRuns: vi
+        .fn()
+        .mockResolvedValueOnce({ runs: [] })
+        .mockResolvedValueOnce({ runs: [{ run_id: "run-preview", task: "Build routing preview", status: "PLANNED" }] })
+        .mockResolvedValue({ runs: [{ run_id: "run-preview", task: "Build routing preview", status: "PLANNED" }] }),
+      getStatus: vi.fn().mockResolvedValue({
+        run_id: "run-preview",
+        task: "Build routing preview",
+        status: "PLANNED",
+        current_phase: "plan",
+        gate_state: {},
+        next_commands: ["approve"],
+        artifacts: [],
+        effective_phase_providers: {}
+      }),
+      getContext: vi.fn().mockResolvedValue({
+        ...plannedContext,
+        run_id: "run-preview",
+        agent_activity: {
+          ...plannedContext.agent_activity,
+          messages: [
+            ...(plannedContext.agent_activity?.messages ?? []),
+            {
+              id: "server-user-preview",
+              kind: "user",
+              timestamp: "2026-05-24T10:03:00Z",
+              title: "User message",
+              body: "Build routing preview"
+            },
+            {
+              id: "server-agent-preview",
+              kind: "agent",
+              timestamp: "2026-05-24T10:03:01Z",
+              title: "Patchbay Agent",
+              body: "Plan generated. Economy routing profile is not active."
+            }
+          ],
+          conversation_state: {
+            ...plannedContext.agent_activity!.conversation_state!,
+            task: "Build routing preview"
+          }
+        }
+      }),
+      agentMessage: vi.fn().mockResolvedValue({
+        run_id: "run-preview",
+        action: "start",
+        ok: true,
+        reply: "Plan generated. Economy routing profile is not active.",
+        routing: {
+          profile: "custom",
+          economy_configured: false,
+          phases: {
+            write: { configured: { provider: "mock", model: "mock" }, configured_economy: false },
+            fix: { configured: { provider: "mock", model: "mock" }, configured_economy: false }
+          },
+          summary: "Economy routing profile is not active: write mock / mock, fix mock / mock.",
+          recommendation: "Run `patchbay config profile apply economy`."
+        },
+        actions: [
+          {
+            id: "apply_economy_profile",
+            label: "Apply economy profile",
+            kind: "local_agent",
+            message: "apply economy profile",
+            safe: true,
+            reason: "Route high-volume write/fix work to the configured economy profile."
+          }
+        ]
+      }),
+      applyConfigProfile
+    });
+
+    const rendered = render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.type(screen.getByLabelText("给 Patchbay Agent 输入消息"), "Build routing preview");
+    await userEvent.click(screen.getByRole("button", { name: "创建任务" }));
+
+    expect(await screen.findByRole("heading", { name: "Build routing preview" })).toBeInTheDocument();
+    const routingResult = await screen.findByLabelText("Routing result");
+    expect(within(routingResult).getByText(/Economy routing profile is not active/)).toBeVisible();
+    const nonEventBubbles = Array.from(rendered.container.querySelectorAll(".chat-bubble:not(.event)"));
+    expect(nonEventBubbles.filter((bubble) => bubble.textContent?.includes("Build routing preview"))).toHaveLength(1);
+    expect(nonEventBubbles.filter((bubble) => bubble.textContent?.includes("Plan generated. Economy routing profile is not active."))).toHaveLength(0);
+    await userEvent.click(screen.getByRole("button", { name: "Apply economy profile" }));
+
+    await waitFor(() => expect(applyConfigProfile).toHaveBeenCalledWith("economy"));
+  });
+
   it("shows a local agent reply when a new-task message does not create a run", async () => {
     const client = createClient({
       listRuns: vi.fn().mockResolvedValue({ runs: [] }),
