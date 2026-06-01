@@ -1920,6 +1920,8 @@ def _action_for_requested_view(tab: str) -> str:
         return "context"
     if tab == "Diff":
         return "diff"
+    if tab == "Trace":
+        return "events"
     if tab in {"Artifacts", "Log"}:
         return "artifact"
     return "status"
