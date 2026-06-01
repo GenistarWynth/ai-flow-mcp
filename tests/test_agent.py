@@ -733,6 +733,8 @@ test = []
             skill_only = agent_message(self.repo, "install Codex Skill")
             mcp_only = agent_message(self.repo, "register MCP for Claude Desktop")
             no_mcp = agent_message(self.repo, "patchbay setup without MCP")
+            english_avoid_mcp = agent_message(self.repo, "please don't use MCP")
+            zh_avoid_mcp = agent_message(self.repo, "不要用这个MCP好不好")
             zh_no_mcp = agent_message(self.repo, "patchbay setup 不要注册 MCP")
 
         self.assertEqual(
@@ -742,11 +744,15 @@ test = []
                 {"host": "claude-desktop", "skip_mcp": False, "skip_skill": True},
                 {"host": "codex", "skip_mcp": True, "skip_skill": False},
                 {"host": "codex", "skip_mcp": True, "skip_skill": False},
+                {"host": "codex", "skip_mcp": True, "skip_skill": False},
+                {"host": "codex", "skip_mcp": True, "skip_skill": False},
             ],
         )
         self.assertEqual(skill_only["setup"]["mcp"]["skipped"], True)
         self.assertEqual(mcp_only["setup"]["skill"]["skipped"], True)
         self.assertEqual(no_mcp["setup"]["mcp"]["skipped"], True)
+        self.assertEqual(english_avoid_mcp["setup"]["mcp"]["skipped"], True)
+        self.assertEqual(zh_avoid_mcp["setup"]["mcp"]["skipped"], True)
         self.assertEqual(zh_no_mcp["setup"]["mcp"]["skipped"], True)
         self.assertFalse((self.repo / ".ai" / "runs").exists())
 

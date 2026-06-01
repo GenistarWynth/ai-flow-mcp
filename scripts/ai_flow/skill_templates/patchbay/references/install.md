@@ -38,7 +38,7 @@ python scripts/patchbay agent message "configure reasonix command" --json
 python scripts/patchbay agent message "configure reasonix command to <path>" --json
 ```
 
-Setup scope is prompt-aware: `install Codex Skill` installs the Skill without attempting MCP registration, `register MCP for Claude Desktop` skips Skill installation, and `patchbay setup without MCP` / `--skip-mcp` keeps setup local to project files and Skill installation.
+Setup scope is prompt-aware: `install Codex Skill` installs the Skill without attempting MCP registration, `register MCP for Claude Desktop` skips Skill installation, and `patchbay setup without MCP` / `--skip-mcp` keeps setup local to project files and Skill installation. Phrases such as `please don't use MCP`, `no MCP`, or `不要用这个MCP` are treated as local-only setup too.
 
 Use `configure DeepSeek provider` when you need a copyable template for registering a custom low-cost writer. Use `configure DeepSeek provider to <command>` when the local DeepSeek wrapper is known; it registers `cheap_writer`, activates write/fix economy routing, and keeps plan/review on the stronger configured providers. If readiness or metrics report a custom provider command failure, send `configure economy provider command to <path>` or inspect `providers.<id>.command` and copy the returned `configure_economy_provider_command`; Reasonix-specific fixes only apply to the built-in `reasonix_cli` economy target.
 

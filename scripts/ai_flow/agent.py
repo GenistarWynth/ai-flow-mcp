@@ -1116,6 +1116,8 @@ def _is_setup_intent(text: str) -> bool:
         return True
     if bool(words & {"configure", "install", "register", "setup"}) and "patchbay" in words and bool(words & {"mcp", "skill"}):
         return True
+    if _is_mcp_avoidance_intent(text, words):
+        return True
     if "patchbay" not in words:
         return False
     if _has_any(text, ("帮助我配置", "帮我配置", "配置", "设置", "初始化", "接入")):
@@ -1130,7 +1132,7 @@ def _setup_host_from_message(text: str) -> str:
 def _setup_options_from_message(text: str) -> dict[str, bool]:
     normalized = text.lower()
     words = _words(normalized)
-    explicit_skip_mcp = _has_skip_scope(words, "mcp") or _has_any(
+    explicit_skip_mcp = _is_mcp_avoidance_intent(normalized, words) or _has_skip_scope(words, "mcp") or _has_any(
         normalized,
         (
             "without mcp",
@@ -1138,9 +1140,16 @@ def _setup_options_from_message(text: str) -> dict[str, bool]:
             "omit mcp",
             "mcp false",
             "mcp off",
+            "avoid mcp",
+            "do not use mcp",
             "do not register mcp",
+            "dont use mcp",
             "dont register mcp",
+            "don't use mcp",
             "don't register mcp",
+            "local only",
+            "local-only",
+            "skill only",
             "不注册 mcp",
             "不要注册 mcp",
             "跳过 mcp",
@@ -1184,6 +1193,46 @@ def _setup_options_from_message(text: str) -> dict[str, bool]:
         "skip_mcp": explicit_skip_mcp or skill_only,
         "skip_skill": explicit_skip_skill or mcp_only,
     }
+
+
+def _is_mcp_avoidance_intent(text: str, words: set[str] | None = None) -> bool:
+    token_words = words if words is not None else _words(text)
+    if "mcp" not in token_words and "mcp" not in text:
+        return False
+    if _has_task_intent(text, token_words):
+        return False
+    if bool(token_words & {"avoid", "disable", "except", "local", "localonly", "no", "omit", "skip", "without"}) and (
+        "mcp" in token_words or "mcp" in text
+    ):
+        return True
+    return _has_any(
+        text,
+        (
+            "avoid mcp",
+            "do not use mcp",
+            "don't use mcp",
+            "dont use mcp",
+            "no mcp",
+            "without mcp",
+            "local only",
+            "local-only",
+            "skill only",
+            "不要用 mcp",
+            "不要用这个 mcp",
+            "不要用这个mcp",
+            "别用 mcp",
+            "别用这个 mcp",
+            "别用这个mcp",
+            "不用 mcp",
+            "不用这个 mcp",
+            "不用这个mcp",
+            "不要 mcp",
+            "只用 skill",
+            "只装 skill",
+            "只安装 skill",
+            "本地模式",
+        ),
+    )
 
 
 def _has_skip_scope(words: set[str], scope: str) -> bool:
