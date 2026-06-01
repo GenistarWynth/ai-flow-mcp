@@ -300,20 +300,46 @@ function isConfigureReasonixAction(action: Pick<AgentHealthAction, "id" | "messa
 
 function isNoMcpSetupText(raw = "") {
   const text = raw.toLowerCase();
+  const compact = text.replace(/[’']/g, "").replace(/[\s\-_]+/g, "");
   return includesAny(text, [
     "--skip-mcp",
     "skip mcp",
     "without mcp",
     "no mcp",
     "omit mcp",
+    "avoid mcp",
+    "do not use mcp",
+    "dont use mcp",
+    "don't use mcp",
     "do not register mcp",
     "dont register mcp",
     "don't register mcp",
     "不注册 mcp",
     "不要注册 mcp",
+    "不要用 mcp",
+    "不要用这个 mcp",
+    "别用 mcp",
     "跳过 mcp",
     "不用 mcp",
     "不要 mcp"
+  ]) || includesAny(compact, [
+    "skipmcp",
+    "withoutmcp",
+    "nomcp",
+    "omitmcp",
+    "avoidmcp",
+    "donotusemcp",
+    "dontusemcp",
+    "localonly",
+    "skillonly",
+    "不注册mcp",
+    "不要注册mcp",
+    "不要用mcp",
+    "不要用这个mcp",
+    "别用mcp",
+    "跳过mcp",
+    "不用mcp",
+    "不要mcp"
   ]);
 }
 
@@ -501,8 +527,6 @@ function mapLocalReplyAction(raw: string): LocalReplyAction | null {
   if (isReasonixConfigureText(raw)) {
     return { id: "configure_reasonix_command", label: "Configure Reasonix", message: "configure reasonix command", icon: "settings" };
   }
-  const scopedSetup = mapScopedSetupAction(raw);
-  if (scopedSetup) return scopedSetup;
   if (includesAny(text, ["readiness", "doctor", "diagnose", "就绪", "诊断", "检查", "检查环境", "环境自检"])) {
     const readinessHost = setupHostFromText(text);
     return {
@@ -513,6 +537,8 @@ function mapLocalReplyAction(raw: string): LocalReplyAction | null {
       host: readinessHost?.id
     };
   }
+  const scopedSetup = mapScopedSetupAction(raw);
+  if (scopedSetup) return scopedSetup;
   if (includesAny(text, ["setup", "install", "安装", "初始化", "配置 patchbay", "帮我配置", "帮助我配置"])) {
     const setupHost = setupHostFromText(text);
     if (setupHost) {

@@ -2664,6 +2664,104 @@ describe("Workbench", () => {
     expect(client.apply).not.toHaveBeenCalled();
   });
 
+  it("preserves no-MCP setup action messages from local agent replies", async () => {
+    const agentMessage = vi
+      .fn()
+      .mockResolvedValueOnce({
+        run_id: "run-ready",
+        action: "help",
+        ok: true,
+        reply: "Local setup shortcuts available.",
+        actions: [
+          {
+            id: "run_local_setup",
+            label: "Run local setup",
+            kind: "local_agent",
+            message: "patchbay setup without MCP",
+            host: "codex",
+            safe: true,
+            reason: "Run setup without MCP registration."
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        run_id: null,
+        action: "setup",
+        ok: true,
+        reply: "Patchbay local setup completed without MCP.",
+        setup_host: "codex",
+        setup: {
+          doctor: {
+            ok: true,
+            host: "codex",
+            root: "C:/repo",
+            checks: { repo: { ok: true }, skill: { ok: true }, mcp: { ok: true, skipped: true } },
+            next_actions: []
+          }
+        }
+      });
+    const client = createClient({ agentMessage });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(composer, "help{enter}");
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith("help", {
+        runId: "run-ready",
+        include: { diff: true, review: true },
+        background: true
+      })
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Run local setup" }));
+
+    await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("patchbay setup without MCP"));
+    expect(agentMessage).not.toHaveBeenCalledWith("patchbay setup");
+    expect(await screen.findByText("Patchbay local setup completed without MCP.")).toBeVisible();
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
+  it("routes no-MCP readiness replies to doctor checks instead of setup", async () => {
+    const agentMessage = vi.fn().mockResolvedValueOnce({
+      run_id: "run-ready",
+      action: "help",
+      ok: true,
+      reply: "Readiness shortcuts available.",
+      next_actions: ["readiness without MCP"]
+    });
+    const getDoctor = vi.fn().mockResolvedValue({
+      ok: true,
+      host: "codex",
+      root: "C:/repo",
+      checks: { repo: { ok: true }, config: { ok: true }, mcp: { ok: true, skipped: true } },
+      next_actions: []
+    });
+    const client = createClient({ agentMessage, getDoctor });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(composer, "help{enter}");
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith("help", {
+        runId: "run-ready",
+        include: { diff: true, review: true },
+        background: true
+      })
+    );
+    const localActions = await screen.findByLabelText("Agent 建议动作");
+    await userEvent.click(within(localActions).getByRole("button", { name: "就绪" }));
+
+    await waitFor(() => expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "codex" }));
+    expect(agentMessage).not.toHaveBeenCalledWith("readiness without MCP");
+    expect(agentMessage).not.toHaveBeenCalledWith("patchbay setup");
+  });
+
   it("normalizes host names in prose setup actions", async () => {
     const agentMessage = vi
       .fn()
