@@ -236,6 +236,26 @@ def agent_message(
         )
         return _with_autopilot_error(response, autopilot)
 
+    if intent == "context":
+        return _agent_response(
+            root,
+            run_id,
+            action="context",
+            reply="Current run handoff context.",
+            include=_merge_include(include, {"events_since": 0}),
+            extra=_run_view_response_extra(text, default_tab="Overview"),
+        )
+
+    if intent == "events":
+        return _agent_response(
+            root,
+            run_id,
+            action="events",
+            reply="Current run event timeline.",
+            include=_merge_include(include, {"events_since": 0, "include_trace": True}),
+            extra=_run_view_response_extra(text, default_tab="Trace"),
+        )
+
     if intent == "diff":
         return _agent_response(
             root,
@@ -298,7 +318,7 @@ def _start_background_agent(
     if not run_id:
         return _error_response("Continuing a Patchbay run requires run_id.", action=intent)
 
-    if intent in {"diff", "artifact", "status"}:
+    if intent in {"context", "events", "diff", "artifact", "status"}:
         return agent_message(
             root,
             message,
@@ -771,6 +791,10 @@ def _classify_intent(message: str, *, has_run: bool, confirmation: str) -> str:
         return "continue"
     if _has_any(text, ("diff", "patch", "补丁", "变更", "差异", "改动")):
         return "diff"
+    if text in {"context", "handoff", "poll context", "run context"} or _has_any(text, ("handoff context", "run handoff")):
+        return "context"
+    if text in {"activity", "event", "events", "poll events", "trace"} or _has_any(text, ("event timeline", "run events")):
+        return "events"
     if _is_metrics_intent(text):
         return "metrics"
     if _has_any(text, ("artifact", "plan", "review", "log", "logs", "产物", "计划", "审查", "评审", "日志", "失败", "错误", "报错", "原因", "为什么")):
@@ -1157,16 +1181,23 @@ def _is_run_bound_intent(text: str) -> bool:
         "artifacts",
         "confirm",
         "continue",
+        "context",
         "cost",
         "diff",
         "events",
+        "handoff",
+        "handoff context",
         "metrics",
         "log",
         "logs",
         "next",
         "patch",
+        "poll context",
+        "poll events",
         "review",
         "resume",
+        "run context",
+        "run handoff",
         "tokens",
         "trace",
         "应用",
@@ -1202,7 +1233,7 @@ def _is_run_bound_intent(text: str) -> bool:
         return bool(words & {"changes", "diff", "final", "patch", "reviewed"})
     if "next" in words:
         return bool(words & {"phase", "run", "step"})
-    if words & {"artifact", "diff", "events", "log", "logs", "patch", "trace"}:
+    if words & {"artifact", "context", "diff", "events", "log", "logs", "patch", "trace"}:
         return bool(words & {"current", "get", "last", "latest", "open", "run", "show", "this", "view"})
     if words & {"error", "errors", "fail", "failed", "failure"}:
         return bool(words & {"current", "did", "inspect", "last", "latest", "open", "reason", "run", "show", "this", "view", "what", "why"})
@@ -1885,6 +1916,8 @@ def _include_for_requested_view(root: Path, run_id: str, tab: str) -> dict[str, 
 
 
 def _action_for_requested_view(tab: str) -> str:
+    if tab == "Overview":
+        return "context"
     if tab == "Diff":
         return "diff"
     if tab in {"Artifacts", "Log"}:
@@ -2002,6 +2035,8 @@ def _missing_run_response(root: Path, text: str) -> dict[str, Any]:
 def _missing_run_requested_view(text: str) -> dict[str, Any] | None:
     normalized = text.strip().lower()
     words = _words(normalized)
+    if normalized in {"context", "handoff", "poll context", "run context"} or _has_any(normalized, ("handoff context", "run handoff")):
+        return {"tab": "Overview", "reason": "The prompt asked for the run handoff context."}
     if words & {"diff", "patch"} or _has_any(normalized, ("补丁", "变更", "差异", "改动")):
         return {"tab": "Diff", "reason": "The prompt asked for the run diff or patch."}
     if words & {"events", "trace"} or _has_any(normalized, ("事件", "跟踪", "轨迹", "trace")):

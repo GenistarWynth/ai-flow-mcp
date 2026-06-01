@@ -295,7 +295,10 @@ def _tool_schema(name: str) -> dict[str, Any]:
                 "type": "string",
                 "description": "Natural-language task or instruction for the conversational Patchbay Agent. Explicit setup/help/status/readiness/routing/gate-status prompts are handled locally without starting a model run; help prompts include `help`, `Patchbay 怎么用`, and `使用说明`, and return host-specific setup/readiness `actions[]` for Codex, Claude Code, Claude Desktop, and Gemini CLI; readiness prompts include `readiness`, `readiness for Claude Desktop`, `patchbay doctor`, `检查环境`, `环境自检`, and `检查 Gemini 命令行环境`, and host-targeted readiness replies include `setup_host`/`doctor.host`; status/runs prompts include `status`, `查看最近运行`, and `任务列表`; next-step prompts include `what should I do next`, `next step`, `现在该干什么`, and `下一步是什么`, and return `action: next_step` plus safe handoff actions without advancing gates; gate-status prompts include `why can't I apply`, `what is blocking apply`, `门禁状态`, and `为什么不能应用`, and return `action: gate_status` plus `gate_diagnosis.next_action` without advancing gates; direct `apply` on a selected run also returns `gate_diagnosis.next_action` and safe diagnostic actions when apply is blocked, instead of requesting confirmation; routing questions such as `what model will write/fix use`, `is writer using cheap model`, or `现在写手是不是走便宜模型` return read-only `action: profile_show`, and include `metrics.efficiency_summary` when a run_id is supplied; setup prompts can name a host such as `patchbay setup for Claude Desktop`, `帮我配置 Patchbay 到 Claude 桌面`, `安装到 Claude 桌面`, `install patchbay for Gemini CLI`, `install Codex Skill`, `register MCP for Claude Desktop`, `安装 Codex Skill`, or `注册 MCP 到 Gemini 命令行`; `configure DeepSeek provider` returns a safe command action for `patchbay config provider add-cli ... --activate-economy`, while `configure DeepSeek provider to <command>` registers that CLI writer and activates it for write/fix; `configure economy provider command to <path>` or `patchbay config --set-key providers.<id>.command --set-value <path>` repairs the active custom economy provider command without starting a run; `apply economy profile`, `configure reasonix command`, `configure reasonix command to <path>`, `配置 Reasonix 命令`, and `把 Reasonix 命令设为 <path>` update local routing configuration; metrics/cost/token and view prompts such as `diff`, `logs`, `artifact`, or `查看失败原因` with a run_id inspect that run, and without a run_id inspect the latest run if one exists, returning requested_view plus safe diagnostic_tab actions; gate-changing prompts such as approve/continue/apply without run_id return local guidance instead.",
             },
-            "run_id": {"type": "string", "description": "Existing run id to continue or inspect."},
+            "run_id": {
+                "type": "string",
+                "description": "Existing run id to continue or inspect; read-only messages such as context, handoff context, events, poll context, and poll events return diagnostic views without advancing gates.",
+            },
             "confirmation": {
                 "type": "string",
                 "enum": ["none", "plan_approved", "apply_approved"],
@@ -305,7 +308,7 @@ def _tool_schema(name: str) -> dict[str, Any]:
             "max_fix_rounds": {"type": "integer", "description": "Optional fix-loop cap for this agent turn."},
             "background": {
                 "type": "boolean",
-                "description": "Run long planning or implementation turns in the background and poll status/events.",
+                "description": "Run long planning or implementation turns in the background and poll status/context/events.",
             },
         }
         required = ["message"]

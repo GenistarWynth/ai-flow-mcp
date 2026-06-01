@@ -997,8 +997,12 @@ test = []
         run_id = planned["run_id"]
 
         cases = [
+            ("context", "Overview", "context"),
+            ("poll context", "Overview", "context"),
+            ("handoff context", "Overview", "context"),
             ("diff", "Diff", "diff"),
             ("events", "Trace", "status"),
+            ("poll events", "Trace", "status"),
             ("logs", "Log", "artifact"),
             ("artifact", "Artifacts", "artifact"),
             ("看补丁", "Diff", "diff"),
@@ -1036,8 +1040,11 @@ test = []
         run_id = planned["run_id"]
 
         cases = [
+            ("context", "Overview", "context"),
+            ("poll context", "Overview", "context"),
             ("diff", "Diff", "diff"),
-            ("events", "Trace", "status"),
+            ("events", "Trace", "events"),
+            ("poll events", "Trace", "events"),
             ("查看失败原因", "Log", "artifact"),
             ("查看计划产物", "Artifacts", "artifact"),
         ]
