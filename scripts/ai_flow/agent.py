@@ -1429,7 +1429,7 @@ def _help_response(root: Path) -> dict[str, Any]:
     capabilities = [
         {
             "name": "setup",
-            "summary": "Send `patchbay setup` for Codex or `patchbay setup for Claude Desktop` / `install patchbay for Gemini CLI` to initialize project files, local config, Skill installation, host MCP guidance, and a doctor summary. Send `install Codex Skill` for Skill-only setup or `register MCP for Claude Desktop` for MCP-only registration.",
+            "summary": "Send `patchbay setup` for Codex or `patchbay setup for Claude Desktop` / `install patchbay for Gemini CLI` to initialize project files, local config, Skill installation, host MCP guidance, and a doctor summary. Send `patchbay setup without MCP` or `please don't use MCP` for local-only setup, `install Codex Skill` for Skill-only setup, or `register MCP for Claude Desktop` for MCP-only registration.",
         },
         {
             "name": "start",
@@ -1481,6 +1481,7 @@ def _help_response(root: Path) -> dict[str, Any]:
 def _help_next_actions(target: dict[str, Any]) -> list[str]:
     actions = [
         "setup",
+        "setup without MCP",
         "install Codex Skill",
         "register MCP for Claude Desktop",
         "start",
@@ -1505,6 +1506,15 @@ def _help_actions(target: dict[str, Any]) -> list[dict[str, Any]]:
             "host": "codex",
             "safe": True,
             "reason": "Initialize local config, Skill installation, MCP guidance, and readiness checks.",
+        },
+        {
+            "id": "run_local_setup",
+            "label": "Run local setup",
+            "kind": "local_agent",
+            "message": "patchbay setup without MCP",
+            "host": "codex",
+            "safe": True,
+            "reason": "Initialize local config and Codex Skill installation without attempting MCP host registration.",
         },
         {
             "id": "install_skill_only",

@@ -45,7 +45,7 @@ timeout = 900
 - 实现前必须经过人工确认计划。
 - 应用补丁前会做路径与安全检查；默认情况下“没有测试命令”不算测试通过，除非显式设置 `workflow.allow_apply_without_tests = true`。
 - reviewer 默认只读，并检查审查阶段没有修改 worktree。
-- `doctor`、`setup` 和对话式 `readiness` 响应会返回结构化 `actions[]`，桌面端/MCP host 可以直接渲染安全的一键后续操作，而不需要解析自然语言；`patchbay doctor --host <host>` 会让 MCP 注册、setup、refresh 动作都携带具体 host。
+- `doctor`、`setup` 和对话式 `readiness` 响应会返回结构化 `actions[]`，桌面端/MCP host 可以直接渲染安全的一键后续操作，而不需要解析自然语言；`help` 还会暴露本地-only setup 以及 Codex、Claude Code、Claude Desktop、Gemini CLI 的 host-specific setup/readiness 快捷动作；`patchbay doctor --host <host>` 会让 MCP 注册、setup、refresh 动作都携带具体 host。
 
 ## 快速开始
 
