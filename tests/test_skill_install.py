@@ -51,6 +51,7 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("现在写手是不是走便宜模型", result["files"]["SKILL.md"])
         self.assertIn('action: "gate_status"', result["files"]["SKILL.md"])
         self.assertIn("profile_show", result["files"]["SKILL.md"])
+        self.assertIn("read-only `profile`, `routing`, and safe `actions[]` preview", result["files"]["SKILL.md"])
         self.assertIn("gate_diagnosis", result["files"]["SKILL.md"])
         self.assertIn("readiness for Claude Desktop", result["files"]["SKILL.md"])
         self.assertIn("检查 Gemini 命令行环境", result["files"]["SKILL.md"])

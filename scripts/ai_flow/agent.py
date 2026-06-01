@@ -183,13 +183,22 @@ def agent_message(
             detail="Plan generated; waiting for explicit approval.",
             next_action="approve_plan",
         )
+        routing_preview = _routing_preview(root)
         return _agent_response(
             root,
             run_id,
             action="start",
-            reply="Plan generated. Review PLAN.md, then approve before implementation.",
+            reply=(
+                "Plan generated. Review PLAN.md, then approve before implementation. "
+                + routing_preview["reply_suffix"]
+            ),
             requires_confirmation=_confirmation("plan_approval", "approve_and_run", PLAN_CONFIRMATION),
             include=_merge_include(include, {"plan": True, "events_since": 0}),
+            extra={
+                "profile": routing_preview["profile"],
+                "routing": routing_preview["routing"],
+                "actions": routing_preview["actions"],
+            },
         )
 
     if not run_id:
@@ -346,11 +355,20 @@ def _start_background_agent(
             detail="Background planning job started.",
             next_action="poll_status",
         )
+        routing_preview = _routing_preview(root)
         return _background_pending_response(
             action="start",
             run_id=str(job["run_id"]),
-            reply="Planning started in the background. Poll status, context, or events for progress.",
+            reply=(
+                "Planning started in the background. Poll status, context, or events for progress. "
+                + routing_preview["reply_suffix"]
+            ),
             job=job,
+            extra={
+                "profile": routing_preview["profile"],
+                "routing": routing_preview["routing"],
+                "routing_actions": routing_preview["actions"],
+            },
         )
 
     if not run_id:
@@ -2831,15 +2849,12 @@ def _looks_like_command_path(value: str) -> bool:
 
 
 def _profile_show_response(root: Path, run_id: str | None = None) -> dict[str, Any]:
-    result = run_config_wizard(root, show_profile=True)
+    preview = _routing_preview(root)
+    result = preview["profile"]
     profile = str(result.get("profile") or "custom")
-    routing = _profile_routing_digest(result)
-    reply = str(routing["summary"])
-    if not routing.get("economy_configured"):
-        reply += " " + str(result.get("recommendation") or "Run `patchbay config profile apply economy`.")
-    elif routing.get("economy_command_ready") is False:
-        reply += " " + _economy_command_not_ready_sentence(routing)
-    extra: dict[str, Any] = {"profile": result, "routing": routing, "actions": list(result.get("actions") or [])}
+    routing = preview["routing"]
+    reply = preview["reply_suffix"]
+    extra: dict[str, Any] = {"profile": result, "routing": routing, "actions": list(preview["actions"])}
     if run_id:
         try:
             metrics = service.metrics(root, run_id)
@@ -2867,6 +2882,22 @@ def _profile_show_response(root: Path, run_id: str | None = None) -> dict[str, A
         next_actions=list(result.get("next_actions") or (["readiness", "start"] if profile == "economy" else ["apply economy profile", "readiness"])),
         extra=extra,
     )
+
+
+def _routing_preview(root: Path) -> dict[str, Any]:
+    result = run_config_wizard(root, show_profile=True)
+    routing = _profile_routing_digest(result)
+    reply = str(routing["summary"])
+    if not routing.get("economy_configured"):
+        reply += " " + str(result.get("recommendation") or "Run `patchbay config profile apply economy`.")
+    elif routing.get("economy_command_ready") is False:
+        reply += " " + _economy_command_not_ready_sentence(routing)
+    return {
+        "profile": result,
+        "routing": routing,
+        "actions": list(result.get("actions") or []),
+        "reply_suffix": reply,
+    }
 
 
 def _stateless_response(
@@ -3015,8 +3046,16 @@ def _error_response(message: str, *, action: str) -> dict[str, Any]:
     }
 
 
-def _background_pending_response(*, action: str, run_id: str, reply: str, job: dict[str, Any]) -> dict[str, Any]:
-    return {
+def _background_pending_response(
+    *,
+    action: str,
+    run_id: str,
+    reply: str,
+    job: dict[str, Any],
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    followup_actions = service.background_followup_actions(run_id)
+    response = {
         "schema_version": SCHEMA_VERSION,
         "ok": True,
         "action": action,
@@ -3033,8 +3072,14 @@ def _background_pending_response(*, action: str, run_id: str, reply: str, job: d
         "background": True,
         "job": job,
         "background_job": service.summarize_background_job(job),
-        "actions": service.background_followup_actions(run_id),
+        "actions": followup_actions,
     }
+    if extra:
+        response.update(extra)
+        routing_actions = list(extra.get("routing_actions") or [])
+        if routing_actions:
+            response["actions"] = followup_actions + routing_actions
+    return response
 
 
 def _included_artifacts(root: Path, run_id: str, include: dict[str, Any]) -> dict[str, Any]:

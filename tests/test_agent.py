@@ -113,6 +113,30 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertIn("PLAN.md", response["artifacts"])
         self.assertIn("Mock Implementation Plan", response["artifacts"]["PLAN.md"]["text"])
         self.assertEqual(response["context"]["next_actions"][0]["name"], "approve")
+        self.assertIn("routing", response)
+        self.assertFalse(response["routing"]["economy_configured"])
+        self.assertEqual(response["routing"]["phases"]["write"]["configured"]["provider"], "mock")
+        self.assertIn("Economy routing profile is not active", response["reply"])
+        actions = {item["id"]: item for item in response["actions"]}
+        self.assertEqual(actions["apply_economy_profile"]["message"], "apply economy profile")
+        self.assertTrue(actions["apply_economy_profile"]["safe"])
+        self.assertFalse((self.repo / ".ai" / "runs" / response["run_id"] / "APPROVAL.json").exists())
+
+    def test_agent_start_response_surfaces_economy_command_gap_before_approval(self) -> None:
+        agent_message(self.repo, "apply economy profile")
+
+        response = agent_message(self.repo, "agent plans with economy preview")
+
+        self.assertEqual(response["action"], "start")
+        self.assertEqual(response["status"]["status"], "PLANNED")
+        self.assertTrue(response["routing"]["economy_configured"])
+        self.assertFalse(response["routing"]["economy_command_ready"])
+        self.assertEqual(response["routing"]["command_not_ready_phases"], ["write", "fix"])
+        self.assertIn("cannot execute until `commands.reasonix`", response["reply"])
+        actions = {item["id"]: item for item in response["actions"]}
+        self.assertEqual(actions["configure_reasonix_command"]["message"], "configure reasonix command")
+        self.assertTrue(actions["configure_reasonix_command"]["safe"])
+        self.assertFalse((self.repo / ".ai" / "runs" / response["run_id"] / "APPROVAL.json").exists())
 
     def test_agent_doctor_message_returns_readiness_without_starting_run(self) -> None:
         response = agent_message(self.repo, "doctor")
@@ -2030,6 +2054,9 @@ model = "cheap-model"
         self.assertEqual(response["background_job"]["status"], "running")
         self.assertEqual(response["background_job"]["phase"], "plan")
         self.assertEqual(response["next_actions"], ["status", "events"])
+        self.assertIn("routing", response)
+        self.assertFalse(response["routing"]["economy_configured"])
+        self.assertEqual(response["routing"]["phases"]["write"]["configured"]["provider"], "mock")
         actions = {item["id"]: item for item in response["actions"]}
         self.assertEqual(actions["open_background_run"]["kind"], "open_run")
         self.assertEqual(actions["open_background_run"]["run_id"], run_id)
@@ -2037,6 +2064,7 @@ model = "cheap-model"
         self.assertEqual(actions["poll_status"]["message"], "status")
         self.assertEqual(actions["poll_context"]["message"], "context")
         self.assertEqual(actions["poll_events"]["message"], "events")
+        self.assertEqual(actions["apply_economy_profile"]["message"], "apply economy profile")
         self.assertTrue(all(item["safe"] for item in response["actions"]))
         background_actions = {item["id"]: item for item in response["background_job"]["actions"]}
         self.assertEqual(background_actions["open_background_run"]["run_id"], run_id)
@@ -2044,6 +2072,7 @@ model = "cheap-model"
         self.assertEqual(background_actions["poll_status"]["message"], "status")
         self.assertEqual(background_actions["poll_context"]["message"], "context")
         self.assertEqual(background_actions["poll_events"]["message"], "events")
+        self.assertNotIn("apply_economy_profile", background_actions)
         status_actions = {item["id"]: item for item in service.status(self.repo, run_id)["background_job"]["actions"]}
         self.assertEqual(status_actions["open_background_run"]["run_id"], run_id)
         self.assertEqual(status_actions["open_trace"]["tab"], "Trace")
