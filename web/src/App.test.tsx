@@ -2946,7 +2946,7 @@ describe("Workbench", () => {
     const localActions = await screen.findByLabelText("Agent 建议动作");
     await userEvent.click(within(localActions).getByRole("button", { name: "Open local readiness" }));
 
-    await waitFor(() => expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "codex" }));
+    await waitFor(() => expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "codex", skip_mcp: true }));
     expect(agentMessage).not.toHaveBeenCalledWith("readiness without MCP");
     expect(agentMessage).not.toHaveBeenCalledWith("patchbay setup");
   });

@@ -99,12 +99,14 @@ class _Handler(SimpleHTTPRequestHandler):
                 self._json(run_config_wizard(self.repo_root, show_profile=True))
                 return
             if path == "/api/doctor":
+                skip_mcp = _bool_query(query, "skip_mcp", False)
                 self._json(
                     run_doctor(
                         self.repo_root,
-                        include_mcp=_bool_query(query, "include_mcp", False),
+                        include_mcp=_bool_query(query, "include_mcp", False) and not skip_mcp,
                         skill_path=_str_query(query, "skill_path"),
                         host=_str_query(query, "host") or "codex",
+                        suppress_mcp_actions=skip_mcp,
                     )
                 )
                 return

@@ -237,6 +237,22 @@ class WebServerTest(unittest.TestCase):
         _, providers = self._request("GET", "/api/providers")
         self.assertIn("local_writer", providers["providers"])
 
+    def test_doctor_endpoint_can_suppress_mcp_followup_actions(self) -> None:
+        from scripts.ai_flow import web_server
+
+        with patch.object(web_server, "run_doctor", return_value={"ok": True, "checks": {}}) as doctor:
+            status, result = self._request("GET", "/api/doctor?include_mcp=true&skip_mcp=true&host=Claude%20Desktop")
+
+        self.assertEqual(status, 200)
+        self.assertTrue(result["ok"])
+        doctor.assert_called_once_with(
+            self.tmp,
+            include_mcp=False,
+            skill_path=None,
+            host="Claude Desktop",
+            suppress_mcp_actions=True,
+        )
+
     def test_cli_parser_accepts_web_json_host_and_port(self) -> None:
         from scripts.ai_flow.cli import build_parser
 

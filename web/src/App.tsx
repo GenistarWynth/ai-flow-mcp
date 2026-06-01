@@ -76,6 +76,7 @@ type LocalReplyAction = {
   safe?: boolean;
   requiresConfirmation?: boolean;
   reason?: string;
+  skipMcp?: boolean;
 };
 type SetupHostOption = {
   id: string;
@@ -479,11 +480,13 @@ function mapStructuredLocalReplyAction(action: AgentHealthAction): LocalReplyAct
   }
   if (action.kind === "local_agent" && action.message) {
     const mapped = mapLocalReplyAction(action.message);
+    const skipMcp = isNoMcpSetupText(action.message);
     return {
       ...(mapped ?? { id: action.id, label: action.label, message: action.message, icon: "play" as const }),
       label: action.label || mapped?.label || action.message,
       host: action.host ?? mapped?.host,
-      reason: action.reason ?? mapped?.reason
+      reason: action.reason ?? mapped?.reason,
+      skipMcp
     };
   }
   return null;
@@ -557,12 +560,14 @@ function mapLocalReplyAction(raw: string): LocalReplyAction | null {
   }
   if (includesAny(text, ["readiness", "doctor", "diagnose", "就绪", "诊断", "检查", "检查环境", "环境自检"])) {
     const readinessHost = setupHostFromText(text);
+    const skipMcp = isNoMcpSetupText(raw);
     return {
       id: readinessHost ? `readiness-${readinessHost.id}` : "readiness",
       label: readinessHost ? `${readinessHost.label} readiness` : "就绪",
       message: "readiness",
       icon: "shield",
-      host: readinessHost?.id
+      host: readinessHost?.id,
+      skipMcp
     };
   }
   const scopedSetup = mapScopedSetupAction(raw);
@@ -1697,7 +1702,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }
   };
 
-  const openReadinessAction = async (force = false, host: SetupHostOption = readinessHost) => {
+  const openReadinessAction = async (force = false, host: SetupHostOption = readinessHost, skipMcp = false) => {
     if (host.id !== readinessHost.id) {
       setReadinessHost(host);
       force = true;
@@ -1706,7 +1711,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     setActiveTab("Readiness");
     if (doctor && !force) return;
     try {
-      setDoctor(await client.getDoctor({ include_mcp: false, host: host.id }));
+      setDoctor(await client.getDoctor({ include_mcp: false, host: host.id, ...(skipMcp ? { skip_mcp: true } : {}) }));
     } catch (err) {
       setError(String(err));
     }
@@ -1849,7 +1854,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       return;
     }
     if (action.id === "readiness" || action.id.startsWith("readiness-")) {
-      await openReadinessAction(false, setupHostById(action.host));
+      await openReadinessAction(Boolean(action.skipMcp), setupHostById(action.host), action.skipMcp);
       return;
     }
     if (action.id === "open-latest-run") {
