@@ -1988,6 +1988,82 @@ describe("Workbench", () => {
     expect(client.apply).not.toHaveBeenCalled();
   });
 
+  it("renders selected-run next_action as a confirmable local reply action", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: "run-ready",
+      action: "next_step",
+      ok: true,
+      reply: "Run run-ready is waiting for explicit plan approval.",
+      status: {
+        run_id: "run-ready",
+        task: "Approve a plan",
+        status: "PLANNED",
+        current_phase: "plan",
+        gate_state: { approved: false, tests_passed: false, review_result: null, ready_to_apply: false },
+        next_commands: ["approve"],
+        artifacts: [],
+        effective_phase_providers: {}
+      },
+      context: { ...plannedContext, run_id: "run-ready" },
+      next_action: {
+        id: "approve_and_run",
+        label: "Approve plan",
+        kind: "local_agent",
+        message: "approve",
+        safe: false,
+        reason: "Plan approval is required before write/test/review phases can run.",
+        requires_confirmation: { confirmation: "plan_approved" }
+      },
+      actions: [
+        {
+          id: "open_plan",
+          label: "Open plan",
+          kind: "diagnostic_tab",
+          tab: "Artifacts",
+          safe: true,
+          reason: "Review PLAN.md before approval."
+        }
+      ]
+    });
+    const client = createClient({
+      agentMessage,
+      listRuns: vi.fn().mockResolvedValue({
+        runs: [{ run_id: "run-ready", task: "Approve a plan", status: "PLANNED" }]
+      }),
+      getStatus: vi.fn().mockResolvedValue({
+        run_id: "run-ready",
+        task: "Approve a plan",
+        status: "PLANNED",
+        current_phase: "plan",
+        gate_state: { approved: false, tests_passed: false, review_result: null, ready_to_apply: false },
+        next_commands: ["approve"],
+        artifacts: [],
+        effective_phase_providers: {}
+      }),
+      getContext: vi.fn().mockResolvedValue({ ...plannedContext, run_id: "run-ready" })
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Approve a plan" });
+    const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(composer, "what should I do next?{enter}");
+
+    expect(await screen.findByText(/waiting for explicit plan approval/i)).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Approve plan" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getAllByRole("button")[1]);
+
+    expect(agentMessage).toHaveBeenCalledWith("approve", {
+      runId: "run-ready",
+      confirmation: "plan_approved",
+      include: { diff: false, review: false },
+      background: true
+    });
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
   it("opens the latest run from a gate-status reply without advancing gates", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: null,

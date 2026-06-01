@@ -72,7 +72,9 @@ type LocalReplyAction = {
   host?: string;
   runId?: string;
   tab?: RunReferenceView["tab"];
-  phaseAction?: "approve" | "apply";
+  phaseAction?: "approve" | "apply" | "continue";
+  safe?: boolean;
+  requiresConfirmation?: boolean;
   reason?: string;
 };
 type SetupHostOption = {
@@ -244,6 +246,11 @@ function localReplyActions(response: AgentResponse | null): LocalReplyAction[] {
     seen.add(mapped.id);
     result.push(mapped);
   }
+  const primaryAction = mapPrimaryNextLocalReplyAction(response);
+  if (primaryAction && !seen.has(primaryAction.id)) {
+    seen.add(primaryAction.id);
+    result.push(primaryAction);
+  }
   const gateAction = mapGateNextLocalReplyAction(response);
   if (gateAction && !seen.has(gateAction.id)) {
     seen.add(gateAction.id);
@@ -272,18 +279,35 @@ function localReplyCommandActions(response: AgentResponse | null): AgentHealthAc
   return result;
 }
 
+function mapPrimaryNextLocalReplyAction(response: AgentResponse | null): LocalReplyAction | null {
+  if (!response?.run_id) return null;
+  const action = response.next_action ?? response.run_reference?.next_action ?? null;
+  return mapNextActionLocalReplyAction(action, { idPrefix: "next" });
+}
+
 function mapGateNextLocalReplyAction(response: AgentResponse | null): LocalReplyAction | null {
-  const action = response?.gate_diagnosis?.next_action;
-  if (!response?.run_id || !action?.message || !action.requires_confirmation) return null;
+  if (!response?.run_id) return null;
+  return mapNextActionLocalReplyAction(response.gate_diagnosis?.next_action ?? null, { idPrefix: "gate", requireConfirmation: true });
+}
+
+function mapNextActionLocalReplyAction(
+  action: AgentHealthAction | null | undefined,
+  options: { idPrefix: string; requireConfirmation?: boolean }
+): LocalReplyAction | null {
+  if (!action?.message) return null;
+  if (options.requireConfirmation && !action.requires_confirmation) return null;
   const message = action.message.toLowerCase();
-  const phaseAction = message.includes("apply") ? "apply" : message.includes("approve") ? "approve" : null;
+  const phaseAction = message.includes("apply") ? "apply" : message.includes("approve") ? "approve" : message.includes("continue") ? "continue" : null;
   if (!phaseAction) return null;
+  const requiresConfirmation = Boolean(action.requires_confirmation);
   return {
-    id: `gate-${phaseAction}`,
+    id: `${options.idPrefix}-${phaseAction}`,
     label: action.label || commandLabel(phaseAction),
     message: action.message,
     icon: phaseAction === "approve" ? "shield" : "play",
     phaseAction,
+    safe: requiresConfirmation || action.safe !== false,
+    requiresConfirmation,
     reason: action.reason
   };
 }
@@ -1766,8 +1790,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         id: action.id,
         label: action.label,
         action: action.phaseAction,
-        safe: true,
-        requires_human_confirmation: true,
+        safe: action.safe !== false,
+        requires_human_confirmation: action.requiresConfirmation ?? action.phaseAction !== "continue",
         reason: action.reason
       });
       return;
