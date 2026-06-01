@@ -2959,7 +2959,8 @@ describe("Workbench", () => {
     await userEvent.click(screen.getByRole("button", { expanded: false }));
     await userEvent.click(screen.getAllByRole("tab")[1]);
     const details = screen.getByRole("complementary", { name: "诊断详情" });
-    await userEvent.selectOptions(within(details).getByLabelText("MCP host"), "claude-desktop");
+    expect(within(details).queryByRole("combobox", { name: "MCP host" })).not.toBeInTheDocument();
+    await userEvent.selectOptions(within(details).getByRole("combobox", { name: "Setup host" }), "claude-desktop");
 
     await waitFor(() => expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "claude-desktop", skip_mcp: true }));
   });
@@ -3008,6 +3009,8 @@ describe("Workbench", () => {
     await userEvent.click(within(localActions).getByRole("button", { name: "Open local readiness" }));
 
     await waitFor(() => expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "codex", skip_mcp: true }));
+    expect(screen.queryByRole("combobox", { name: "MCP host" })).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Setup host" })).toHaveValue("codex");
     expect(agentMessage).not.toHaveBeenCalledWith("readiness without MCP");
     expect(agentMessage).not.toHaveBeenCalledWith("patchbay setup");
   });
@@ -3049,7 +3052,8 @@ describe("Workbench", () => {
     await waitFor(() => expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "codex", skip_mcp: true }));
 
     const details = screen.getByRole("complementary", { name: "诊断详情" });
-    await userEvent.selectOptions(within(details).getByLabelText("MCP host"), "claude-desktop");
+    expect(within(details).queryByRole("combobox", { name: "MCP host" })).not.toBeInTheDocument();
+    await userEvent.selectOptions(within(details).getByRole("combobox", { name: "Setup host" }), "claude-desktop");
 
     await waitFor(() => expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "claude-desktop", skip_mcp: true }));
   });

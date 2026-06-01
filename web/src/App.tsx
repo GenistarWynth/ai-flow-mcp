@@ -2216,6 +2216,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
               config={config}
               doctor={doctor}
               readinessHost={readinessHost}
+              localOnlyMode={localOnlyMode}
               onReadinessHostChange={(host) => void openReadinessAction(true, host)}
               onRunSetup={runSetupAction}
               onApplyEconomy={applyEconomyProfileAction}
@@ -3067,6 +3068,7 @@ function DoctorActionButtons({
 function DoctorPanel({
   report,
   readinessHost,
+  localOnlyMode,
   onReadinessHostChange,
   onRunSetup,
   onApplyEconomy,
@@ -3076,6 +3078,7 @@ function DoctorPanel({
 }: {
   report?: DoctorReport | null;
   readinessHost?: SetupHostOption;
+  localOnlyMode?: boolean;
   onReadinessHostChange?: (host: SetupHostOption) => void;
   onRunSetup?: (host?: SetupHostOption, message?: string) => void;
   onApplyEconomy?: () => void;
@@ -3088,12 +3091,13 @@ function DoctorPanel({
   const economy = profile?.economy;
   const doctorActions = report?.actions ?? [];
   const selectedHost = readinessHost ?? setupHostById(report?.host);
+  const hostSelectLabel = localOnlyMode ? "Setup host" : "MCP host";
   return (
     <div className="doctor-panel">
       {onRunSetup ? (
         <div className="doctor-toolbar">
           <label className="doctor-host-select">
-            <span id="doctor-host-select-label">MCP host</span>
+            <span id="doctor-host-select-label">{hostSelectLabel}</span>
             <select
               aria-labelledby="doctor-host-select-label"
               value={selectedHost.id}
@@ -3228,6 +3232,7 @@ function DetailPanel({
   config,
   doctor,
   readinessHost,
+  localOnlyMode,
   onReadinessHostChange,
   onRunSetup,
   onApplyEconomy,
@@ -3249,6 +3254,7 @@ function DetailPanel({
   config: unknown;
   doctor: DoctorReport | null;
   readinessHost?: SetupHostOption;
+  localOnlyMode?: boolean;
   onReadinessHostChange?: (host: SetupHostOption) => void;
   onRunSetup?: (host?: SetupHostOption, message?: string) => void;
   onApplyEconomy?: () => void;
@@ -3327,6 +3333,7 @@ function DetailPanel({
       <DoctorPanel
         report={doctor}
         readinessHost={readinessHost}
+        localOnlyMode={localOnlyMode}
         onReadinessHostChange={onReadinessHostChange}
         onRunSetup={onRunSetup}
         onApplyEconomy={onApplyEconomy}
