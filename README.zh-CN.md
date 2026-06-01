@@ -132,7 +132,7 @@ python scripts/patchbay agent message continue --run-id <run_id> --background --
 
 `context`、`handoff context`、`events`、`poll context` 和 `poll events` 是只读 Agent 消息：带 `run_id` 时直接返回当前运行的 Overview/Trace 诊断动作；不带 `run_id` 且存在最近运行时返回最新运行的 handoff 视图，不会推进阶段或绕过门禁。
 
-setup 会根据提示词自动收窄范围：`install Codex Skill` 只安装 Skill、不尝试 MCP 注册；`register MCP for Claude Desktop` 会跳过 Skill 安装；`patchbay setup without MCP`、`--skip-mcp`、`--no-mcp` 或 `--local-only` 只做项目文件和 Skill 的本地 setup。`please don't use MCP`、`no MCP`、`不要用这个MCP` 这类对话式避让表达也会按本地-only setup 处理，而不是误开一个模型 run。同样的避让语义也适用于 `readiness` / `doctor`，因此 `readiness without MCP`、`patchbay doctor --local-only` 和 `patchbay_doctor(skip_mcp=true)` 会在顶层响应和嵌套 doctor payload 中都隐藏 MCP 探测/注册后续动作。
+setup 会根据提示词自动收窄范围：`install Codex Skill` 只安装 Skill、不尝试 MCP 注册；`register MCP for Claude Desktop` 会跳过 Skill 安装；显式 `patchbay setup without MCP`、`--skip-mcp`、`--no-mcp` 或 `--local-only` 只做项目文件和 Skill 的本地 setup。`please don't use MCP`、`no MCP`、`不要用这个MCP` 这类单独的对话式避让表达会返回 `local_mode`，给出安全的本地 CLI / Skill / readiness 动作，而不是误开一个模型 run。同样的避让语义也适用于 `readiness` / `doctor`，因此 `readiness without MCP`、`patchbay doctor --local-only` 和 `patchbay_doctor(skip_mcp=true)` 会在顶层响应和嵌套 doctor payload 中都隐藏 MCP 探测/注册后续动作。
 
 `what model will write/fix use`、`is writer using cheap model`、`现在写手是不是走便宜模型` 这类路由问题是只读的 `profile_show`，只报告当前写/修复模型与 provider；如果调用时带了 run id，还会附带该运行的 `metrics.efficiency_summary`，区分“已配置便宜模型”和“本次运行实际观察到的 provider/token/cost 证据”。显式 `command_key` 缺失或不一致都会被视为路由漂移，不会被当作已验证的经济路由证据。`apply economy profile` 或“让大量简单写手工作用便宜模型/DeepSeek 去干”这类明确配置意图才会修改本地路由。
 

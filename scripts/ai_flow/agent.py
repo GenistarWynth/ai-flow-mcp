@@ -149,6 +149,8 @@ def agent_message(
         return _gate_status_response(root, run_id=run_id, include=include)
     if intent == "missing_run":
         return _missing_run_response(root, text)
+    if intent == "local_mode":
+        return _local_mode_response(root, text, run_id=run_id)
     if intent == "setup":
         return _setup_response(root, text)
     if intent == "metrics_latest":
@@ -804,6 +806,8 @@ def _classify_intent(message: str, *, has_run: bool, confirmation: str) -> str:
         return "help"
     if _is_setup_intent(text):
         return "setup"
+    if _is_local_mode_intent(text):
+        return "local_mode"
     if _is_next_step_query(text):
         return "next_step"
     if _is_gate_status_query(text):
@@ -1163,13 +1167,17 @@ def _is_setup_intent(text: str) -> bool:
         return True
     if bool(words & {"configure", "install", "register", "setup"}) and "patchbay" in words and bool(words & {"mcp", "skill"}):
         return True
-    if _is_mcp_avoidance_intent(text, words):
-        return True
     if "patchbay" not in words:
         return False
     if _has_any(text, ("帮助我配置", "帮我配置", "配置", "设置", "初始化", "接入")):
         return True
     return bool(words & {"install", "installation", "setup"})
+
+
+def _is_local_mode_intent(text: str) -> bool:
+    if _has_task_intent(text):
+        return False
+    return _is_mcp_avoidance_intent(text, _words(text))
 
 
 def _setup_host_from_message(text: str) -> str:
@@ -1476,7 +1484,7 @@ def _help_response(root: Path) -> dict[str, Any]:
     capabilities = [
         {
             "name": "setup",
-            "summary": "Send `patchbay setup` for Codex or `patchbay setup for Claude Desktop` / `install patchbay for Gemini CLI` to initialize project files, local config, Skill installation, host MCP guidance, and a doctor summary. Send `patchbay setup without MCP` or `please don't use MCP` for local-only setup, `install Codex Skill` for Skill-only setup, or `register MCP for Claude Desktop` for MCP-only registration.",
+            "summary": "Send `patchbay setup` for Codex or `patchbay setup for Claude Desktop` / `install patchbay for Gemini CLI` to initialize project files, local config, Skill installation, host MCP guidance, and a doctor summary. Send `patchbay setup without MCP` for local-only setup, standalone `please don't use MCP` / `no MCP` for local_mode guidance, `install Codex Skill` for Skill-only setup, or `register MCP for Claude Desktop` for MCP-only registration.",
         },
         {
             "name": "start",
@@ -1755,6 +1763,94 @@ def _setup_response(root: Path, message: str) -> dict[str, Any]:
         error=None if result.get("ok") else reply,
         next_actions=next_actions or ["readiness", "start"],
         extra={"setup": result, "setup_host": result.get("setup_host") or host, "actions": actions},
+    )
+
+
+def _local_mode_response(root: Path, message: str, *, run_id: str | None = None) -> dict[str, Any]:
+    runs_dir = root / ".ai" / "runs"
+    recent = list(service.runs(root, limit=1).get("runs") or []) if runs_dir.exists() else []
+    actions: list[dict[str, Any]] = [
+        {
+            "id": "open_local_readiness",
+            "label": "Open local readiness",
+            "kind": "local_agent",
+            "message": "readiness without MCP",
+            "host": "codex",
+            "safe": True,
+            "reason": "Run local-only readiness checks without MCP probing or registration follow-ups.",
+        },
+        {
+            "id": "run_local_setup",
+            "label": "Run local setup",
+            "kind": "local_agent",
+            "message": "patchbay setup without MCP",
+            "host": "codex",
+            "safe": True,
+            "reason": "Initialize local config and the Codex Skill without attempting MCP registration.",
+        },
+        {
+            "id": "install_skill_only",
+            "label": "Install Codex Skill",
+            "kind": "local_agent",
+            "message": "install Codex Skill",
+            "host": "codex",
+            "safe": True,
+            "reason": "Install the Codex Skill so Patchbay can be used without MCP tools.",
+        },
+        {
+            "id": "show_runs",
+            "label": "Show runs",
+            "kind": "local_agent",
+            "message": "status",
+            "safe": True,
+            "reason": "List recent Patchbay runs without advancing any gate.",
+        },
+    ]
+    recent_run: dict[str, Any] | None = None
+    if run_id:
+        try:
+            current_status = service.status(root, run_id)
+            recent_run = {
+                "run_id": run_id,
+                "status": current_status.get("status"),
+                "task": current_status.get("task"),
+            }
+        except Exception:
+            recent_run = {"run_id": run_id}
+    elif recent:
+        recent_run = recent[0]
+    if recent_run:
+        actions.insert(
+            0,
+            {
+                "id": "open_latest_run",
+                "label": "Open latest run",
+                "kind": "open_run",
+                "run_id": recent_run.get("run_id"),
+                "safe": True,
+                "reason": "Open the latest Patchbay run before taking any gated action.",
+            },
+        )
+    extra: dict[str, Any] = {
+        "local_mode": {
+            "skip_mcp": True,
+            "requires_run_for_unattended_approval": True,
+            "apply_requires_confirmation": True,
+        },
+        "recent_run": recent_run,
+        "actions": actions,
+    }
+    if run_id:
+        extra["run_id"] = run_id
+    reply = (
+        "Local-only mode selected. Use the local CLI/Skill path and avoid MCP probes or registration follow-ups. "
+        "Unattended permission phrases can approve a selected plan run, but a run_id must be selected first and final apply still requires apply confirmation."
+    )
+    return _stateless_response(
+        action="local_mode",
+        reply=reply,
+        next_actions=["readiness without MCP", "setup without MCP", "install Codex Skill", "runs"],
+        extra=extra,
     )
 
 

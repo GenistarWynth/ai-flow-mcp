@@ -771,15 +771,15 @@ test = []
                 {"host": "claude-desktop", "skip_mcp": False, "skip_skill": True},
                 {"host": "codex", "skip_mcp": True, "skip_skill": False},
                 {"host": "codex", "skip_mcp": True, "skip_skill": False},
-                {"host": "codex", "skip_mcp": True, "skip_skill": False},
-                {"host": "codex", "skip_mcp": True, "skip_skill": False},
             ],
         )
         self.assertEqual(skill_only["setup"]["mcp"]["skipped"], True)
         self.assertEqual(mcp_only["setup"]["skill"]["skipped"], True)
         self.assertEqual(no_mcp["setup"]["mcp"]["skipped"], True)
-        self.assertEqual(english_avoid_mcp["setup"]["mcp"]["skipped"], True)
-        self.assertEqual(zh_avoid_mcp["setup"]["mcp"]["skipped"], True)
+        self.assertEqual(english_avoid_mcp["action"], "local_mode")
+        self.assertTrue(english_avoid_mcp["local_mode"]["skip_mcp"])
+        self.assertEqual(zh_avoid_mcp["action"], "local_mode")
+        self.assertTrue(zh_avoid_mcp["local_mode"]["skip_mcp"])
         self.assertEqual(zh_no_mcp["setup"]["mcp"]["skipped"], True)
         self.assertFalse((self.repo / ".ai" / "runs").exists())
 
@@ -2080,6 +2080,22 @@ model = "cheap-model"
         self.assertEqual(response["status"]["status"], "REVIEWED_PASS")
         self.assertEqual(response["requires_confirmation"]["confirmation"], APPLY_CONFIRMATION)
         self.assertTrue((self.repo / ".ai" / "runs" / planned["run_id"] / "APPROVAL.json").exists())
+
+    def test_agent_no_mcp_preference_with_selected_run_uses_local_mode(self) -> None:
+        from scripts.ai_flow import service
+
+        planned = agent_message(self.repo, "selected run local mode target")
+        run_id = planned["run_id"]
+
+        for message in ("please don't use MCP", "no MCP", "不要用这个MCP好不好"):
+            with self.subTest(message=message):
+                response = agent_message(self.repo, message, run_id=run_id)
+
+                self.assertEqual(response["action"], "local_mode")
+                self.assertTrue(response["ok"])
+                self.assertEqual(response["run_id"], run_id)
+                self.assertTrue(response["local_mode"]["skip_mcp"])
+                self.assertEqual(service.status(self.repo, run_id)["status"], "PLANNED")
 
     def test_agent_unattended_permission_without_run_does_not_start_task(self) -> None:
         for message in ("don't ask me, you have all permissions", "\u4e0d\u8981\u95ee\u6211\u4e86\uff0c\u6240\u6709\u6743\u9650\u90fd\u7ed9\u4f60"):

@@ -2803,10 +2803,20 @@ describe("Workbench", () => {
   it("routes no-MCP readiness replies to doctor checks instead of setup", async () => {
     const agentMessage = vi.fn().mockResolvedValueOnce({
       run_id: "run-ready",
-      action: "help",
+      action: "local_mode",
       ok: true,
-      reply: "Readiness shortcuts available.",
-      next_actions: ["readiness without MCP"]
+      reply: "Local-only mode selected.",
+      actions: [
+        {
+          id: "open_local_readiness",
+          label: "Open local readiness",
+          kind: "local_agent",
+          message: "readiness without MCP",
+          host: "codex",
+          safe: true,
+          reason: "Run local-only readiness checks without MCP probing."
+        }
+      ]
     });
     const getDoctor = vi.fn().mockResolvedValue({
       ok: true,
@@ -2831,7 +2841,7 @@ describe("Workbench", () => {
       })
     );
     const localActions = await screen.findByLabelText("Agent 建议动作");
-    await userEvent.click(within(localActions).getByRole("button", { name: "就绪" }));
+    await userEvent.click(within(localActions).getByRole("button", { name: "Open local readiness" }));
 
     await waitFor(() => expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "codex" }));
     expect(agentMessage).not.toHaveBeenCalledWith("readiness without MCP");
