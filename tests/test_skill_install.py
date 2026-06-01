@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 import tomllib
 
 
@@ -135,6 +137,14 @@ class SkillInstallTest(unittest.TestCase):
     def test_skill_doctor_reports_source_and_install_state(self) -> None:
         from scripts.ai_flow.skill_install import run_skill_doctor, run_skill_install
 
+        with patch.dict(os.environ, {"CODEX_HOME": str(self.tmp / "codex-home")}):
+            default_before = run_skill_doctor(self.tmp)
+        default_actions = {item["id"]: item for item in default_before["actions"]}
+        self.assertEqual(default_actions["install_skill"]["kind"], "local_agent")
+        self.assertEqual(default_actions["install_skill"]["message"], "install Codex Skill")
+        self.assertEqual(default_actions["install_skill"]["host"], "codex")
+        self.assertEqual(default_actions["install_skill"]["command"], "patchbay skill install codex")
+
         target = self.tmp / "skills-root"
         before = run_skill_doctor(self.tmp, path=target)
         self.assertTrue(before["ok"])
@@ -145,6 +155,7 @@ class SkillInstallTest(unittest.TestCase):
         self.assertTrue(any("skill install codex" in action for action in before["next_actions"]))
         before_actions = {item["id"]: item for item in before["actions"]}
         self.assertEqual(before_actions["install_skill"]["kind"], "command")
+        self.assertNotIn("message", before_actions["install_skill"])
         self.assertIn("patchbay skill install codex", before_actions["install_skill"]["command"])
         self.assertIn(str(target), before_actions["install_skill"]["command"])
         self.assertEqual(before_actions["refresh_skill_doctor"]["kind"], "command")

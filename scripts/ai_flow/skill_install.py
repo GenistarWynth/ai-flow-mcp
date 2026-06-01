@@ -119,14 +119,22 @@ def _skills_root(path: str | Path | None) -> Path:
 
 
 def _skill_install_action(path: str | Path | None) -> dict[str, Any]:
-    return {
+    action = {
         "id": "install_skill",
         "label": "Install Codex Skill",
-        "kind": "command",
+        "kind": "local_agent" if path is None else "command",
         "command": _skill_command("install", path),
         "safe": True,
-        "reason": "Install the bundled Patchbay Skill so Codex can discover the multi-agent workflow trigger.",
+        "reason": (
+            "Install the bundled Patchbay Skill without attempting MCP host registration."
+            if path is None
+            else "Install the bundled Patchbay Skill into the selected Codex skills root."
+        ),
     }
+    if path is None:
+        action["message"] = "install Codex Skill"
+        action["host"] = "codex"
+    return action
 
 
 def _skill_doctor_action(path: str | Path | None) -> dict[str, Any]:
