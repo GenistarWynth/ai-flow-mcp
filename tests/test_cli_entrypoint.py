@@ -178,17 +178,29 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertFalse(doctor.skip_mcp)
         self.assertTrue(doctor.probe_mcp)
 
+        local_doctor = parser.parse_args(["doctor", "--local-only", "--json"])
+        self.assertEqual(local_doctor.command, "doctor")
+        self.assertTrue(local_doctor.skip_mcp)
+        no_mcp_doctor = parser.parse_args(["doctor", "--no-mcp", "--json"])
+        self.assertTrue(no_mcp_doctor.skip_mcp)
+
         setup = parser.parse_args(["setup", "--host", "codex", "--skill-path", "C:/tmp/skills", "--skip-mcp", "--json"])
         self.assertEqual(setup.command, "setup")
         self.assertEqual(setup.host, "codex")
         self.assertEqual(setup.skill_path, "C:/tmp/skills")
         self.assertTrue(setup.skip_mcp)
+        local_setup = parser.parse_args(["setup", "--local-only", "--json"])
+        self.assertTrue(local_setup.skip_mcp)
+        no_mcp_setup = parser.parse_args(["setup", "--no-mcp", "--json"])
+        self.assertTrue(no_mcp_setup.skip_mcp)
 
         install = parser.parse_args(["install", "--host", "codex", "--skill-path", "C:/tmp/skills", "--skip-mcp", "--json"])
         self.assertEqual(install.command, "install")
         self.assertEqual(install.host, "codex")
         self.assertEqual(install.skill_path, "C:/tmp/skills")
         self.assertTrue(install.skip_mcp)
+        local_install = parser.parse_args(["install", "--local-only", "--json"])
+        self.assertTrue(local_install.skip_mcp)
 
         agent = parser.parse_args(["agent", "message", "continue", "--run-id", "run-1", "--confirmation", "plan_approved", "--background", "--json"])
         self.assertEqual(agent.command, "agent")
@@ -250,9 +262,15 @@ class CliEntrypointTest(unittest.TestCase):
         with mock.patch.object(cli, "run_doctor", return_value={"ok": True}) as doctor:
             cli.dispatch(parser.parse_args(["doctor", "--json"]), Path.cwd())
             self.assertFalse(doctor.call_args.kwargs["include_mcp"])
+            self.assertFalse(doctor.call_args.kwargs["suppress_mcp_actions"])
 
             cli.dispatch(parser.parse_args(["doctor", "--probe-mcp", "--json"]), Path.cwd())
             self.assertTrue(doctor.call_args.kwargs["include_mcp"])
+            self.assertFalse(doctor.call_args.kwargs["suppress_mcp_actions"])
+
+            cli.dispatch(parser.parse_args(["doctor", "--local-only", "--probe-mcp", "--json"]), Path.cwd())
+            self.assertFalse(doctor.call_args.kwargs["include_mcp"])
+            self.assertTrue(doctor.call_args.kwargs["suppress_mcp_actions"])
 
 
 if __name__ == "__main__":

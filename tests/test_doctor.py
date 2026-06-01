@@ -35,6 +35,19 @@ class DoctorTest(unittest.TestCase):
         self.assertEqual(actions["probe_mcp"]["command"], "patchbay doctor --host codex --probe-mcp --json")
         self.assertEqual(actions["probe_mcp"]["host"], "codex")
 
+    def test_unified_doctor_can_suppress_mcp_followups_for_local_only_readiness(self) -> None:
+        from scripts.ai_flow.doctor import run_doctor
+
+        result = run_doctor(self.tmp, include_mcp=False, suppress_mcp_actions=True, host="Claude Desktop")
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["checks"]["mcp"]["skipped"])
+        self.assertFalse(any("probe-mcp" in action.lower() or "mcp install" in action.lower() for action in result["next_actions"]))
+        actions = {item["id"]: item for item in result["actions"]}
+        self.assertNotIn("probe_mcp", actions)
+        self.assertNotIn("install_mcp", actions)
+        self.assertEqual(result["host"], "claude-desktop")
+
     def test_doctor_structured_mcp_action_uses_target_host(self) -> None:
         from scripts.ai_flow import doctor
 

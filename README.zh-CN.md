@@ -79,12 +79,14 @@ scripts\patchbay.cmd setup --host codex
 
 ```bash
 patchbay setup --host codex     # 初始化项目、本地配置、Codex Skill、MCP 注册尝试和 doctor 摘要
+patchbay setup --host codex --no-mcp  # 只做本地配置 + Codex Skill，不返回 MCP 注册/探测后续动作
 patchbay install --host codex   # setup 的别名
 patchbay config     # 交互式向导，无需手动编辑
 patchbay config profile apply economy   # 保持 write/fix 走 Reasonix + DeepSeek
 patchbay agent message "apply economy profile" --json  # 通过对话式 Agent 做同样的路由调整
 patchbay agent message "配置 Reasonix 命令" --json  # 配置 commands.reasonix；可用 `把 Reasonix 命令设为 <path>`
 patchbay doctor     # 统一检查 config/Skill 是否就绪；默认不启动 stdio MCP 探测
+patchbay doctor --local-only     # 就绪检查不返回 MCP probe/register 后续动作
 patchbay doctor --probe-mcp     # 需要时再验证 stdio MCP initialize/tools-list
 patchbay config --doctor     # 验证解析后的阶段配置
 patchbay config --set-key models.planner --set-value claude-opus-4-7
@@ -130,7 +132,7 @@ python scripts/patchbay agent message continue --run-id <run_id> --background --
 
 `context`、`handoff context`、`events`、`poll context` 和 `poll events` 是只读 Agent 消息：带 `run_id` 时直接返回当前运行的 Overview/Trace 诊断动作；不带 `run_id` 且存在最近运行时返回最新运行的 handoff 视图，不会推进阶段或绕过门禁。
 
-setup 会根据提示词自动收窄范围：`install Codex Skill` 只安装 Skill、不尝试 MCP 注册；`register MCP for Claude Desktop` 会跳过 Skill 安装；`patchbay setup without MCP` 或 `--skip-mcp` 只做项目文件和 Skill 的本地 setup。`please don't use MCP`、`no MCP`、`不要用这个MCP` 这类对话式避让表达也会按本地-only setup 处理，而不是误开一个模型 run。同样的避让语义也适用于 `readiness` / `doctor`，因此 `readiness without MCP` 会在顶层响应和嵌套 doctor payload 中都隐藏 MCP 探测/注册后续动作。
+setup 会根据提示词自动收窄范围：`install Codex Skill` 只安装 Skill、不尝试 MCP 注册；`register MCP for Claude Desktop` 会跳过 Skill 安装；`patchbay setup without MCP`、`--skip-mcp`、`--no-mcp` 或 `--local-only` 只做项目文件和 Skill 的本地 setup。`please don't use MCP`、`no MCP`、`不要用这个MCP` 这类对话式避让表达也会按本地-only setup 处理，而不是误开一个模型 run。同样的避让语义也适用于 `readiness` / `doctor`，因此 `readiness without MCP`、`patchbay doctor --local-only` 和 `patchbay_doctor(skip_mcp=true)` 会在顶层响应和嵌套 doctor payload 中都隐藏 MCP 探测/注册后续动作。
 
 `what model will write/fix use`、`is writer using cheap model`、`现在写手是不是走便宜模型` 这类路由问题是只读的 `profile_show`，只报告当前写/修复模型与 provider；如果调用时带了 run id，还会附带该运行的 `metrics.efficiency_summary`，区分“已配置便宜模型”和“本次运行实际观察到的 provider/token/cost 证据”。显式 `command_key` 缺失或不一致都会被视为路由漂移，不会被当作已验证的经济路由证据。`apply economy profile` 或“让大量简单写手工作用便宜模型/DeepSeek 去干”这类明确配置意图才会修改本地路由。
 
@@ -190,9 +192,9 @@ patchbay mcp install gemini         # Gemini CLI
 codex mcp add patchbay -- python scripts/patchbay_mcp_server.py
 ```
 
-Claude Desktop、Claude Code、Gemini CLI 或其他 MCP host 使用各自等价的 MCP server 注册方式即可。运行 `patchbay doctor --host <host>` 做轻量就绪检查并生成该 host 的结构化后续动作；只有需要 stdio server 和 tools/list 证据时，才运行 `patchbay doctor --host <host> --probe-mcp --json` 或 `patchbay mcp doctor`。setup、doctor 和 `mcp install` 会接受常见 host 别名，例如 `Claude Desktop`、`Claude 桌面`、`Claude Code`、`Claude 代码`、`Gemini CLI`、`Gemini 命令行`、`Codex Desktop`、`Codex 桌面`。
+Claude Desktop、Claude Code、Gemini CLI 或其他 MCP host 使用各自等价的 MCP server 注册方式即可。运行 `patchbay doctor --host <host>` 做轻量就绪检查并生成该 host 的结构化后续动作；如果当前 host 不应该出现 MCP 动作，用 `patchbay doctor --host <host> --local-only --json`。只有需要 stdio server 和 tools/list 证据时，才运行 `patchbay doctor --host <host> --probe-mcp --json` 或 `patchbay mcp doctor`。setup、doctor 和 `mcp install` 会接受常见 host 别名，例如 `Claude Desktop`、`Claude 桌面`、`Claude Code`、`Claude 代码`、`Gemini CLI`、`Gemini 命令行`、`Codex Desktop`、`Codex 桌面`。
 
-`patchbay doctor` 是只读检查，会汇总项目初始化、阶段配置、CLI shim/已安装命令、内置 Skill 源、Codex Skill 安装状态、MCP 后续动作，以及 economy 路由的 Reasonix 命令可执行状态；默认不启动 stdio MCP server，避免常规就绪检查额外拉起子进程。它会同时返回文字版 `next_actions`/`recommendations` 与结构化 `actions[]`。`patchbay doctor --probe-mcp` 和 `patchbay mcp doctor` 会真正启动 stdio MCP server，发送 `initialize` 和 `tools/list`，并检查 `patchbay_agent`、`patchbay_plan`、`patchbay_context`、`patchbay_metrics`、`patchbay_doctor`、`patchbay_install`、`patchbay_skill_install`、`patchbay_skill_doctor` 等核心工具是否存在。Codex、Claude Code、Gemini 的 install 命令会先尝试自动注册，若 host CLI 不可用则回退为可复制的注册命令；Claude Desktop 会直接写入 JSON 配置。
+`patchbay doctor` 是只读检查，会汇总项目初始化、阶段配置、CLI shim/已安装命令、内置 Skill 源、Codex Skill 安装状态、MCP 后续动作，以及 economy 路由的 Reasonix 命令可执行状态；默认不启动 stdio MCP server，避免常规就绪检查额外拉起子进程。需要完全隐藏 MCP 探测/注册动作时使用 `patchbay doctor --local-only`。它会同时返回文字版 `next_actions`/`recommendations` 与结构化 `actions[]`。`patchbay doctor --probe-mcp` 和 `patchbay mcp doctor` 会真正启动 stdio MCP server，发送 `initialize` 和 `tools/list`，并检查 `patchbay_agent`、`patchbay_plan`、`patchbay_context`、`patchbay_metrics`、`patchbay_doctor`、`patchbay_install`、`patchbay_skill_install`、`patchbay_skill_doctor` 等核心工具是否存在。Codex、Claude Code、Gemini 的 install 命令会先尝试自动注册，若 host CLI 不可用则回退为可复制的注册命令；Claude Desktop 会直接写入 JSON 配置。
 
 MCP 注册后，如果目标 host 会缓存工具列表，请重启或 reload 对应 host。可以运行 `patchbay mcp doctor --json` 验证 stdio server，也可以在 host 中确认 `patchbay_agent` 已可见。`patchbay skill doctor` / `patchbay_skill_doctor` 在 Skill 未安装时也会返回安全的结构化 `install_skill` 与 `refresh_skill_doctor` 动作；使用默认 skills root 时，`install_skill` 是 `local_agent` 动作，消息为 `install Codex Skill`，并保留 `patchbay skill install codex` 命令兜底，因此桌面端和 MCP host 可以直接安装 Skill 而不触发 MCP 注册。若传入自定义 `--path`，该动作保持 command 形态，以保留目标安装路径。
 

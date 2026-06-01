@@ -1645,6 +1645,8 @@ class McpSchemaTests(unittest.TestCase):
         self.assertIn("read-only readiness", tools["patchbay_doctor"].lower())
         self.assertIn("actions[]", tools["patchbay_doctor"])
         self.assertIn("registration actions", tools["patchbay_doctor"].lower())
+        self.assertIn("skip_mcp=true", tools["patchbay_doctor"])
+        self.assertIn("local-only readiness", tools["patchbay_doctor"])
         self.assertIn("patchbay_setup", tools)
         self.assertIn("initialize patchbay", tools["patchbay_setup"].lower())
         self.assertIn("skip_mcp=true", tools["patchbay_setup"])
@@ -1712,6 +1714,8 @@ class McpSchemaTests(unittest.TestCase):
         schema = tools["patchbay_doctor"]["inputSchema"]
         self.assertIn("host", schema["properties"])
         self.assertIn("registration actions", schema["properties"]["host"]["description"])
+        self.assertIn("skip_mcp", schema["properties"])
+        self.assertIn("local-only readiness", schema["properties"]["skip_mcp"]["description"])
         self.assertEqual(schema["required"], [])
 
         agent_schema = tools["patchbay_agent"]["inputSchema"]

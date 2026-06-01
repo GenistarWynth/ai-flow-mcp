@@ -16,7 +16,9 @@ From a local checkout:
 
 ```bash
 python scripts/patchbay setup --host codex
+python scripts/patchbay setup --host codex --no-mcp
 python scripts/patchbay install --host codex
+python scripts/patchbay doctor --local-only --json
 ```
 
 On Windows, `scripts/patchbay.cmd` avoids PowerShell execution-policy issues.
@@ -38,7 +40,7 @@ python scripts/patchbay agent message "configure reasonix command" --json
 python scripts/patchbay agent message "configure reasonix command to <path>" --json
 ```
 
-Setup scope is prompt-aware: `install Codex Skill` installs the Skill without attempting MCP registration, `register MCP for Claude Desktop` skips Skill installation, and `patchbay setup without MCP` / `--skip-mcp` keeps setup local to project files and Skill installation. Phrases such as `please don't use MCP`, `no MCP`, or `不要用这个MCP` are treated as local-only setup too. The same scope applies to `readiness` / `doctor`; `readiness without MCP` hides MCP probe/register follow-up actions from the conversational response.
+Setup scope is prompt-aware: `install Codex Skill` installs the Skill without attempting MCP registration, `register MCP for Claude Desktop` skips Skill installation, and `patchbay setup without MCP` / `--skip-mcp` / `--no-mcp` / `--local-only` keeps setup local to project files and Skill installation. Phrases such as `please don't use MCP`, `no MCP`, or `不要用这个MCP` are treated as local-only setup too. The same scope applies to `readiness` / `doctor`; `readiness without MCP`, `patchbay doctor --local-only`, and `patchbay_doctor(skip_mcp=true)` hide MCP probe/register follow-up actions from the conversational response.
 
 Use `configure DeepSeek provider` when you need a copyable template for registering a custom low-cost writer. Use `configure DeepSeek provider to <command>` when the local DeepSeek wrapper is known; it registers `cheap_writer`, activates write/fix economy routing, and keeps plan/review on the stronger configured providers. If readiness or metrics report a custom provider command failure, send `configure economy provider command to <path>` or inspect `providers.<id>.command` and copy the returned `configure_economy_provider_command`; Reasonix-specific fixes only apply to the built-in `reasonix_cli` economy target.
 
@@ -65,7 +67,7 @@ patchbay doctor --probe-mcp
 patchbay mcp doctor
 ```
 
-`patchbay doctor` is the unified read-only setup check for project initialization, phase config, CLI entry points, bundled Skill source, Codex Skill installation, MCP follow-up actions, and economy-route command readiness. It skips stdio MCP probing by default. When the Skill is missing and no custom skills path is selected, `install_skill` is returned as a safe `local_agent` action with message `install Codex Skill` and a `patchbay skill install codex` command fallback. With a custom Skill path, it remains a command action so the destination is preserved. `patchbay doctor --probe-mcp` and `patchbay mcp doctor` focus on stdio MCP server reachability, send initialize/tools/list, and check required tools such as `patchbay_agent`, `patchbay_plan`, `patchbay_context`, `patchbay_metrics`, `patchbay_doctor`, `patchbay_install`, `patchbay_skill_install`, and `patchbay_skill_doctor`.
+`patchbay doctor` is the unified read-only setup check for project initialization, phase config, CLI entry points, bundled Skill source, Codex Skill installation, MCP follow-up actions, and economy-route command readiness. It skips stdio MCP probing by default; add `--local-only` when you also want to hide MCP probe/register follow-up actions. When the Skill is missing and no custom skills path is selected, `install_skill` is returned as a safe `local_agent` action with message `install Codex Skill` and a `patchbay skill install codex` command fallback. With a custom Skill path, it remains a command action so the selected destination is preserved. `patchbay doctor --probe-mcp` and `patchbay mcp doctor` focus on stdio MCP server reachability, send initialize/tools/list, and check required tools such as `patchbay_agent`, `patchbay_plan`, `patchbay_context`, `patchbay_metrics`, `patchbay_doctor`, `patchbay_install`, `patchbay_skill_install`, and `patchbay_skill_doctor`.
 
 After registration, restart or reload hosts that cache MCP tool lists. Verify that `patchbay_agent` is visible in the host before starting a gated run.
 
@@ -78,4 +80,4 @@ patchbay skill install codex
 patchbay skill doctor codex
 ```
 
-The default destination is `$CODEX_HOME/skills` or `~/.codex/skills`. The Skill triggers on phrases such as "走多模型流程" and "multi-agent workflow". It complements the MCP server; it does not replace MCP registration.
+The default destination is `$CODEX_HOME/skills` or `~/.codex/skills`. The Skill triggers on phrases such as "走多模型流程" and "multi-agent workflow". It can use MCP tools when they are available, or the local CLI path when the user or host asks for no-MCP work.

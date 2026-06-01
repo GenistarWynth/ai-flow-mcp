@@ -16,6 +16,7 @@ def run_doctor(
     *,
     root: str | Path | None = None,
     include_mcp: bool = False,
+    suppress_mcp_actions: bool = False,
     skill_path: str | Path | None = None,
     host: str = "codex",
 ) -> dict[str, Any]:
@@ -28,7 +29,7 @@ def run_doctor(
         "mcp": _mcp_check(repo_root, include_mcp=include_mcp),
         "skill": run_skill_doctor(repo_root, path=skill_path),
     }
-    return _summarize(repo_root, checks, host=host)
+    return _summarize(repo_root, checks, host=host, suppress_mcp_actions=suppress_mcp_actions)
 
 
 def _repo_check(root: Path) -> dict[str, Any]:
@@ -115,10 +116,10 @@ def _mcp_check(root: Path, *, include_mcp: bool) -> dict[str, Any]:
     }
 
 
-def _summarize(root: Path, checks: dict[str, Any], *, host: str) -> dict[str, Any]:
+def _summarize(root: Path, checks: dict[str, Any], *, host: str, suppress_mcp_actions: bool = False) -> dict[str, Any]:
     required_sections = ("repo", "config", "cli", "mcp", "skill")
     normalized_host = _doctor_host(host)
-    next_actions = _next_actions(checks, host=normalized_host)
+    next_actions = _next_actions(checks, host=normalized_host, suppress_mcp_actions=suppress_mcp_actions)
     recommendations = _recommendations(checks)
     ok = all(bool(checks.get(section, {}).get("ok")) for section in required_sections) and not next_actions
     return {
@@ -128,11 +129,17 @@ def _summarize(root: Path, checks: dict[str, Any], *, host: str) -> dict[str, An
         "checks": checks,
         "next_actions": next_actions,
         "recommendations": recommendations,
-        "actions": _structured_actions(checks, next_actions, recommendations, host=normalized_host),
+        "actions": _structured_actions(
+            checks,
+            next_actions,
+            recommendations,
+            host=normalized_host,
+            suppress_mcp_actions=suppress_mcp_actions,
+        ),
     }
 
 
-def _next_actions(checks: dict[str, Any], *, host: str) -> list[str]:
+def _next_actions(checks: dict[str, Any], *, host: str, suppress_mcp_actions: bool = False) -> list[str]:
     actions: list[str] = []
     repo = checks.get("repo", {})
     if not repo.get("git_repo"):
@@ -148,7 +155,7 @@ def _next_actions(checks: dict[str, Any], *, host: str) -> list[str]:
     if not config.get("ok"):
         actions.append("Run `patchbay config --doctor --json` and fix any phase resolution errors.")
     mcp = checks.get("mcp", {})
-    if not mcp.get("ok"):
+    if not suppress_mcp_actions and not mcp.get("ok"):
         if mcp.get("skipped"):
             actions.append(f"Run `patchbay doctor --host {host} --probe-mcp --json` before registering a host if you need stdio tool-list evidence.")
         else:
@@ -192,6 +199,7 @@ def _structured_actions(
     recommendations: list[str],
     *,
     host: str,
+    suppress_mcp_actions: bool = False,
 ) -> list[dict[str, Any]]:
     actions: list[dict[str, Any]] = []
     repo = checks.get("repo", {})
@@ -229,7 +237,7 @@ def _structured_actions(
                 "reason": "Install the bundled Patchbay Skill without attempting MCP host registration.",
             }
         )
-    if mcp.get("skipped"):
+    if not suppress_mcp_actions and mcp.get("skipped"):
         actions.append(
             {
                 "id": "probe_mcp",
@@ -241,7 +249,7 @@ def _structured_actions(
                 "reason": "Run the stdio MCP probe when the host needs full tool registration evidence.",
             }
         )
-    elif not mcp.get("ok"):
+    elif not suppress_mcp_actions and not mcp.get("ok"):
         actions.append(
             {
                 "id": "install_mcp",

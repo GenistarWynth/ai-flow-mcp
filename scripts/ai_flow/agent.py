@@ -2235,11 +2235,12 @@ def _run_view_response_extra(text: str, *, default_tab: str | None = None) -> di
 
 def _doctor_response(root: Path, message: str = "") -> dict[str, Any]:
     host = _setup_host_from_message(message)
-    report = run_doctor(root, include_mcp=False, host=host)
+    avoid_mcp = _is_mcp_avoidance_intent(message.lower())
+    report = run_doctor(root, include_mcp=False, suppress_mcp_actions=avoid_mcp, host=host)
     next_actions = list(report.get("next_actions") or [])
     recommendations = list(report.get("recommendations") or [])
     actions = list(report.get("actions") or [])
-    if _is_mcp_avoidance_intent(message.lower()):
+    if avoid_mcp:
         next_actions = _without_mcp_followup_text(next_actions)
         actions = _without_mcp_followup_actions(actions)
         report = {**report, "next_actions": next_actions, "actions": actions}

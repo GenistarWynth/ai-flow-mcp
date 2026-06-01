@@ -57,10 +57,15 @@ class SetupFlowTest(unittest.TestCase):
         self.assertTrue(result["skill"]["installed"])
         self.assertTrue(result["doctor"]["ok"])
         actions = {item["id"]: item for item in result["actions"]}
+        doctor_actions = {item["id"]: item for item in result["doctor"]["actions"]}
         self.assertNotIn("probe_mcp", actions)
         self.assertNotIn("install_mcp", actions)
         self.assertNotIn("register_mcp", actions)
+        self.assertNotIn("probe_mcp", doctor_actions)
+        self.assertNotIn("install_mcp", doctor_actions)
+        self.assertNotIn("register_mcp", doctor_actions)
         self.assertFalse(any("probe-mcp" in item.lower() or "mcp install" in item.lower() for item in result["next_actions"]))
+        self.assertFalse(any("probe-mcp" in item.lower() or "mcp install" in item.lower() for item in result["doctor"]["next_actions"]))
 
     def test_setup_dry_run_does_not_write_files(self) -> None:
         from scripts.ai_flow.setup_flow import run_setup
@@ -97,7 +102,7 @@ class SetupFlowTest(unittest.TestCase):
                 "setup",
                 "--skill-path",
                 str(self.skills),
-                "--skip-mcp",
+                "--no-mcp",
                 "--json",
             ],
             self.repo,
@@ -108,6 +113,10 @@ class SetupFlowTest(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertTrue((self.repo / ".ai" / "patchbay.toml").exists())
         self.assertTrue((self.skills / "patchbay" / "SKILL.md").exists())
+        action_ids = {item["id"] for item in result["actions"]}
+        doctor_action_ids = {item["id"] for item in result["doctor"]["actions"]}
+        self.assertNotIn("probe_mcp", action_ids)
+        self.assertNotIn("probe_mcp", doctor_action_ids)
 
     def test_cli_install_alias_json(self) -> None:
         completed = run(
@@ -117,7 +126,7 @@ class SetupFlowTest(unittest.TestCase):
                 "install",
                 "--skill-path",
                 str(self.skills),
-                "--skip-mcp",
+                "--local-only",
                 "--json",
             ],
             self.repo,
@@ -128,6 +137,10 @@ class SetupFlowTest(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertTrue((self.repo / ".ai" / "patchbay.toml").exists())
         self.assertTrue((self.skills / "patchbay" / "SKILL.md").exists())
+        action_ids = {item["id"] for item in result["actions"]}
+        doctor_action_ids = {item["id"] for item in result["doctor"]["actions"]}
+        self.assertNotIn("probe_mcp", action_ids)
+        self.assertNotIn("probe_mcp", doctor_action_ids)
 
     def test_cli_config_profile_apply_economy_routes_write_and_fix(self) -> None:
         from scripts.ai_flow.config import load_config, resolve_phase
@@ -259,6 +272,37 @@ model = "mock"
                 self.assertFalse(any("probe-mcp" in item.lower() or "mcp install" in item.lower() for item in payload["next_actions"]))
         finally:
             mcp_server.ROOT = original_root
+
+    def test_mcp_doctor_can_suppress_mcp_followup_actions(self) -> None:
+        from scripts.ai_flow import mcp_server
+
+        original_root = mcp_server.ROOT
+        try:
+            mcp_server.ROOT = self.repo
+            response = mcp_server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "patchbay_doctor",
+                        "arguments": {
+                            "host": "Claude Desktop",
+                            "skip_mcp": True,
+                        },
+                    },
+                }
+            )
+        finally:
+            mcp_server.ROOT = original_root
+
+        payload = json.loads(response["result"]["content"][0]["text"])
+        self.assertEqual(payload["host"], "claude-desktop")
+        self.assertTrue(payload["checks"]["mcp"]["skipped"])
+        action_ids = {item["id"] for item in payload["actions"]}
+        self.assertNotIn("probe_mcp", action_ids)
+        self.assertNotIn("install_mcp", action_ids)
+        self.assertFalse(any("probe-mcp" in item.lower() or "mcp install" in item.lower() for item in payload["next_actions"]))
 
     def test_setup_exposes_register_mcp_action_when_auto_registration_is_not_run(self) -> None:
         from scripts.ai_flow import setup_flow

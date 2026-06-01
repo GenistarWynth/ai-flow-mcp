@@ -119,7 +119,14 @@ def _add_setup_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--skill-path", default="", help="Destination skills root; defaults to $CODEX_HOME/skills or ~/.codex/skills.")
     parser.add_argument("--dry-run", action="store_true", help="Preview setup without writing files.")
     parser.add_argument("--skip-skill", action="store_true", help="Skip Codex Skill installation.")
-    parser.add_argument("--skip-mcp", action="store_true", help="Skip MCP host registration helper.")
+    parser.add_argument(
+        "--skip-mcp",
+        "--no-mcp",
+        "--local-only",
+        dest="skip_mcp",
+        action="store_true",
+        help="Skip MCP host registration helper and suppress MCP follow-up actions.",
+    )
     parser.add_argument("--mcp-dry-run", action="store_true", help="Preview MCP registration without writing host config.")
     parser.add_argument("--probe-mcp", action="store_true", help="Run stdio MCP doctor after setup.")
     parser.add_argument("--no-config", action="store_true", help="Do not create .ai/patchbay.toml from the example.")
@@ -143,7 +150,14 @@ def build_parser() -> argparse.ArgumentParser:
     doctor = sub.add_parser("doctor", help="Run unified CLI/config/Skill readiness checks without stdio MCP probing by default.")
     doctor.add_argument("--root", default="", help="Repository root to inspect.")
     doctor.add_argument("--host", default="codex", help="MCP host for structured registration actions.")
-    doctor.add_argument("--skip-mcp", action="store_true", help="Deprecated compatibility flag; doctor skips stdio MCP probing unless --probe-mcp is set.")
+    doctor.add_argument(
+        "--skip-mcp",
+        "--no-mcp",
+        "--local-only",
+        dest="skip_mcp",
+        action="store_true",
+        help="Do not probe MCP and suppress MCP registration/probe follow-up actions.",
+    )
     doctor.add_argument("--probe-mcp", action="store_true", help="Run stdio MCP server probing and verify registered tools.")
     doctor.add_argument("--skill-path", default="", help="Codex skills root to inspect.")
     _add_json(doctor)
@@ -426,6 +440,7 @@ def dispatch(args: argparse.Namespace, cwd: Path) -> Any:
             c,
             root=getattr(a, "root", "") or None,
             include_mcp=bool(getattr(a, "probe_mcp", False)) and not bool(getattr(a, "skip_mcp", False)),
+            suppress_mcp_actions=bool(getattr(a, "skip_mcp", False)),
             skill_path=getattr(a, "skill_path", "") or None,
             host=getattr(a, "host", "codex"),
         ),

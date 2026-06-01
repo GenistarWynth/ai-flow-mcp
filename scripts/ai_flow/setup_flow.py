@@ -49,7 +49,13 @@ def run_setup(
         if skip_mcp
         else run_mcp_install(repo_root, setup_host, root=repo_root, dry_run=dry_run or mcp_dry_run)
     )
-    doctor = run_doctor(repo_root, include_mcp=probe_mcp, skill_path=skill_path, host=setup_host)
+    doctor = run_doctor(
+        repo_root,
+        include_mcp=probe_mcp and not skip_mcp,
+        suppress_mcp_actions=skip_mcp,
+        skill_path=skill_path,
+        host=setup_host,
+    )
     next_actions = list(doctor.get("next_actions") or [])
     if isinstance(mcp, dict) and mcp.get("command") and not mcp.get("dry_run") and not mcp.get("executed"):
         next_actions.append(f"Register the MCP server with: {mcp['command']}")
