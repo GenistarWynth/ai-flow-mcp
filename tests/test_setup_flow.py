@@ -194,6 +194,8 @@ model = "mock"
         self.assertIn("run_setup", actions)
         self.assertEqual(actions["run_setup"]["message"], "patchbay setup")
         self.assertIn("install_skill", actions)
+        self.assertEqual(actions["install_skill"]["kind"], "local_agent")
+        self.assertEqual(actions["install_skill"]["message"], "install Codex Skill")
         self.assertEqual(actions["install_skill"]["command"], "patchbay skill install codex")
         self.assertIn("probe_mcp", actions)
         self.assertEqual(actions["probe_mcp"]["command"], "patchbay doctor --host codex --probe-mcp --json")

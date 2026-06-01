@@ -182,7 +182,7 @@ patchbay mcp install gemini         # Gemini CLI
 patchbay mcp doctor                 # 实际启动 server 并验证 tools/list
 ```
 
-优先运行 `patchbay doctor --host <host> --json` 获取轻量只读诊断：项目初始化、配置解析、CLI 入口、Skill 源和 Codex Skill 安装状态都会汇总到一个结果里，并同时返回 `next_actions`、`recommendations` 和面向该 host 的结构化 `actions[]`，例如具体的 MCP 注册或探测命令。`<host>` 可使用常见自然名称或 canonical id，例如 `Claude Desktop`、`claude desktop`、`claude-desktop`、`Claude Code`、`Gemini CLI`。需要 stdio MCP tools/list 证据时再运行 `patchbay doctor --host <host> --probe-mcp --json` 或 `patchbay mcp doctor`。MCP 注册后如果 host 会缓存工具列表，请重启或 reload 该 host；随后运行 `patchbay mcp doctor --json`，或在 host 中确认 `patchbay_agent` 已可见。
+优先运行 `patchbay doctor --host <host> --json` 获取轻量只读诊断：项目初始化、配置解析、CLI 入口、Skill 源和 Codex Skill 安装状态都会汇总到一个结果里，并同时返回 `next_actions`、`recommendations` 和面向该 host 的结构化 `actions[]`，例如具体的 MCP 注册或探测命令。Skill 缺失时，`install_skill` 会作为安全 `local_agent` 动作返回，消息为 `install Codex Skill`，并带有 `patchbay skill install codex` 命令兜底，因此桌面端可以直接安装 Skill 而不触发 MCP 注册。`<host>` 可使用常见自然名称或 canonical id，例如 `Claude Desktop`、`claude desktop`、`claude-desktop`、`Claude Code`、`Gemini CLI`。需要 stdio MCP tools/list 证据时再运行 `patchbay doctor --host <host> --probe-mcp --json` 或 `patchbay mcp doctor`。MCP 注册后如果 host 会缓存工具列表，请重启或 reload 该 host；随后运行 `patchbay mcp doctor --json`，或在 host 中确认 `patchbay_agent` 已可见。
 
 Codex、Claude Code、Gemini 会先尝试自动执行注册命令，CLI 不可用时再返回可复制命令；Claude Desktop 会直接写配置。
 

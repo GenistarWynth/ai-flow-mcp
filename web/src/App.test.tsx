@@ -302,14 +302,26 @@ function createClient(overrides: Partial<PatchbayClient> = {}): PatchbayClient {
 }
 
 describe("Workbench", () => {
-  it("copies structured readiness command actions from the diagnostics panel", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText }
+  it("runs structured Skill install readiness actions through the local Agent", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "setup",
+      ok: true,
+      reply: "Codex Skill installed without MCP registration.",
+      setup_host: "codex",
+      setup: {
+        doctor: {
+          ok: true,
+          host: "codex",
+          root: "C:/repo",
+          checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true }, mcp: { ok: true, skipped: true } },
+          next_actions: []
+        }
+      }
     });
     const client = createClient({
       listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      agentMessage,
       getDoctor: vi.fn().mockResolvedValue({
         ok: false,
         root: "C:/repo",
@@ -319,10 +331,12 @@ describe("Workbench", () => {
           {
             id: "install_skill",
             label: "Install Codex Skill",
-            kind: "command",
+            kind: "local_agent",
+            message: "install Codex Skill",
+            host: "codex",
             command: "patchbay skill install codex",
             safe: true,
-            reason: "Install the bundled Patchbay Skill."
+            reason: "Install the bundled Patchbay Skill without MCP registration."
           }
         ]
       })
@@ -334,12 +348,14 @@ describe("Workbench", () => {
     await userEvent.click(screen.getByRole("button", { name: "诊断" }));
     await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
     const details = screen.getByRole("complementary", { name: "诊断详情" });
-    await userEvent.click(within(details).getByRole("button", { name: "Copy command Install Codex Skill" }));
+    const installButton = within(details).getByRole("button", { name: "Install Codex Skill" });
+    expect(installButton).toHaveAttribute("title", "Install the bundled Patchbay Skill without MCP registration.");
+    await userEvent.click(installButton);
 
-    expect(writeText).toHaveBeenCalledWith("patchbay skill install codex");
-    expect(await within(details).findByRole("button", { name: "Copy command Install Codex Skill" })).toHaveTextContent("Copied");
+    await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("install Codex Skill"));
+    expect(agentMessage).not.toHaveBeenCalledWith("patchbay setup");
+    expect(await screen.findByText("Codex Skill installed without MCP registration.")).toBeVisible();
     expect(client.runAction).not.toHaveBeenCalled();
-    expect(client.agentMessage).not.toHaveBeenCalled();
   });
 
   it("copies custom economy provider command fixes from readiness", async () => {

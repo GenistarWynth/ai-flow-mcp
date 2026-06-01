@@ -221,10 +221,12 @@ def _structured_actions(
             {
                 "id": "install_skill",
                 "label": "Install Codex Skill",
-                "kind": "command",
+                "kind": "local_agent",
+                "message": "install Codex Skill",
+                "host": "codex",
                 "command": "patchbay skill install codex",
                 "safe": True,
-                "reason": "Install the bundled Patchbay Skill so Codex can discover the multi-agent workflow trigger.",
+                "reason": "Install the bundled Patchbay Skill without attempting MCP host registration.",
             }
         )
     if mcp.get("skipped"):

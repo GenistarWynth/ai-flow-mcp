@@ -1708,6 +1708,15 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       await configureProviderCommandAction(action.message || providerCommandMessage(action, ""));
       return;
     }
+    if (
+      action.id === "install_skill" ||
+      (action.kind === "local_agent" &&
+        action.message &&
+        (isSkillOnlySetupText(action.message) || isMcpOnlySetupText(action.message) || isNoMcpSetupText(action.message)))
+    ) {
+      await runSetupAction(actionHost, action.message || actionHost.message);
+      return;
+    }
     if (action.id === "run_setup" || action.message?.startsWith("patchbay setup")) {
       await runSetupAction(actionHost);
       return;

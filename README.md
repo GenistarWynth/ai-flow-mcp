@@ -172,7 +172,7 @@ patchbay skill print codex --json
 ```
 
 By default the Skill installs to `$CODEX_HOME/skills` or `~/.codex/skills`. It triggers on phrases such as "走多模型流程" and "multi-agent workflow"; MCP tools still need MCP registration.
-`patchbay skill doctor` / `patchbay_skill_doctor` also return safe structured `install_skill` and `refresh_skill_doctor` actions when the Skill is missing, so desktop and MCP hosts can render the install path directly.
+`patchbay skill doctor` / `patchbay_skill_doctor` also return safe structured `install_skill` and `refresh_skill_doctor` actions when the Skill is missing. `install_skill` is a `local_agent` action with message `install Codex Skill` and a copyable `patchbay skill install codex` command fallback, so desktop and MCP hosts can install the Skill without invoking MCP registration.
 
 ## Configuration
 

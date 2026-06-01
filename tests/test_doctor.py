@@ -62,6 +62,10 @@ class DoctorTest(unittest.TestCase):
         self.assertFalse(result["checks"]["skill"]["installed"])
         self.assertFalse(result["ok"])
         self.assertTrue(any("skill install codex" in action for action in result["next_actions"]))
+        actions = {item["id"]: item for item in result["actions"]}
+        self.assertEqual(actions["install_skill"]["kind"], "local_agent")
+        self.assertEqual(actions["install_skill"]["message"], "install Codex Skill")
+        self.assertEqual(actions["install_skill"]["command"], "patchbay skill install codex")
 
     def test_doctor_exposes_custom_profile_contract_without_mcp_probe(self) -> None:
         from scripts.ai_flow import service
