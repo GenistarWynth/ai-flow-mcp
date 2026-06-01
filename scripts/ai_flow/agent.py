@@ -1380,7 +1380,7 @@ def _help_response(root: Path) -> dict[str, Any]:
     capabilities = [
         {
             "name": "setup",
-            "summary": "Send `patchbay setup` for Codex or `patchbay setup for Claude Desktop` / `install patchbay for Gemini CLI` to initialize project files, local config, Skill installation, host MCP guidance, and a doctor summary.",
+            "summary": "Send `patchbay setup` for Codex or `patchbay setup for Claude Desktop` / `install patchbay for Gemini CLI` to initialize project files, local config, Skill installation, host MCP guidance, and a doctor summary. Send `install Codex Skill` for Skill-only setup or `register MCP for Claude Desktop` for MCP-only registration.",
         },
         {
             "name": "start",
@@ -1430,7 +1430,16 @@ def _help_response(root: Path) -> dict[str, Any]:
 
 
 def _help_next_actions(target: dict[str, Any]) -> list[str]:
-    actions = ["setup", "start", "readiness", "configure DeepSeek provider", "apply economy profile", "runs"]
+    actions = [
+        "setup",
+        "install Codex Skill",
+        "register MCP for Claude Desktop",
+        "start",
+        "readiness",
+        "configure DeepSeek provider",
+        "apply economy profile",
+        "runs",
+    ]
     if target.get("provider") == "reasonix_cli":
         actions.insert(5, "configure reasonix command")
     return actions
@@ -1449,6 +1458,15 @@ def _help_actions(target: dict[str, Any]) -> list[dict[str, Any]]:
             "reason": "Initialize local config, Skill installation, MCP guidance, and readiness checks.",
         },
         {
+            "id": "install_skill_only",
+            "label": "Install Codex Skill",
+            "kind": "local_agent",
+            "message": "install Codex Skill",
+            "host": "codex",
+            "safe": True,
+            "reason": "Install the Codex Skill without attempting MCP host registration.",
+        },
+        {
             "id": "setup_claude_code",
             "label": "Setup Claude Code",
             "kind": "local_agent",
@@ -1465,6 +1483,15 @@ def _help_actions(target: dict[str, Any]) -> list[dict[str, Any]]:
             "host": "claude-desktop",
             "safe": True,
             "reason": "Initialize Patchbay and return Claude Desktop MCP registration guidance.",
+        },
+        {
+            "id": "register_mcp_claude_desktop",
+            "label": "Register Claude Desktop MCP",
+            "kind": "local_agent",
+            "message": "register MCP for Claude Desktop",
+            "host": "claude-desktop",
+            "safe": True,
+            "reason": "Register the Claude Desktop MCP server without reinstalling the Codex Skill.",
         },
         {
             "id": "setup_gemini",

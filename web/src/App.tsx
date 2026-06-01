@@ -298,6 +298,72 @@ function isConfigureReasonixAction(action: Pick<AgentHealthAction, "id" | "messa
   return action.id === "configure_reasonix_command" || isReasonixConfigureText(action.message);
 }
 
+function isNoMcpSetupText(raw = "") {
+  const text = raw.toLowerCase();
+  return includesAny(text, [
+    "--skip-mcp",
+    "skip mcp",
+    "without mcp",
+    "no mcp",
+    "omit mcp",
+    "do not register mcp",
+    "dont register mcp",
+    "don't register mcp",
+    "不注册 mcp",
+    "不要注册 mcp",
+    "跳过 mcp",
+    "不用 mcp",
+    "不要 mcp"
+  ]);
+}
+
+function isSkillOnlySetupText(raw = "") {
+  const text = raw.toLowerCase();
+  return text.includes("skill") && !text.includes("mcp") && includesAny(text, ["configure", "install", "setup", "安装"]);
+}
+
+function isMcpOnlySetupText(raw = "") {
+  const text = raw.toLowerCase();
+  return (
+    !isNoMcpSetupText(text) &&
+    text.includes("mcp") &&
+    !text.includes("skill") &&
+    includesAny(text, ["configure", "install", "register", "setup", "注册", "安装"])
+  );
+}
+
+function mapScopedSetupAction(raw: string): LocalReplyAction | null {
+  const setupHost = setupHostFromText(raw.toLowerCase());
+  if (isSkillOnlySetupText(raw)) {
+    return {
+      id: "install-skill-only",
+      label: raw || "Install Codex Skill",
+      message: raw || "install Codex Skill",
+      icon: "settings",
+      host: setupHost?.id ?? "codex"
+    };
+  }
+  if (isMcpOnlySetupText(raw)) {
+    return {
+      id: "register-mcp-only",
+      label: raw || "Register MCP",
+      message: raw,
+      icon: "settings",
+      host: setupHost?.id
+    };
+  }
+  if (isNoMcpSetupText(raw)) {
+    return {
+      id: "setup-without-mcp",
+      label: raw || "Setup without MCP",
+      message: raw,
+      icon: "settings",
+      host: setupHost?.id
+    };
+  }
+  return null;
+}
+
 function providerCommandSource(action: Pick<AgentHealthAction, "id" | "command">) {
   if (action.id !== "configure_economy_provider_command" && !action.command) return "";
   const command = action.command ?? "";
@@ -435,6 +501,8 @@ function mapLocalReplyAction(raw: string): LocalReplyAction | null {
   if (isReasonixConfigureText(raw)) {
     return { id: "configure_reasonix_command", label: "Configure Reasonix", message: "configure reasonix command", icon: "settings" };
   }
+  const scopedSetup = mapScopedSetupAction(raw);
+  if (scopedSetup) return scopedSetup;
   if (includesAny(text, ["readiness", "doctor", "diagnose", "就绪", "诊断", "检查", "检查环境", "环境自检"])) {
     const readinessHost = setupHostFromText(text);
     return {
@@ -1443,13 +1511,13 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }));
   };
 
-  const runSetupAction = async (host: SetupHostOption = readinessHost) => {
+  const runSetupAction = async (host: SetupHostOption = readinessHost, message = host.message) => {
     if (setupInFlight) return;
     setError("");
     setReadinessHost(host);
     setSetupInFlight(true);
     try {
-      const response = await client.agentMessage(host.message);
+      const response = await client.agentMessage(message);
       const responseHost = setupHostById(hostFromAgentResponse(response) ?? host.id);
       const setupDoctor = response.setup?.doctor ?? response.doctor;
       setReadinessHost(responseHost);
@@ -1663,6 +1731,10 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         requires_human_confirmation: true,
         reason: action.reason
       });
+      return;
+    }
+    if (["install-skill-only", "register-mcp-only", "setup-without-mcp"].includes(action.id)) {
+      await runSetupAction(setupHostFromLocalReplyAction(action), action.message);
       return;
     }
     if (action.id.startsWith("setup")) {

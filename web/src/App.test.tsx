@@ -2588,6 +2588,66 @@ describe("Workbench", () => {
     expect(client.apply).not.toHaveBeenCalled();
   });
 
+  it("preserves scoped setup action messages from local agent replies", async () => {
+    const agentMessage = vi
+      .fn()
+      .mockResolvedValueOnce({
+        run_id: "run-ready",
+        action: "help",
+        ok: true,
+        reply: "Scoped setup shortcuts available.",
+        actions: [
+          {
+            id: "install_skill_only",
+            label: "Install Codex Skill",
+            kind: "local_agent",
+            message: "install Codex Skill",
+            host: "codex",
+            safe: true,
+            reason: "Install the Skill without MCP registration."
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        run_id: null,
+        action: "setup",
+        ok: true,
+        reply: "Codex Skill installed without MCP registration.",
+        setup_host: "codex",
+        setup: {
+          doctor: {
+            ok: true,
+            host: "codex",
+            root: "C:/repo",
+            checks: { repo: { ok: true }, skill: { ok: true }, mcp: { ok: true, skipped: true } },
+            next_actions: []
+          }
+        }
+      });
+    const client = createClient({ agentMessage });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(composer, "help{enter}");
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith("help", {
+        runId: "run-ready",
+        include: { diff: true, review: true },
+        background: true
+      })
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Install Codex Skill" }));
+
+    await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("install Codex Skill"));
+    expect(agentMessage).not.toHaveBeenCalledWith("patchbay setup");
+    expect(await screen.findByText("Codex Skill installed without MCP registration.")).toBeVisible();
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
   it("normalizes host names in prose setup actions", async () => {
     const agentMessage = vi
       .fn()
