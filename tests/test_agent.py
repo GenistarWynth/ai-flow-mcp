@@ -139,6 +139,21 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertIsNone(desktop["run_id"])
         self.assertFalse((self.repo / ".ai" / "runs").exists())
 
+    def test_agent_doctor_honors_mcp_avoidance_scope(self) -> None:
+        response = agent_message(self.repo, "readiness for Claude Desktop without MCP")
+
+        self.assertEqual(response["action"], "doctor")
+        self.assertEqual(response["setup_host"], "claude-desktop")
+        self.assertIsNone(response["run_id"])
+        action_ids = {item["id"] for item in response["actions"]}
+        doctor_action_ids = {item["id"] for item in response["doctor"]["actions"]}
+        for blocked in ("probe_mcp", "install_mcp", "register_mcp"):
+            self.assertNotIn(blocked, action_ids)
+            self.assertNotIn(blocked, doctor_action_ids)
+        self.assertFalse(any("probe-mcp" in item.lower() or "mcp install" in item.lower() for item in response["next_actions"]))
+        self.assertFalse(any("probe-mcp" in item.lower() or "mcp install" in item.lower() for item in response["doctor"]["next_actions"]))
+        self.assertFalse((self.repo / ".ai" / "runs").exists())
+
     def test_agent_doctor_surfaces_non_blocking_recommendations(self) -> None:
         response = agent_message(self.repo, "readiness")
 

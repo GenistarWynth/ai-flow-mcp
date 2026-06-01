@@ -17,7 +17,7 @@ from .doctor import run_doctor
 from .errors import StateError
 from .events import append_event
 from .mcp_install import HOST_ALIASES, normalize_mcp_host
-from .setup_flow import run_setup
+from .setup_flow import run_setup, _without_mcp_followup_actions, _without_mcp_followup_text
 from .state import (
     APPLIED,
     APPROVED,
@@ -2233,6 +2233,10 @@ def _doctor_response(root: Path, message: str = "") -> dict[str, Any]:
     next_actions = list(report.get("next_actions") or [])
     recommendations = list(report.get("recommendations") or [])
     actions = list(report.get("actions") or [])
+    if _is_mcp_avoidance_intent(message.lower()):
+        next_actions = _without_mcp_followup_text(next_actions)
+        actions = _without_mcp_followup_actions(actions)
+        report = {**report, "next_actions": next_actions, "actions": actions}
     suggested_actions = _doctor_suggested_actions(next_actions, recommendations)
     if report.get("ok"):
         reply = "Patchbay readiness checks passed."
