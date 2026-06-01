@@ -2903,6 +2903,67 @@ describe("Workbench", () => {
     expect(client.apply).not.toHaveBeenCalled();
   });
 
+  it("keeps readiness local-only after running local setup from an agent reply", async () => {
+    const agentMessage = vi
+      .fn()
+      .mockResolvedValueOnce({
+        run_id: "run-ready",
+        action: "help",
+        ok: true,
+        reply: "Local setup shortcuts available.",
+        actions: [
+          {
+            id: "run_local_setup",
+            label: "Run local setup",
+            kind: "local_agent",
+            message: "patchbay setup without MCP",
+            host: "codex",
+            safe: true,
+            reason: "Run setup without MCP registration."
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        run_id: null,
+        action: "setup",
+        ok: true,
+        reply: "Patchbay local setup completed without MCP.",
+        setup_host: "codex",
+        setup: {
+          doctor: {
+            ok: true,
+            host: "codex",
+            root: "C:/repo",
+            checks: { repo: { ok: true }, skill: { ok: true }, mcp: { ok: true, skipped: true } },
+            next_actions: []
+          }
+        }
+      });
+    const getDoctor = vi.fn().mockResolvedValue({
+      ok: true,
+      host: "claude-desktop",
+      root: "C:/repo",
+      checks: { repo: { ok: true }, skill: { ok: true }, mcp: { ok: true, skipped: true } },
+      next_actions: []
+    });
+    const client = createClient({ agentMessage, getDoctor });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(composer, "help{enter}");
+    await userEvent.click(await screen.findByRole("button", { name: "Run local setup" }));
+    await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("patchbay setup without MCP"));
+
+    await userEvent.click(screen.getByRole("button", { expanded: false }));
+    await userEvent.click(screen.getAllByRole("tab")[1]);
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    await userEvent.selectOptions(within(details).getByLabelText("MCP host"), "claude-desktop");
+
+    await waitFor(() => expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "claude-desktop", skip_mcp: true }));
+  });
+
   it("routes no-MCP readiness replies to doctor checks instead of setup", async () => {
     const agentMessage = vi.fn().mockResolvedValueOnce({
       run_id: "run-ready",

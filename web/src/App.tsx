@@ -1609,6 +1609,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
 
   const runSetupAction = async (host: SetupHostOption = readinessHost, message = host.message) => {
     if (setupInFlight) return;
+    const skipMcp = isNoMcpSetupText(message);
+    if (skipMcp) setLocalOnlyMode(true);
     setError("");
     setReadinessHost(host);
     setSetupInFlight(true);
@@ -1622,7 +1624,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       if (setupDoctor) {
         setDoctor(setupDoctor);
       } else {
-        setDoctor(await client.getDoctor({ include_mcp: false, host: responseHost.id }));
+        setDoctor(await client.getDoctor({ include_mcp: false, host: responseHost.id, ...(skipMcp ? { skip_mcp: true } : {}) }));
       }
       await loadRuns(selectedRun || undefined);
     } catch (err) {
