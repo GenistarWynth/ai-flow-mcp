@@ -295,6 +295,33 @@ textarea { resize: none; }
   font-size: 12px;
   overflow-wrap: anywhere;
 }
+.routing-workload-policy {
+  display: grid;
+  gap: 7px;
+  border: 1px solid #dbe6f3;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #f8fbff;
+}
+.routing-workload-policy p {
+  color: #344255;
+  line-height: 1.35;
+}
+.routing-workload-policy div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.routing-workload-policy span {
+  border: 1px solid #cfd7e3;
+  border-radius: 8px;
+  padding: 4px 7px;
+  color: #172033;
+  background: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
 .routing-result-routes {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

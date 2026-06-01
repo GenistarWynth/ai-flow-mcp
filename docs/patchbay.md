@@ -99,6 +99,8 @@ command_key = "reasonix"
 label = "Reasonix/DeepSeek"
 ```
 
+`show economy profile`、`apply economy profile` 和 start preview 会在 `routing.workload_policy` 返回同一份机器可读分工：`write`/`fix` 是 economy 阶段，适合大量简单实现和修复；`plan`/`review` 是 supervision 阶段，继续使用更强模型做规划和审查。桌面端、MCP host 和 Skill 可以直接渲染 `summary`、`economy_phases`、`supervision_phases` 和 `phase_roles`，不用解析自然语言来解释“性价比”路由。
+
 Writer 实现入口：
 
 - `reasonix_cli`：调用 Reasonix ACP coding agent（`reasonix acp`），由 Reasonix 自己的文件系统工具修改独立 worktree，Patchbay 只负责审批权限并捕获最终 `git diff`。

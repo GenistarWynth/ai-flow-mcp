@@ -129,6 +129,14 @@ export type RoutingEvidencePhase = {
   status?: string;
 };
 
+export type WorkloadPolicy = {
+  summary?: string;
+  target_label?: string;
+  economy_phases?: string[];
+  supervision_phases?: string[];
+  phase_roles?: Record<string, string>;
+};
+
 export type RoutingCoverage = {
   required_phases?: string[];
   required_total?: number;
@@ -161,6 +169,7 @@ export type EconomyHealth = {
 export type RoutingEvidence = {
   profile?: string;
   target?: PhaseProvider;
+  workload_policy?: WorkloadPolicy;
   economy_configured?: boolean;
   economy_command_ready?: boolean | null;
   command_not_ready_phases?: string[];
@@ -296,6 +305,7 @@ export type DoctorReport = {
 export type ConfigProfileStatus = {
   config?: string;
   profile?: string;
+  workload_policy?: WorkloadPolicy;
   economy?: {
     matches?: boolean;
     target?: PhaseProvider;

@@ -3511,6 +3511,13 @@ describe("Workbench", () => {
           write: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix", tier: "economy", economy_route: true },
           fix: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix", tier: "economy", economy_route: true },
           review: { provider: "codex_cli", model: "gpt-5", tier: "supervision", reason: "Use a stronger reviewer." }
+        },
+        workload_policy: {
+          summary: "Simple high-volume write/fix work uses the low-cost Reasonix/DeepSeek route; plan/review stay on supervision models.",
+          target_label: "Reasonix/DeepSeek",
+          economy_phases: ["write", "fix"],
+          supervision_phases: ["plan", "review"],
+          phase_roles: { plan: "supervision", write: "economy", fix: "economy", review: "supervision" }
         }
       },
       next_actions: ["readiness", "start"],
@@ -3582,6 +3589,11 @@ describe("Workbench", () => {
     expect(screen.getByRole("button", { name: "Start new task" })).toBeVisible();
     const routingResult = await screen.findByLabelText("Routing result");
     expect(within(routingResult).getByText("经济路由已启用")).toBeVisible();
+    expect(
+      within(routingResult).getByText("Simple high-volume write/fix work uses the low-cost Reasonix/DeepSeek route; plan/review stay on supervision models.")
+    ).toBeVisible();
+    expect(within(routingResult).getByText("write/fix → Reasonix/DeepSeek")).toBeVisible();
+    expect(within(routingResult).getByText("plan/review → supervision")).toBeVisible();
     expect(within(routingResult).getAllByText("reasonix_cli / deepseek-v4-pro")).toHaveLength(2);
     expect(client.getConfig).toHaveBeenCalled();
   });

@@ -1140,6 +1140,7 @@ function profileStatusToRouting(result: ConfigProfileStatus): RoutingEvidence {
   return {
     profile: status.profile ?? result.profile ?? (configuredEconomy ? "economy" : "custom"),
     target,
+    workload_policy: result.workload_policy ?? status.workload_policy,
     economy_configured: configuredEconomy,
     economy_command_ready: typeof economy.command_ready === "boolean" ? economy.command_ready : null,
     phase_strategy: status.phase_strategy ?? result.phase_strategy,
@@ -2861,6 +2862,7 @@ function RoutingEvidenceCard({ routing }: { routing: RoutingEvidence }) {
   const fix = routing.phases?.fix?.configured;
   const writeSignal = routeEvidenceLabel("write", routing);
   const fixSignal = routeEvidenceLabel("fix", routing);
+  const workloadPolicy = routing.workload_policy;
   return (
     <div className={`routing-result-card ${routing.economy_configured ? "ready" : "custom"}`} aria-label="Routing result">
       <div className="routing-result-head">
@@ -2869,6 +2871,15 @@ function RoutingEvidenceCard({ routing }: { routing: RoutingEvidence }) {
         {routing.profile ? <span>{routing.profile}</span> : null}
       </div>
       {routing.summary ? <p>{routing.summary}</p> : null}
+      {workloadPolicy?.summary ? (
+        <div className="routing-workload-policy" aria-label="Workload routing policy">
+          <p>{workloadPolicy.summary}</p>
+          <div>
+            <span>{(workloadPolicy.economy_phases ?? ["write", "fix"]).join("/")} → {workloadPolicy.target_label ?? "economy"}</span>
+            <span>{(workloadPolicy.supervision_phases ?? ["plan", "review"]).join("/")} → supervision</span>
+          </div>
+        </div>
+      ) : null}
       <div className="routing-result-routes">
         <div>
           <span>实现</span>

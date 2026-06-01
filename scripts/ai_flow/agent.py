@@ -2463,11 +2463,13 @@ def _profile_routing_digest(profile_result: dict[str, Any]) -> dict[str, Any]:
     ]
     command_ready = economy.get("command_ready")
     recommendation = str(status.get("recommendation") or profile_result.get("recommendation") or "")
+    workload_policy = _workload_policy(target)
     return {
         "profile": status.get("profile") or profile_result.get("profile") or ("economy" if economy_active else "custom"),
         "target": target if target.get("provider") else {"provider": service.ECONOMY_PROVIDER, "model": service.ECONOMY_MODEL},
         "economy_configured": economy_active,
         "economy_command_ready": bool(command_ready) if command_ready is not None else None,
+        "workload_policy": workload_policy,
         "command_not_ready_phases": command_not_ready,
         "phase_strategy": status.get("phase_strategy") or {},
         "phases": {
@@ -2484,6 +2486,26 @@ def _profile_routing_digest(profile_result: dict[str, Any]) -> dict[str, Any]:
         },
         "summary": _profile_routing_summary(economy_active=economy_active, write=write, fix=fix),
         "recommendation": recommendation,
+    }
+
+
+def _workload_policy(target: dict[str, Any]) -> dict[str, Any]:
+    effective_target = target if target.get("provider") else {"provider": service.ECONOMY_PROVIDER, "model": service.ECONOMY_MODEL}
+    target_label = str(effective_target.get("label") or _route_label(effective_target) or "the configured economy target")
+    return {
+        "target_label": target_label,
+        "economy_phases": ["write", "fix"],
+        "supervision_phases": ["plan", "review"],
+        "phase_roles": {
+            "plan": "supervision",
+            "write": "economy",
+            "fix": "economy",
+            "review": "supervision",
+        },
+        "summary": (
+            f"Simple high-volume write/fix work uses the low-cost {target_label} route; "
+            "plan/review stay on supervision models."
+        ),
     }
 
 
