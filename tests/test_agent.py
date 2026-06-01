@@ -696,6 +696,52 @@ test = []
         self.assertTrue(desktop_actions["register_mcp"]["safe"])
         self.assertFalse((self.repo / ".ai" / "runs").exists())
 
+    def test_agent_setup_scopes_skill_and_mcp_only_requests(self) -> None:
+        import scripts.ai_flow.agent as agent_module
+
+        calls: list[dict[str, object]] = []
+
+        def fake_setup(
+            root: Path,
+            *,
+            host: str = "codex",
+            skip_mcp: bool = False,
+            skip_skill: bool = False,
+            **_: object,
+        ) -> dict[str, object]:
+            calls.append({"host": host, "skip_mcp": skip_mcp, "skip_skill": skip_skill})
+            return {
+                "ok": True,
+                "root": str(root),
+                "setup_host": host,
+                "skill": {"skipped": skip_skill},
+                "mcp": {"skipped": skip_mcp, "host": host},
+                "doctor": {"ok": True},
+                "next_actions": ["readiness", "start"],
+                "actions": [],
+            }
+
+        with mock.patch.object(agent_module, "run_setup", side_effect=fake_setup):
+            skill_only = agent_message(self.repo, "install Codex Skill")
+            mcp_only = agent_message(self.repo, "register MCP for Claude Desktop")
+            no_mcp = agent_message(self.repo, "patchbay setup without MCP")
+            zh_no_mcp = agent_message(self.repo, "patchbay setup 不要注册 MCP")
+
+        self.assertEqual(
+            calls,
+            [
+                {"host": "codex", "skip_mcp": True, "skip_skill": False},
+                {"host": "claude-desktop", "skip_mcp": False, "skip_skill": True},
+                {"host": "codex", "skip_mcp": True, "skip_skill": False},
+                {"host": "codex", "skip_mcp": True, "skip_skill": False},
+            ],
+        )
+        self.assertEqual(skill_only["setup"]["mcp"]["skipped"], True)
+        self.assertEqual(mcp_only["setup"]["skill"]["skipped"], True)
+        self.assertEqual(no_mcp["setup"]["mcp"]["skipped"], True)
+        self.assertEqual(zh_no_mcp["setup"]["mcp"]["skipped"], True)
+        self.assertFalse((self.repo / ".ai" / "runs").exists())
+
     def test_agent_setup_word_in_task_still_starts_plan(self) -> None:
         response = agent_message(self.repo, "setup auth flow")
 

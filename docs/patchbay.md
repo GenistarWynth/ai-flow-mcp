@@ -169,6 +169,8 @@ scripts/patchbay review <run_id> --mock
 
 ## MCP
 
+Conversational setup scopes are prompt-aware. `install Codex Skill` installs the Skill without attempting MCP registration, `register MCP for Claude Desktop` skips Skill installation, and `patchbay setup without MCP` / `--skip-mcp` keeps setup local to project files and Skill installation.
+
 CLI 跑通后可以把同一套流程作为 MCP 工具暴露给任意 MCP host。Patchbay 提供注册辅助命令：
 
 ```bash

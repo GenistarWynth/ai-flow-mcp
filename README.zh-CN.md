@@ -130,6 +130,8 @@ python scripts/patchbay agent message continue --run-id <run_id> --background --
 
 `context`、`handoff context`、`events`、`poll context` 和 `poll events` 是只读 Agent 消息：带 `run_id` 时直接返回当前运行的 Overview/Trace 诊断动作；不带 `run_id` 且存在最近运行时返回最新运行的 handoff 视图，不会推进阶段或绕过门禁。
 
+setup 会根据提示词自动收窄范围：`install Codex Skill` 只安装 Skill、不尝试 MCP 注册；`register MCP for Claude Desktop` 会跳过 Skill 安装；`patchbay setup without MCP` 或 `--skip-mcp` 只做项目文件和 Skill 的本地 setup。
+
 `what model will write/fix use`、`is writer using cheap model`、`现在写手是不是走便宜模型` 这类路由问题是只读的 `profile_show`，只报告当前写/修复模型与 provider；如果调用时带了 run id，还会附带该运行的 `metrics.efficiency_summary`，区分“已配置便宜模型”和“本次运行实际观察到的 provider/token/cost 证据”。显式 `command_key` 缺失或不一致都会被视为路由漂移，不会被当作已验证的经济路由证据。`apply economy profile` 或“让大量简单写手工作用便宜模型/DeepSeek 去干”这类明确配置意图才会修改本地路由。
 
 Web workbench 使用同一套对话式流程，并在诊断抽屉里提供“就绪”页。该页面调用统一 doctor 检查但默认不做 MCP stdio 探测，因此可以在桌面 UI 中看到安装与配置缺口，同时避免打开页面时额外启动子进程。就绪页的 MCP host 选择器会把目标 host 传给 doctor/setup，`Claude Desktop`、`claude desktop`、`claude-desktop` 这类常见写法会统一规范化为具体注册命令。该页面还会显示当前 write/fix 路由画像，并渲染结构化 `actions[]` 来执行安全的 setup、Skill、MCP 探测、刷新、经济路由和 Reasonix 命令配置后续操作。Overview 会展示 `efficiency_summary`、`routing_evidence.economy_health` 与 `agent_activity.health_cards`，包括 `economy_efficiency` 和 `economy_load` 卡片，让桌面端直接看到经济路由是健康、待观测、`command_not_ready`、漂移，还是未配置，并看到简单 write/fix 工作的实际 token/cost/time 占比。

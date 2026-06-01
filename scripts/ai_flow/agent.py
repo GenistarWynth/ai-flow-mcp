@@ -1127,6 +1127,73 @@ def _setup_host_from_message(text: str) -> str:
     return _explicit_setup_host_from_message(text) or "codex"
 
 
+def _setup_options_from_message(text: str) -> dict[str, bool]:
+    normalized = text.lower()
+    words = _words(normalized)
+    explicit_skip_mcp = _has_skip_scope(words, "mcp") or _has_any(
+        normalized,
+        (
+            "without mcp",
+            "no mcp",
+            "omit mcp",
+            "mcp false",
+            "mcp off",
+            "do not register mcp",
+            "dont register mcp",
+            "don't register mcp",
+            "不注册 mcp",
+            "不要注册 mcp",
+            "跳过 mcp",
+            "不用 mcp",
+            "不要 mcp",
+            "只装 skill",
+            "只安装 skill",
+        ),
+    )
+    explicit_skip_skill = _has_skip_scope(words, "skill") or _has_any(
+        normalized,
+        (
+            "without skill",
+            "no skill",
+            "omit skill",
+            "skill false",
+            "skill off",
+            "do not install skill",
+            "dont install skill",
+            "don't install skill",
+            "不安装 skill",
+            "不要安装 skill",
+            "跳过 skill",
+            "不用 skill",
+            "只注册 mcp",
+        ),
+    )
+    skill_only = (
+        not explicit_skip_skill
+        and "skill" in words
+        and "mcp" not in words
+        and bool(words & {"configure", "install", "setup"})
+    )
+    mcp_only = (
+        not explicit_skip_mcp
+        and "mcp" in words
+        and "skill" not in words
+        and bool(words & {"configure", "install", "register", "setup"})
+    )
+    return {
+        "skip_mcp": explicit_skip_mcp or skill_only,
+        "skip_skill": explicit_skip_skill or mcp_only,
+    }
+
+
+def _has_skip_scope(words: set[str], scope: str) -> bool:
+    if f"skip_{scope}" in words:
+        return True
+    if scope not in words:
+        return False
+    return bool(words & {"disable", "except", "no", "omit", "skip", "without"})
+
+
 def _explicit_setup_host_from_message(text: str) -> str | None:
     normalized = re.sub(r"[\s_]+", " ", text.strip().lower().replace("-", " ").replace("=", " "))
     if not normalized:
@@ -1542,7 +1609,7 @@ def _clean_custom_provider_command_value(value: str) -> str:
 
 def _setup_response(root: Path, message: str) -> dict[str, Any]:
     host = _setup_host_from_message(message)
-    result = run_setup(root, host=host)
+    result = run_setup(root, host=host, **_setup_options_from_message(message))
     next_actions = list(result.get("next_actions") or [])
     actions = list(result.get("actions") or [])
     reply = "Patchbay setup completed."
