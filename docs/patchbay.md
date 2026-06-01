@@ -172,6 +172,8 @@ scripts/patchbay review <run_id> --mock
 
 ## MCP
 
+Unattended authorization is scoped to a selected run. If a concrete `run_id` is already selected, explicit phrases such as `don't ask me`, `assume yes`, `you have all permissions`, `不要问我`, or `所有权限都给你` count as plan approval for that run and may start background write/test/review autopilot. The same phrases without a `run_id` return `missing_run` guidance instead of implicitly choosing the latest run. Final `apply` remains foreground-only and still requires its separate confirmation.
+
 Conversational setup scopes are prompt-aware. `install Codex Skill` installs the Skill without attempting MCP registration, `register MCP for Claude Desktop` skips Skill installation, and `patchbay setup without MCP` / `--skip-mcp` / `--no-mcp` / `--local-only` keeps setup local to project files and Skill installation. Use `patchbay doctor --local-only` or `patchbay_doctor(skip_mcp=true)` when the host should hide MCP probe/register follow-up actions entirely.
 
 CLI 跑通后可以把同一套流程作为 MCP 工具暴露给任意 MCP host。Patchbay 提供注册辅助命令：

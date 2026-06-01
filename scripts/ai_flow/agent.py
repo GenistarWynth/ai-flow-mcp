@@ -77,6 +77,38 @@ CHINESE_TASK_INTENT_WORDS = (
 )
 
 
+UNATTENDED_PLAN_APPROVAL_PHRASES = (
+    "approved in advance",
+    "assume approved",
+    "assume yes",
+    "continue without asking",
+    "do not ask me",
+    "don't ask me",
+    "dont ask me",
+    "go ahead without asking",
+    "no need to ask",
+    "no need to confirm",
+    "you have permission",
+    "you have all permissions",
+    "\u4e0d\u8981\u95ee\u6211",
+    "\u522b\u95ee\u6211",
+    "\u522b\u627e\u6211",
+    "\u4e0d\u9700\u8981\u786e\u8ba4",
+    "\u4e0d\u7528\u786e\u8ba4",
+    "\u65e0\u9700\u786e\u8ba4",
+    "\u6240\u6709\u6743\u9650\u90fd\u7ed9\u4f60",
+    "\u6240\u6709\u6743\u9650\u5168\u90e8\u7ed9\u4f60",
+    "\u5168\u90e8\u6743\u9650\u90fd\u7ed9\u4f60",
+    "\u6743\u9650\u90fd\u7ed9\u4f60",
+    "\u81ea\u5df1\u5141\u8bb8",
+    "\u81ea\u5df1\u786e\u8ba4",
+    "\u4f60\u81ea\u5df1\u51b3\u5b9a",
+    "\u4f60\u81ea\u5df1\u6279\u51c6",
+    "\u6211\u4e0d\u5728\u8eab\u8fb9",
+    "\u4eba\u4e0d\u5728",
+)
+
+
 def agent_message(
     cwd: Path,
     message: str,
@@ -162,7 +194,8 @@ def agent_message(
         return _error_response("Continuing a Patchbay run requires run_id.", action=intent)
 
     if intent == "approve_and_run":
-        if confirmation != PLAN_CONFIRMATION:
+        message_confirms_plan = _is_unattended_plan_approval(text)
+        if confirmation != PLAN_CONFIRMATION and not message_confirms_plan:
             return _agent_response(
                 root,
                 run_id,
@@ -179,7 +212,10 @@ def agent_message(
             reply=str(autopilot["reply"]),
             requires_confirmation=autopilot.get("requires_confirmation"),
             include=include,
-            extra={"autopilot": autopilot},
+            extra={
+                "autopilot": autopilot,
+                "confirmation_source": "message" if message_confirms_plan and confirmation != PLAN_CONFIRMATION else "token",
+            },
         )
         return _with_autopilot_error(response, autopilot)
 
@@ -338,7 +374,8 @@ def _start_background_agent(
             extra={"ok": False, "error": "background apply is not supported"},
         )
 
-    if intent == "approve_and_run" and confirmation != PLAN_CONFIRMATION:
+    message_confirms_plan = _is_unattended_plan_approval(message)
+    if intent == "approve_and_run" and confirmation != PLAN_CONFIRMATION and not message_confirms_plan:
         return _agent_response(
             root,
             run_id,
@@ -774,6 +811,8 @@ def _classify_intent(message: str, *, has_run: bool, confirmation: str) -> str:
     if _is_metrics_intent(text):
         return "metrics" if has_run else "metrics_latest"
     if not has_run:
+        if _is_unattended_plan_approval(text):
+            return "missing_run"
         if _is_runs_intent(text):
             return "runs"
         if _is_run_bound_intent(text):
@@ -783,6 +822,8 @@ def _classify_intent(message: str, *, has_run: bool, confirmation: str) -> str:
                 return "latest_view"
             return "missing_run"
         return "start"
+    if _is_unattended_plan_approval(text):
+        return "approve_and_run"
     if _has_any(text, ("apply", "应用", "套用")):
         return "apply"
     if _has_any(text, ("approve", "approved", "confirm", "确认", "批准", "同意")):
@@ -2770,6 +2811,14 @@ def _dedupe_strings(items: list[str]) -> list[str]:
         seen.add(item)
         result.append(item)
     return result
+
+
+def _is_unattended_plan_approval(text: str) -> bool:
+    if not text:
+        return False
+    compact = re.sub(r"[\s\-_`'\".,;:!?()\[\]{}]+", "", text)
+    compact_needles = tuple(re.sub(r"[\s\-_`'\".,;:!?()\[\]{}]+", "", item) for item in UNATTENDED_PLAN_APPROVAL_PHRASES)
+    return _has_any(text, UNATTENDED_PLAN_APPROVAL_PHRASES) or _has_any(compact, compact_needles)
 
 
 def _has_any(text: str, needles: tuple[str, ...]) -> bool:

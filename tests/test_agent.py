@@ -540,6 +540,12 @@ test = []
         self.assertEqual(response["action"], "start")
         self.assertEqual(response["status"]["status"], "PLANNED")
 
+    def test_agent_unattended_word_in_task_still_starts_plan(self) -> None:
+        response = agent_message(self.repo, "build unattended worker mode")
+
+        self.assertEqual(response["action"], "start")
+        self.assertEqual(response["status"]["status"], "PLANNED")
+
     def test_agent_help_message_returns_capabilities_without_starting_run(self) -> None:
         response = agent_message(self.repo, "help")
 
@@ -2059,6 +2065,61 @@ model = "cheap-model"
         self.assertEqual(response["status"]["status"], "PLANNED")
         self.assertEqual(response["requires_confirmation"]["confirmation"], PLAN_CONFIRMATION)
         self.assertFalse((self.repo / ".ai" / "runs" / planned["run_id"] / "AGENT.lock").exists())
+
+    def test_agent_unattended_permission_approves_plan_for_selected_run(self) -> None:
+        planned = agent_message(self.repo, "plan permission target")
+
+        response = agent_message(
+            self.repo,
+            "don't ask me, you have all permissions",
+            run_id=planned["run_id"],
+        )
+
+        self.assertEqual(response["action"], "approve_and_run")
+        self.assertEqual(response["confirmation_source"], "message")
+        self.assertEqual(response["status"]["status"], "REVIEWED_PASS")
+        self.assertEqual(response["requires_confirmation"]["confirmation"], APPLY_CONFIRMATION)
+        self.assertTrue((self.repo / ".ai" / "runs" / planned["run_id"] / "APPROVAL.json").exists())
+
+    def test_agent_unattended_permission_without_run_does_not_start_task(self) -> None:
+        for message in ("don't ask me, you have all permissions", "\u4e0d\u8981\u95ee\u6211\u4e86\uff0c\u6240\u6709\u6743\u9650\u90fd\u7ed9\u4f60"):
+            with self.subTest(message=message):
+                response = agent_message(self.repo, message)
+
+                self.assertEqual(response["action"], "missing_run")
+                self.assertFalse(response["ok"])
+                self.assertIsNone(response["run_id"])
+        runs_path = self.repo / ".ai" / "runs"
+        self.assertFalse(runs_path.exists() and any(runs_path.iterdir()))
+
+    def test_agent_background_unattended_permission_starts_agent_job(self) -> None:
+        from scripts.ai_flow import agent as agent_module
+
+        planned = agent_message(self.repo, "background permission target")
+        run_id = planned["run_id"]
+        run_path = self.repo / ".ai" / "runs" / run_id
+
+        class FakeProcess:
+            pid = 4321
+
+            def poll(self):
+                return None
+
+        with (
+            mock.patch.object(agent_module.service, "resolve_root", return_value=self.repo),
+            mock.patch.object(agent_module.subprocess, "Popen", return_value=FakeProcess()),
+        ):
+            response = agent_message(
+                self.repo,
+                "do not ask me, assume yes",
+                run_id=run_id,
+                background=True,
+            )
+
+        self.assertTrue(response["background"])
+        self.assertIsNone(response["requires_confirmation"])
+        self.assertEqual(response["job"]["action"], "approve_and_run")
+        self.assertTrue((run_path / "AGENT.lock").exists())
 
     def test_agent_background_continue_starts_agent_job(self) -> None:
         from scripts.ai_flow import agent as agent_module
