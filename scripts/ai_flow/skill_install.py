@@ -33,6 +33,7 @@ def run_skill_install(
             "source": str(source),
             "destination": str(destination),
             "dry_run": True,
+            "actions": [_skill_doctor_action(path)],
         }
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
@@ -44,6 +45,7 @@ def run_skill_install(
         "destination": str(destination),
         "installed": True,
         "note": "Restart or reload Codex so the new Skill metadata is discovered.",
+        "actions": [_skill_doctor_action(path)],
     }
 
 
@@ -83,6 +85,11 @@ def run_skill_doctor(cwd: Path, host: str = "codex", *, path: str | Path | None 
         next_actions.append("Reinstall Patchbay; the bundled Codex Skill source is missing or incomplete.")
     elif not installed:
         next_actions.append("Run `patchbay skill install codex` so Codex can discover the Patchbay Skill.")
+    actions: list[dict[str, Any]] = []
+    if source_ok and not installed:
+        actions.append(_skill_install_action(path))
+    if next_actions:
+        actions.append(_skill_doctor_action(path))
     return {
         "host": "codex",
         "ok": source_ok,
@@ -98,6 +105,7 @@ def run_skill_doctor(cwd: Path, host: str = "codex", *, path: str | Path | None 
         "install_command": "patchbay skill install codex",
         "doctor_command": "patchbay skill doctor codex",
         "next_actions": next_actions,
+        "actions": actions,
     }
 
 
@@ -108,6 +116,41 @@ def _skills_root(path: str | Path | None) -> Path:
     if codex_home:
         return (Path(codex_home).expanduser() / "skills").resolve()
     return (Path.home() / ".codex" / "skills").resolve()
+
+
+def _skill_install_action(path: str | Path | None) -> dict[str, Any]:
+    return {
+        "id": "install_skill",
+        "label": "Install Codex Skill",
+        "kind": "command",
+        "command": _skill_command("install", path),
+        "safe": True,
+        "reason": "Install the bundled Patchbay Skill so Codex can discover the multi-agent workflow trigger.",
+    }
+
+
+def _skill_doctor_action(path: str | Path | None) -> dict[str, Any]:
+    return {
+        "id": "refresh_skill_doctor",
+        "label": "Refresh Skill doctor",
+        "kind": "command",
+        "command": _skill_command("doctor", path) + " --json",
+        "safe": True,
+        "reason": "Re-check the bundled and installed Patchbay Skill state.",
+    }
+
+
+def _skill_command(command: str, path: str | Path | None) -> str:
+    base = f"patchbay skill {command} codex"
+    if not path:
+        return base
+    return f"{base} --path {_quote_arg(str(Path(path).expanduser()))}"
+
+
+def _quote_arg(value: str) -> str:
+    if value and not any(char.isspace() for char in value) and '"' not in value:
+        return value
+    return '"' + value.replace('"', '\\"') + '"'
 
 
 def _skill_source() -> Path:

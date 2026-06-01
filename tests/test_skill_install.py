@@ -143,8 +143,17 @@ class SkillInstallTest(unittest.TestCase):
         self.assertTrue(before["source_exists"])
         self.assertFalse(before["installed"])
         self.assertTrue(any("skill install codex" in action for action in before["next_actions"]))
+        before_actions = {item["id"]: item for item in before["actions"]}
+        self.assertEqual(before_actions["install_skill"]["kind"], "command")
+        self.assertIn("patchbay skill install codex", before_actions["install_skill"]["command"])
+        self.assertIn(str(target), before_actions["install_skill"]["command"])
+        self.assertEqual(before_actions["refresh_skill_doctor"]["kind"], "command")
+        self.assertIn("--json", before_actions["refresh_skill_doctor"]["command"])
 
-        run_skill_install(self.tmp, path=target)
+        installed = run_skill_install(self.tmp, path=target)
+        installed_actions = {item["id"]: item for item in installed["actions"]}
+        self.assertIn("refresh_skill_doctor", installed_actions)
+        self.assertIn(str(target), installed_actions["refresh_skill_doctor"]["command"])
         after = run_skill_doctor(self.tmp, path=target)
         self.assertTrue(after["ok"])
         self.assertTrue(after["ready"])
@@ -152,6 +161,7 @@ class SkillInstallTest(unittest.TestCase):
         self.assertTrue(after["installed"])
         self.assertEqual(Path(after["destination"]), target / "patchbay")
         self.assertEqual(after["next_actions"], [])
+        self.assertEqual(after["actions"], [])
 
 
 if __name__ == "__main__":

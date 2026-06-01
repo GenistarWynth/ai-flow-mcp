@@ -458,7 +458,7 @@ def _tool_schema(name: str) -> dict[str, Any]:
         "patchbay_install": "Alias for patchbay_setup: initialize Patchbay project files, create local config, install the Codex Skill, register MCP when possible, include a doctor summary, and expose structured actions[].",
         "patchbay_skill_install": "Install only the bundled Patchbay Codex Skill into a selected skills root.",
         "patchbay_skill_print": "Return the bundled Patchbay Skill files for inspection or external installation.",
-        "patchbay_skill_doctor": "Validate the bundled Patchbay Skill source and whether it is installed in the selected Codex skills root.",
+        "patchbay_skill_doctor": "Validate the bundled Patchbay Skill source and whether it is installed in the selected Codex skills root, returning safe install_skill and refresh_skill_doctor actions when follow-up is needed.",
         "patchbay_events": "Return the append-only event log (JSONL stream) for a run so any host can see what every phase/agent did.",
         "patchbay_trace": "Return the structured trace log (JSONL stream) for lower-level agent/tool activity with redacted raw payloads.",
         "patchbay_runs": "List recent Patchbay runs.",
