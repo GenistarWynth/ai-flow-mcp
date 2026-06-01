@@ -966,6 +966,12 @@ def _config_profile_intent(text: str) -> str | None:
     write_fix_words = {"bulk", "fix", "implementation", "repair", "routine", "simple", "write", "writer"}
     if bool(words & {"deepseek", "economy", "reasonix"}) and bool(words & apply_words):
         return "profile_apply"
+    if (
+        bool(words & {"deepseek", "economy", "reasonix"})
+        and bool(words & write_fix_words)
+        and bool(words & {"for", "on", "to"})
+    ):
+        return "profile_apply"
     if bool(words & {"cheap", "cost", "lower", "low", "economy"}) and bool(words & {"model", "models", "routing", "route", "profile"}):
         return "profile_apply" if bool(words & (apply_words | write_fix_words | {"optimize"})) else "profile_show"
     return None
