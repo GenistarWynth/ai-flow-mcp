@@ -12,6 +12,15 @@ from .mcp_install import normalize_mcp_host, run_mcp_install
 from .skill_install import run_skill_install
 
 
+MCP_FOLLOWUP_ACTION_IDS = {"install_mcp", "probe_mcp", "register_mcp"}
+MCP_FOLLOWUP_TEXT_MARKERS = (
+    "--probe-mcp",
+    "mcp install",
+    "patchbay mcp",
+    "register the mcp",
+)
+
+
 def run_setup(
     cwd: Path,
     *,
@@ -61,6 +70,9 @@ def run_setup(
                 "reason": "Register the MCP server command returned by setup.",
             }
         )
+    if skip_mcp:
+        next_actions = _without_mcp_followup_text(next_actions)
+        actions = _without_mcp_followup_actions(actions)
     return {
         "ok": bool(doctor.get("ok")),
         "dry_run": dry_run,
@@ -135,6 +147,20 @@ def _dedupe(items: list[str]) -> list[str]:
         seen.add(item)
         result.append(item)
     return result
+
+
+def _without_mcp_followup_text(items: list[str]) -> list[str]:
+    result: list[str] = []
+    for item in items:
+        lowered = item.lower()
+        if any(marker in lowered for marker in MCP_FOLLOWUP_TEXT_MARKERS):
+            continue
+        result.append(item)
+    return result
+
+
+def _without_mcp_followup_actions(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [item for item in items if str(item.get("id") or "") not in MCP_FOLLOWUP_ACTION_IDS]
 
 
 def _dedupe_actions(items: list[dict[str, Any]]) -> list[dict[str, Any]]:

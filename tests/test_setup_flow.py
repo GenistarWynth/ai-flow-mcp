@@ -56,6 +56,11 @@ class SetupFlowTest(unittest.TestCase):
         self.assertTrue(result["config"]["created"])
         self.assertTrue(result["skill"]["installed"])
         self.assertTrue(result["doctor"]["ok"])
+        actions = {item["id"]: item for item in result["actions"]}
+        self.assertNotIn("probe_mcp", actions)
+        self.assertNotIn("install_mcp", actions)
+        self.assertNotIn("register_mcp", actions)
+        self.assertFalse(any("probe-mcp" in item.lower() or "mcp install" in item.lower() for item in result["next_actions"]))
 
     def test_setup_dry_run_does_not_write_files(self) -> None:
         from scripts.ai_flow.setup_flow import run_setup
@@ -248,9 +253,10 @@ model = "mock"
                 self.assertEqual(payload["setup_host"], "gemini")
                 self.assertTrue((skill_path / "patchbay" / "SKILL.md").exists())
                 actions = {item["id"]: item for item in payload["actions"]}
-                self.assertIn("probe_mcp", actions)
-                self.assertEqual(actions["probe_mcp"]["kind"], "command")
-                self.assertTrue(actions["probe_mcp"]["safe"])
+                self.assertNotIn("probe_mcp", actions)
+                self.assertNotIn("install_mcp", actions)
+                self.assertNotIn("register_mcp", actions)
+                self.assertFalse(any("probe-mcp" in item.lower() or "mcp install" in item.lower() for item in payload["next_actions"]))
         finally:
             mcp_server.ROOT = original_root
 
