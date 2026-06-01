@@ -479,6 +479,10 @@ function backgroundJobTone(job?: BackgroundJob | null) {
   return "idle";
 }
 
+function isBackgroundJobActive(job?: BackgroundJob | null) {
+  return Boolean(job?.active || job?.status === "running");
+}
+
 function backgroundJobStatusLabel(job?: BackgroundJob | null) {
   const tone = backgroundJobTone(job);
   if (tone === "failed") return "后台失败";
@@ -1126,6 +1130,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const [profileInFlight, setProfileInFlight] = useState(false);
   const [localMessages, setLocalMessages] = useState<Record<string, LocalMessage[]>>({});
   const [newTaskReply, setNewTaskReply] = useState<AgentResponse | null>(null);
+  const refreshSeq = useRef(0);
 
   const patchRunSummary = (runId: string, patch: Partial<RunSummary>) => {
     setRuns((current) => current.map((run) => (run.run_id === runId ? { ...run, ...patch } : run)));
@@ -1159,10 +1164,12 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       return;
     }
     let cancelled = false;
+    let backgroundWasActive = false;
     setTrace([]);
     setRawTrace([]);
     setSelectedMessage(null);
     eventCursor.current = 0;
+    const runRefreshSeq = ++refreshSeq.current;
 
     function appendTimelineEntries(entries: TraceEntry[], total?: number, since = 0, replace = false) {
       setTrace((current) => (replace ? entries : [...current, ...entries]));
@@ -1178,6 +1185,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         client.getConfig()
       ]);
       if (cancelled) return;
+      backgroundWasActive = isBackgroundJobActive(nextContext.background_job ?? nextContext.agent_activity?.background_job ?? nextStatus.background_job);
       setStatus(nextStatus);
       setContext(nextContext);
       setRawTrace(nextTrace.trace ?? nextTrace.events ?? []);
@@ -1197,7 +1205,9 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     async function loadContextUpdate() {
       const since = eventCursor.current;
       const nextContext = await client.getContext(selectedRun, { since_event: since });
-      if (cancelled || !nextContext) return;
+      if (cancelled || refreshSeq.current !== runRefreshSeq || !nextContext) return;
+      const nextBackgroundJob = nextContext.background_job ?? nextContext.agent_activity?.background_job;
+      const backgroundActive = isBackgroundJobActive(nextBackgroundJob);
       setContext((current) => mergeContext(current, nextContext));
       setStatus((current) =>
         current
@@ -1213,9 +1223,21 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       patchRunSummary(selectedRun, {
         status: nextContext.status,
         task: nextContext.agent_activity?.conversation_state?.task,
-        background_job: nextContext.background_job ?? nextContext.agent_activity?.background_job
+        background_job: nextBackgroundJob
       });
       appendTimelineEntries(nextContext.timeline ?? [], nextContext.cursors?.event, since);
+      if (backgroundActive || backgroundWasActive) {
+        const [latestStatus] = await Promise.all([client.getStatus(selectedRun), loadRuns(selectedRun, { autoSelect: false })]);
+        if (cancelled || refreshSeq.current !== runRefreshSeq) return;
+        const latestBackgroundJob = latestStatus.background_job ?? nextBackgroundJob;
+        backgroundWasActive = isBackgroundJobActive(latestBackgroundJob);
+        setStatus(latestStatus);
+        patchRunSummary(selectedRun, {
+          status: latestStatus.status,
+          task: latestStatus.task,
+          background_job: latestBackgroundJob
+        });
+      }
     }
 
     void loadSelectedRun().catch((err) => setError(String(err)));

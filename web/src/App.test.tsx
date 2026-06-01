@@ -3710,6 +3710,115 @@ describe("Workbench", () => {
     expect(screen.getByRole("button", { name: /开始实现/ })).toBeDisabled();
   });
 
+  it("auto-refreshes active background jobs until completion", async () => {
+    const runningJob: BackgroundJob = {
+      active: true,
+      status: "running",
+      kind: "agent",
+      phase: "write",
+      action: "continue",
+      pid: 4321
+    };
+    const finishedJob: BackgroundJob = {
+      ...runningJob,
+      active: false,
+      status: "finished",
+      exit_code: 0,
+      duration_ms: 2400,
+      finished_at: "2026-05-24T10:03:02Z"
+    };
+    const runningContext: HandoffContext = {
+      ...plannedContext,
+      run_id: "run-ready",
+      status: "RUNNING",
+      current_phase: "write",
+      background_job: runningJob,
+      timeline: [],
+      cursors: { event: 1, trace: 0 },
+      agent_activity: {
+        ...plannedContext.agent_activity!,
+        background_job: runningJob,
+        conversation_state: {
+          ...plannedContext.agent_activity!.conversation_state!,
+          task: "Background implementation",
+          status: "RUNNING",
+          phase: "write",
+          suggestions: []
+        }
+      }
+    };
+    const finishedContext: HandoffContext = {
+      ...readyContext,
+      run_id: "run-ready",
+      status: "REVIEWED_PASS",
+      current_phase: "apply",
+      background_job: finishedJob,
+      timeline: [
+        {
+          source: "event",
+          index: 1,
+          timestamp: "2026-05-24T10:03:02Z",
+          phase: "agent",
+          action: "success",
+          status: "SUCCESS",
+          detail: "Background agent turn finished."
+        }
+      ],
+      cursors: { event: 2, trace: 0 },
+      agent_activity: {
+        ...readyContext.agent_activity!,
+        background_job: finishedJob,
+        conversation_state: {
+          ...readyContext.agent_activity!.conversation_state!,
+          task: "Background implementation"
+        }
+      }
+    };
+    const statusRunning = {
+      run_id: "run-ready",
+      task: "Background implementation",
+      status: "RUNNING",
+      current_phase: "write",
+      background_job: runningJob,
+      gate_state: { approved: true, tests_passed: false, review_result: null, ready_to_apply: false },
+      next_commands: [],
+      artifacts: [],
+      effective_phase_providers: {}
+    };
+    const statusFinished = {
+      run_id: "run-ready",
+      task: "Background implementation",
+      status: "REVIEWED_PASS",
+      current_phase: "apply",
+      background_job: finishedJob,
+      gate_state: { approved: true, tests_passed: true, review_result: "PASS", ready_to_apply: true },
+      tests_passed: true,
+      review_result: "PASS",
+      next_commands: ["apply"],
+      artifacts: ["REVIEW.md"],
+      effective_phase_providers: {}
+    };
+    const client = createClient({
+      listRuns: vi
+        .fn()
+        .mockResolvedValueOnce({
+          runs: [{ run_id: "run-ready", task: "Background implementation", status: "RUNNING", background_job: runningJob }]
+        })
+        .mockResolvedValue({
+          runs: [{ run_id: "run-ready", task: "Background implementation", status: "REVIEWED_PASS", background_job: finishedJob }]
+        }),
+      getStatus: vi.fn().mockResolvedValueOnce(statusRunning).mockResolvedValue(statusFinished),
+      getContext: vi.fn().mockResolvedValueOnce(runningContext).mockResolvedValue(finishedContext)
+    });
+
+    render(<Workbench client={client} pollIntervalMs={20} />);
+
+    expect(await screen.findByRole("heading", { name: "Background implementation" })).toBeInTheDocument();
+    await waitFor(() => expect(client.getContext).toHaveBeenCalledWith("run-ready", { since_event: 1 }));
+    await waitFor(() => expect(client.getStatus).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(client.listRuns).toHaveBeenCalledTimes(2));
+  });
+
   it("surfaces failed run recovery guidance without executing a phase action", async () => {
     const guidance = "Ask the planner to emit valid JSON inside the sentinel block.";
     const failedContext: HandoffContext = {
