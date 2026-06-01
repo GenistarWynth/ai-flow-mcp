@@ -743,6 +743,11 @@ button.danger { color: #b42318; border-color: #f0b6b2; background: #fff8f7; }
   font-weight: 700;
   white-space: nowrap;
 }
+.doctor-setup-button.secondary {
+  color: #174ea6;
+  border-color: #cfe0ff;
+  background: #edf4ff;
+}
 .doctor-summary { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 9px; align-items: center; border: 1px solid #d9dee6; border-left: 4px solid #d97706; border-radius: 8px; padding: 10px; background: #fff7ed; }
 .doctor-summary.ready { border-left-color: #168a54; background: #f1fbf6; }
 .doctor-summary strong, .doctor-summary span { display: block; min-width: 0; overflow-wrap: anywhere; }

@@ -2901,12 +2901,12 @@ describe("Workbench", () => {
     expect(client.apply).not.toHaveBeenCalled();
   });
 
-  it("runs local setup from the empty state and exposes readiness immediately", async () => {
+  it("runs local-only setup from the empty state without MCP registration", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: null,
       action: "setup",
       ok: true,
-      reply: "Patchbay setup completed.",
+      reply: "Patchbay local setup completed.",
       setup: {
         doctor: {
           ok: true,
@@ -2925,11 +2925,13 @@ describe("Workbench", () => {
 
     await screen.findByRole("heading", { name: "新任务" });
     expect(screen.getByRole("button", { name: "运行 setup" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "本地 setup" })).toBeVisible();
     expect(screen.getByRole("button", { name: "就绪" })).toBeVisible();
 
-    await userEvent.click(screen.getByRole("button", { name: "运行 setup" }));
-    await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("patchbay setup"));
-    expect(await screen.findByText("Patchbay setup completed.")).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "本地 setup" }));
+    await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("patchbay setup without MCP"));
+    expect(agentMessage).not.toHaveBeenCalledWith("patchbay setup");
+    expect(await screen.findByText("Patchbay local setup completed.")).toBeVisible();
 
     await userEvent.click(screen.getByRole("button", { name: "就绪" }));
     expect(await screen.findByText("环境就绪")).toBeVisible();
@@ -2998,12 +3000,12 @@ describe("Workbench", () => {
     expect(within(commandActions).getByRole("button", { name: "Copy command Register MCP" })).toHaveTextContent("Copied");
   });
 
-  it("runs local setup from the readiness panel without creating a run", async () => {
+  it("runs local-only setup from the readiness panel without creating a run", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: null,
       action: "setup",
       ok: true,
-      reply: "Patchbay setup completed.",
+      reply: "Patchbay local setup completed.",
       setup: {
         doctor: {
           ok: true,
@@ -3025,11 +3027,67 @@ describe("Workbench", () => {
     await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
     expect(await screen.findByText("需要处理")).toBeVisible();
     const details = screen.getByRole("complementary", { name: "诊断详情" });
-    await userEvent.click(within(details).getByRole("button", { name: "运行 setup" }));
+    await userEvent.click(within(details).getByRole("button", { name: "本地 setup" }));
 
-    await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("patchbay setup"));
+    await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("patchbay setup without MCP"));
+    expect(agentMessage).not.toHaveBeenCalledWith("patchbay setup");
     expect(await screen.findByText("环境就绪")).toBeVisible();
     expect(client.getStatus).not.toHaveBeenCalled();
+  });
+
+  it("keeps local-only setup host-aware from the readiness panel", async () => {
+    const getDoctor = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        host: "codex",
+        root: "C:/repo",
+        checks: { repo: { ok: true }, mcp: { ok: true, skipped: true } },
+        next_actions: []
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        host: "claude-desktop",
+        root: "C:/repo",
+        checks: { repo: { ok: true }, mcp: { ok: false } },
+        next_actions: []
+      });
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "setup",
+      ok: true,
+      reply: "Patchbay local setup completed for Claude Desktop.",
+      setup_host: "claude-desktop",
+      setup: {
+        doctor: {
+          ok: true,
+          host: "claude-desktop",
+          root: "C:/repo",
+          checks: { repo: { ok: true }, mcp: { ok: true, skipped: true } },
+          next_actions: []
+        }
+      }
+    });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      getDoctor,
+      agentMessage
+    });
+
+    render(<Workbench client={client} />);
+
+    await waitFor(() => expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "codex" }));
+    await userEvent.click(screen.getByRole("button", { expanded: false }));
+    await userEvent.click(screen.getAllByRole("tab")[1]);
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    await userEvent.selectOptions(within(details).getByLabelText("MCP host"), "claude-desktop");
+
+    await waitFor(() => expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "claude-desktop" }));
+    await userEvent.click(within(details).getByRole("button", { name: "本地 setup" }));
+
+    await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("patchbay setup without MCP for claude-desktop"));
+    expect(agentMessage).not.toHaveBeenCalledWith("patchbay setup for claude-desktop");
+    expect(within(details).getByText("环境就绪")).toBeVisible();
   });
 
   it("runs host-aware setup from the readiness panel without creating a run", async () => {

@@ -185,6 +185,10 @@ function setupMessageToHost(message: string) {
   return setupHostOptions.find((host) => host.message === message) ?? setupHostFromText(message) ?? setupHostOptions[0];
 }
 
+function setupWithoutMcpMessage(host?: SetupHostOption) {
+  return host && host.id !== "codex" ? `patchbay setup without MCP for ${host.id}` : "patchbay setup without MCP";
+}
+
 function setupHostFromAction(action: AgentHealthAction, fallback: SetupHostOption) {
   if (action.host) return setupHostById(action.host);
   if (action.message) {
@@ -1989,6 +1993,15 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                   <button
                     className="empty-action secondary"
                     type="button"
+                    onClick={() => void runSetupAction(readinessHost, setupWithoutMcpMessage(readinessHost))}
+                    disabled={setupInFlight}
+                  >
+                    {setupInFlight ? <RefreshCw size={14} /> : <ShieldCheck size={14} />}
+                    本地 setup
+                  </button>
+                  <button
+                    className="empty-action secondary"
+                    type="button"
                     onClick={() => void openReadinessAction()}
                   >
                     <ShieldCheck size={14} />
@@ -2517,7 +2530,7 @@ function SetupHostButtons({
   setupBusy,
   compact = false
 }: {
-  onRunSetup: (host?: SetupHostOption) => void;
+  onRunSetup: (host?: SetupHostOption, message?: string) => void;
   onSelectHost?: (host: SetupHostOption) => void;
   selectedHost?: SetupHostOption;
   setupBusy?: boolean;
@@ -2988,7 +3001,7 @@ function DoctorPanel({
   report?: DoctorReport | null;
   readinessHost?: SetupHostOption;
   onReadinessHostChange?: (host: SetupHostOption) => void;
-  onRunSetup?: (host?: SetupHostOption) => void;
+  onRunSetup?: (host?: SetupHostOption, message?: string) => void;
   onApplyEconomy?: () => void;
   onDoctorAction?: (action: AgentHealthAction) => void;
   setupBusy?: boolean;
@@ -3021,6 +3034,15 @@ function DoctorPanel({
           <button className="doctor-setup-button" type="button" onClick={() => onRunSetup(selectedHost)} disabled={setupBusy}>
             {setupBusy ? <RefreshCw size={14} /> : <Settings size={14} />}
             {setupBusy ? "运行中" : "运行 setup"}
+          </button>
+          <button
+            className="doctor-setup-button secondary"
+            type="button"
+            onClick={() => onRunSetup(selectedHost, setupWithoutMcpMessage(selectedHost))}
+            disabled={setupBusy}
+          >
+            {setupBusy ? <RefreshCw size={14} /> : <ShieldCheck size={14} />}
+            本地 setup
           </button>
           <SetupHostButtons onRunSetup={onRunSetup} setupBusy={setupBusy} selectedHost={selectedHost} compact />
         </div>
@@ -3152,7 +3174,7 @@ function DetailPanel({
   doctor: DoctorReport | null;
   readinessHost?: SetupHostOption;
   onReadinessHostChange?: (host: SetupHostOption) => void;
-  onRunSetup?: (host?: SetupHostOption) => void;
+  onRunSetup?: (host?: SetupHostOption, message?: string) => void;
   onApplyEconomy?: () => void;
   onDoctorAction?: (action: AgentHealthAction) => void;
   onHealthAction?: (action: AgentHealthAction) => void;
