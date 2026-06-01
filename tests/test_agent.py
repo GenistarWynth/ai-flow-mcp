@@ -2020,6 +2020,50 @@ model = "cheap-model"
         self.assertTrue((run_path / "JOB.json").exists())
         self.assertTrue(popen.call_args.kwargs["env"]["PATCHBAY_INHERITED_AGENT_LOCK"])
 
+    def test_agent_background_continue_is_idempotent_while_active(self) -> None:
+        from scripts.ai_flow import agent as agent_module
+
+        planned = agent_message(self.repo, "background duplicate guard")
+        run_id = planned["run_id"]
+
+        class FakeProcess:
+            pid = 9876
+
+            def poll(self):
+                return None
+
+        with (
+            mock.patch.object(agent_module.service, "resolve_root", return_value=self.repo),
+            mock.patch.object(agent_module.subprocess, "Popen", return_value=FakeProcess()),
+        ):
+            first = agent_message(
+                self.repo,
+                "approve",
+                run_id=run_id,
+                confirmation=PLAN_CONFIRMATION,
+                background=True,
+            )
+
+        self.assertTrue(first["background_job"]["active"])
+        with (
+            mock.patch.object(agent_module.service, "resolve_root", return_value=self.repo),
+            mock.patch.object(agent_module.subprocess, "Popen", side_effect=AssertionError("duplicate background spawn")),
+        ):
+            second = agent_message(self.repo, "continue", run_id=run_id, background=True)
+
+        self.assertTrue(second["ok"])
+        self.assertTrue(second["background"])
+        self.assertTrue(second["already_running"])
+        self.assertIsNone(second["requires_confirmation"])
+        self.assertEqual(second["next_actions"], ["status", "events"])
+        self.assertEqual(second["background_job"]["pid"], 9876)
+        actions = {item["id"]: item for item in second["actions"]}
+        self.assertEqual(actions["open_background_run"]["run_id"], run_id)
+        self.assertEqual(actions["poll_context"]["message"], "context")
+        self.assertNotIn("approve", {item.get("message") for item in second["actions"]})
+        self.assertNotIn("apply", {item.get("message") for item in second["actions"]})
+        self.assertNotIn("continue", {item.get("message") for item in second["actions"]})
+
     def test_cli_background_agent_approval_completes_in_child_process(self) -> None:
         from scripts.ai_flow import service
 

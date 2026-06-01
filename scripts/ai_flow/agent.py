@@ -329,6 +329,9 @@ def _start_background_agent(
         )
 
     current = service.status(root, run_id)
+    active_job = _active_background_job(current)
+    if active_job:
+        return _background_already_running_response(root, run_id, action=intent, job=active_job, include=include)
     if intent == "continue" and (current.get("status") == PLANNED or _apply_ready(current)):
         return agent_message(
             root,
@@ -431,6 +434,37 @@ def _start_background_agent(
     response["requires_confirmation"] = None
     response["next_actions"] = ["status", "events"]
     response["actions"] = background_actions
+    return response
+
+
+def _active_background_job(status_data: dict[str, Any]) -> dict[str, Any] | None:
+    job = status_data.get("background_job") if isinstance(status_data.get("background_job"), dict) else None
+    if not job:
+        return None
+    if job.get("active") or job.get("status") == "running":
+        return job
+    return None
+
+
+def _background_already_running_response(
+    root: Path,
+    run_id: str,
+    *,
+    action: str,
+    job: dict[str, Any],
+    include: dict[str, Any] | None,
+) -> dict[str, Any]:
+    actions = list(job.get("actions") or service.background_followup_actions(run_id))
+    response = _agent_response(
+        root,
+        run_id,
+        action=action,
+        reply="A background agent turn is already running. Poll status, context, or events for progress.",
+        include=include,
+        extra={"background": True, "already_running": True, "background_job": job, "actions": actions},
+    )
+    response["requires_confirmation"] = None
+    response["next_actions"] = ["status", "events"]
     return response
 
 

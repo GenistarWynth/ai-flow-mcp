@@ -76,7 +76,7 @@ scripts/patchbay context <run_id>
 scripts/patchbay events <run_id>
 ```
 
-Background turns write `JOB.json` and append `agent` events. They return safe structured `actions[]` for opening the run, opening Trace, polling status, polling context, and polling events. Prefer `poll_context` when a host needs the refreshed handoff payload, and `poll_events` when it only needs the event stream. They do not change the safety model: implementation still requires explicit plan approval, and apply remains foreground-only after tests and review pass. Do not treat background follow-up actions as approval, continue, or apply controls.
+Background turns write `JOB.json` and append `agent` events. They return safe structured `actions[]` for opening the run, opening Trace, polling status, polling context, and polling events. Prefer `poll_context` when a host needs the refreshed handoff payload, and `poll_events` when it only needs the event stream. If a host sends another background `approve`/`continue` while an Agent job is active, Patchbay returns the existing job with `already_running: true` and the same polling actions instead of starting another worker. They do not change the safety model: implementation still requires explicit plan approval, and apply remains foreground-only after tests and review pass. Do not treat background follow-up actions as approval, continue, or apply controls.
 
 ## Installation Reference
 
