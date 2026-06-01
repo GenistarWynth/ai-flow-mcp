@@ -43,6 +43,7 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("what should I do next", result["files"]["SKILL.md"])
         self.assertIn("下一步是什么", result["files"]["SKILL.md"])
         self.assertIn('action: "next_step"', result["files"]["SKILL.md"])
+        self.assertIn("run_reference.next_action", result["files"]["SKILL.md"])
         self.assertIn("what is blocking apply", result["files"]["SKILL.md"])
         self.assertIn("what model will write/fix use", result["files"]["SKILL.md"])
         self.assertIn("is writer using cheap model", result["files"]["SKILL.md"])

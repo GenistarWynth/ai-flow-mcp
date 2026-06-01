@@ -834,6 +834,11 @@ test = []
         self.assertEqual(response["run_reference"]["run_id"], run_id)
         self.assertEqual(response["run_reference"]["status"], "PLANNED")
         self.assertEqual(response["run_reference"]["next_actions"], ["approve_and_run", "status", "events", "artifact"])
+        self.assertEqual(response["run_reference"]["next_action"]["id"], "approve_and_run")
+        self.assertFalse(response["run_reference"]["next_action"]["safe"])
+        self.assertEqual(response["run_reference"]["next_action"]["requires_confirmation"]["confirmation"], PLAN_CONFIRMATION)
+        self.assertEqual(response["next_action"]["id"], "open_latest_run")
+        self.assertTrue(response["next_action"]["safe"])
         self.assertEqual(response["latest_status"]["status"], "PLANNED")
         actions = {item["id"]: item for item in response["actions"]}
         self.assertEqual(actions["open_latest_run"]["kind"], "open_run")
@@ -856,6 +861,9 @@ test = []
                 self.assertEqual(response["run_id"], run_id)
                 self.assertEqual(response["status"]["status"], "PLANNED")
                 self.assertEqual(response["requires_confirmation"]["confirmation"], "plan_approved")
+                self.assertEqual(response["next_action"]["id"], "approve_and_run")
+                self.assertFalse(response["next_action"]["safe"])
+                self.assertEqual(response["next_action"]["requires_confirmation"]["confirmation"], PLAN_CONFIRMATION)
                 actions = {item["id"]: item for item in response["actions"]}
                 self.assertEqual(actions["open_plan"]["tab"], "Artifacts")
                 self.assertEqual(actions["open_trace"]["tab"], "Trace")
@@ -1522,6 +1530,10 @@ test = []
         self.assertIsNone(payload["run_id"])
         self.assertEqual(payload["recent_run"]["run_id"], planned["run_id"])
         self.assertEqual(payload["run_reference"]["next_actions"], ["approve_and_run", "status", "events", "artifact"])
+        self.assertEqual(payload["run_reference"]["next_action"]["id"], "approve_and_run")
+        self.assertFalse(payload["run_reference"]["next_action"]["safe"])
+        self.assertEqual(payload["run_reference"]["next_action"]["requires_confirmation"]["confirmation"], PLAN_CONFIRMATION)
+        self.assertEqual(payload["next_action"]["id"], "open_latest_run")
         actions = {item["id"]: item for item in payload["actions"]}
         self.assertEqual(actions["open_latest_run"]["kind"], "open_run")
         self.assertEqual(actions["open_latest_run"]["run_id"], planned["run_id"])

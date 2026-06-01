@@ -491,11 +491,13 @@ export type AgentResponse = {
     suggested_message?: string;
     safe_actions?: string[];
     next_actions?: string[];
+    next_action?: AgentHealthAction | null;
     gate_diagnosis?: GateDiagnosis;
     requested_view?: RunReferenceView | null;
   }) | null;
   requested_view?: RunReferenceView | null;
   latest_status?: RunStatus;
+  next_action?: AgentHealthAction | null;
   gate_diagnosis?: GateDiagnosis;
   doctor?: DoctorReport;
   setup?: SetupResult;

@@ -1779,7 +1779,10 @@ def _next_step_response(root: Path, *, run_id: str | None, include: dict[str, An
             action="next_step",
             reply=_next_step_reply(run_id, current),
             include=include,
-            extra={"actions": _next_step_actions(run_id, current, include_open_run=False)},
+            extra={
+                "next_action": _next_step_primary_action(current),
+                "actions": _next_step_actions(run_id, current, include_open_run=False),
+            },
         )
 
     report = service.runs(root, limit=5)
@@ -1824,6 +1827,7 @@ def _next_step_response(root: Path, *, run_id: str | None, include: dict[str, An
         "suggested_message": "open latest run",
         "safe_actions": ["open_run", "status", "events"],
         "next_actions": _next_actions_for_status(current),
+        "next_action": _next_step_primary_action(current),
     }
     return _stateless_response(
         action="next_step",
@@ -1835,6 +1839,14 @@ def _next_step_response(root: Path, *, run_id: str | None, include: dict[str, An
             "recent_run": latest,
             "run_reference": run_reference,
             "latest_status": current,
+            "next_action": {
+                "id": "open_latest_run",
+                "label": "Open latest run",
+                "kind": "open_run",
+                "run_id": latest_run_id,
+                "safe": True,
+                "reason": "Open the latest Patchbay run before choosing the gated next action.",
+            },
             "actions": _next_step_actions(latest_run_id, current, include_open_run=True),
         },
     )
@@ -3050,6 +3062,23 @@ def _next_step_actions(run_id: str, status_data: dict[str, Any], *, include_open
         }
     )
     return actions
+
+
+def _next_step_primary_action(status_data: dict[str, Any]) -> dict[str, Any]:
+    diagnosis = _gate_diagnosis(status_data)
+    action = dict(diagnosis.get("next_action") or {})
+    if action:
+        action.setdefault("safe", True)
+        action.setdefault("reason", "Next safe Patchbay step for the selected run.")
+        return action
+    return {
+        "id": "inspect_status",
+        "label": "Inspect status",
+        "kind": "local_agent",
+        "message": "status",
+        "safe": True,
+        "reason": "Inspect status and events before choosing another action.",
+    }
 
 
 def _gate_diagnosis(status_data: dict[str, Any]) -> dict[str, Any]:
