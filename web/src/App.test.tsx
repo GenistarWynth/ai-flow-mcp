@@ -1440,6 +1440,67 @@ describe("Workbench", () => {
     expect(client.apply).not.toHaveBeenCalled();
   });
 
+  it("opens latest-run context replies directly from the new-task composer", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: "run-ready",
+      action: "context",
+      ok: true,
+      reply: "Latest run run-ready handoff context.",
+      recent_run: { run_id: "run-ready", task: "Approve a plan", status: "PLANNED" },
+      run_reference: {
+        run_id: "run-ready",
+        task: "Approve a plan",
+        status: "PLANNED",
+        requested_view: { tab: "Overview", reason: "The prompt asked for the run handoff context." }
+      },
+      requested_view: { tab: "Overview", reason: "The prompt asked for the run handoff context." },
+      actions: [
+        {
+          id: "open_latest_run",
+          label: "Open latest run",
+          kind: "open_run",
+          run_id: "run-ready",
+          tab: "Overview",
+          safe: true,
+          reason: "Open the latest Patchbay run that supplied this read-only view."
+        }
+      ]
+    });
+    const getContext = vi.fn().mockResolvedValue({ ...plannedContext, run_id: "run-ready" });
+    const client = createClient({
+      listRuns: vi
+        .fn()
+        .mockResolvedValueOnce({ runs: [] })
+        .mockResolvedValue({ runs: [{ run_id: "run-ready", task: "Approve a plan", status: "PLANNED" }] }),
+      agentMessage,
+      getStatus: vi.fn().mockResolvedValue({
+        run_id: "run-ready",
+        task: "Approve a plan",
+        status: "PLANNED",
+        current_phase: "plan",
+        gate_state: { approved: false, tests_passed: false, review_result: null, ready_to_apply: false },
+        next_commands: ["approve"],
+        artifacts: [],
+        effective_phase_providers: {}
+      }),
+      getContext
+    });
+
+    render(<Workbench client={client} />);
+
+    await waitFor(() => expect(client.listRuns).toHaveBeenCalled());
+    const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(composer, "context{enter}");
+
+    expect(await screen.findByRole("heading", { name: "Approve a plan" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "状态" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("Latest run run-ready handoff context.")).toBeVisible();
+    expect(agentMessage).toHaveBeenCalledWith("context", { include: { plan: true }, background: true });
+    expect(getContext).toHaveBeenCalledWith("run-ready");
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
   it("loads real run status when opening latest metrics replies", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: "run-ready",

@@ -401,7 +401,7 @@ function isRunStatusPayload(status: AgentResponse["status"], runId: string): sta
 
 function isLatestRunReadOnlyResponse(response: AgentResponse): response is AgentResponse & { run_id: string } {
   if (!response.run_id) return false;
-  if (!new Set(["artifact", "diff", "metrics", "status"]).has(response.action ?? "")) return false;
+  if (!new Set(["artifact", "context", "diff", "events", "metrics", "status"]).has(response.action ?? "")) return false;
   if (response.recent_run?.run_id === response.run_id || response.run_reference?.run_id === response.run_id) return true;
   return (response.actions ?? []).some((action) => action.kind === "open_run" && action.run_id === response.run_id && action.safe !== false);
 }
