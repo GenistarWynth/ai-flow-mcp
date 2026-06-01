@@ -2951,6 +2951,48 @@ describe("Workbench", () => {
     expect(agentMessage).not.toHaveBeenCalledWith("patchbay setup");
   });
 
+  it("persists local-only readiness across host changes after a no-MCP reply", async () => {
+    const agentMessage = vi.fn().mockResolvedValueOnce({
+      run_id: "run-ready",
+      action: "local_mode",
+      ok: true,
+      reply: "Local-only mode selected.",
+      actions: [
+        {
+          id: "open_local_readiness",
+          label: "Open local readiness",
+          kind: "local_agent",
+          message: "readiness without MCP",
+          host: "codex",
+          safe: true,
+          reason: "Run local-only readiness checks without MCP probing."
+        }
+      ]
+    });
+    const getDoctor = vi.fn().mockResolvedValue({
+      ok: true,
+      host: "codex",
+      root: "C:/repo",
+      checks: { repo: { ok: true }, config: { ok: true }, mcp: { ok: true, skipped: true } },
+      next_actions: []
+    });
+    const client = createClient({ agentMessage, getDoctor });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(composer, "help{enter}");
+    const localActions = await screen.findByLabelText("Agent 建议动作");
+    await userEvent.click(within(localActions).getByRole("button", { name: "Open local readiness" }));
+    await waitFor(() => expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "codex", skip_mcp: true }));
+
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    await userEvent.selectOptions(within(details).getByLabelText("MCP host"), "claude-desktop");
+
+    await waitFor(() => expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "claude-desktop", skip_mcp: true }));
+  });
+
   it("normalizes host names in prose setup actions", async () => {
     const agentMessage = vi
       .fn()

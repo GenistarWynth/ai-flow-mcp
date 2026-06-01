@@ -1293,6 +1293,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const [profileInFlight, setProfileInFlight] = useState(false);
   const [localMessages, setLocalMessages] = useState<Record<string, LocalMessage[]>>({});
   const [newTaskReply, setNewTaskReply] = useState<AgentResponse | null>(null);
+  const [localOnlyMode, setLocalOnlyMode] = useState(false);
   const refreshSeq = useRef(0);
 
   const patchRunSummary = (runId: string, patch: Partial<RunSummary>) => {
@@ -1702,7 +1703,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }
   };
 
-  const openReadinessAction = async (force = false, host: SetupHostOption = readinessHost, skipMcp = false) => {
+  const openReadinessAction = async (force = false, host: SetupHostOption = readinessHost, skipMcp = localOnlyMode) => {
+    if (skipMcp) setLocalOnlyMode(true);
     if (host.id !== readinessHost.id) {
       setReadinessHost(host);
       force = true;
@@ -1711,7 +1713,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     setActiveTab("Readiness");
     if (doctor && !force) return;
     try {
-      setDoctor(await client.getDoctor({ include_mcp: false, host: host.id, ...(skipMcp ? { skip_mcp: true } : {}) }));
+      const localOnly = skipMcp || localOnlyMode;
+      setDoctor(await client.getDoctor({ include_mcp: false, host: host.id, ...(localOnly ? { skip_mcp: true } : {}) }));
     } catch (err) {
       setError(String(err));
     }
@@ -1854,7 +1857,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       return;
     }
     if (action.id === "readiness" || action.id.startsWith("readiness-")) {
-      await openReadinessAction(Boolean(action.skipMcp), setupHostById(action.host), action.skipMcp);
+      await openReadinessAction(Boolean(action.skipMcp), setupHostById(action.host), action.skipMcp ?? localOnlyMode);
       return;
     }
     if (action.id === "open-latest-run") {
