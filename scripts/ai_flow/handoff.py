@@ -171,6 +171,35 @@ def annotate_next_actions(status_data: dict[str, Any]) -> list[dict[str, Any]]:
             if isinstance(blocker.get("action"), dict):
                 action["alternative_action"] = blocker["action"]
         actions.append(action)
+    if actions:
+        return actions
+    if str(status_data.get("status") or "") == "FAILED":
+        recovery = status_data.get("failure_recovery") if isinstance(status_data.get("failure_recovery"), dict) else {}
+        return _failure_recovery_next_actions(recovery)
+    return actions
+
+
+def _failure_recovery_next_actions(recovery: dict[str, Any]) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]] = []
+    for item in recovery.get("actions") or []:
+        if not isinstance(item, dict) or item.get("safe") is False:
+            continue
+        name = str(item.get("id") or item.get("name") or "")
+        if not name:
+            continue
+        actions.append(
+            {
+                "name": name,
+                "kind": item.get("kind", "local_agent"),
+                "safe": True,
+                "tool": item.get("tool", item.get("message", name)),
+                "requires_human_confirmation": False,
+                "reason": item.get("reason", recovery.get("suggested_next_action", "")),
+                "label": item.get("label"),
+                "tab": item.get("tab"),
+                "message": item.get("message"),
+            }
+        )
     return actions
 
 
@@ -339,6 +368,11 @@ def _conversation_next_step(status_data: dict[str, Any], next_action: dict[str, 
     if next_action:
         label = str(next_action.get("label") or next_action.get("name") or "下一步")
         reason = str(next_action.get("reason") or "")
+        if status == "FAILED":
+            recovery = status_data.get("failure_recovery") if isinstance(status_data.get("failure_recovery"), dict) else {}
+            suggested = str(recovery.get("suggested_next_action") or status_data.get("suggested_next_action") or "")
+            if suggested:
+                return f"{suggested} 可以继续执行“{label}”。{reason}"
         if next_action.get("requires_human_confirmation"):
             return f"需要你确认后，Patchbay Agent 才会执行“{label}”。{reason}"
         return f"可以继续执行“{label}”。{reason}"
@@ -351,14 +385,14 @@ def _conversation_next_step(status_data: dict[str, Any], next_action: dict[str, 
 
 
 def _composer_placeholder(status_data: dict[str, Any], next_action: dict[str, Any] | None) -> str:
+    status = str(status_data.get("status") or "")
+    if status == "FAILED":
+        return "输入“修复”或打开诊断查看错误"
     if next_action:
         label = str(next_action.get("label") or next_action.get("name") or "下一步")
         if next_action.get("requires_human_confirmation"):
             return f"输入“确认”或点击“{label}”继续"
         return f"输入“继续”或点击“{label}”"
-    status = str(status_data.get("status") or "")
-    if status == "FAILED":
-        return "输入“修复”或打开诊断查看错误"
     return "输入新任务，或写下本地备注"
 
 

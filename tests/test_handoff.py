@@ -236,7 +236,7 @@ class HandoffContextTest(unittest.TestCase):
         self.assertEqual(apply_gate["tone"], "ready")
         self.assertIn("review", [item["phase"] for item in context["provider_trail"]])
 
-    def test_context_exposes_failed_recovery_guidance_without_next_action(self) -> None:
+    def test_context_exposes_failed_recovery_guidance_as_safe_next_actions(self) -> None:
         planned = self.cli_json("plan", "--task", "failed handoff", "--mock")
         run_id = planned["run_id"]
         run_dir = self.repo / ".ai" / "runs" / run_id
@@ -252,15 +252,22 @@ class HandoffContextTest(unittest.TestCase):
 
         self.assertEqual(context["status"], "FAILED")
         self.assertEqual(context["current_phase"], "plan")
-        self.assertEqual(context["next_actions"], [])
+        next_action_names = [item["name"] for item in context["next_actions"]]
+        self.assertEqual(next_action_names, ["inspect_events", "inspect_artifacts", "start_new_task"])
+        self.assertTrue(all(item["safe"] for item in context["next_actions"]))
+        self.assertFalse(any(item["requires_human_confirmation"] for item in context["next_actions"]))
+        self.assertNotIn("continue", next_action_names)
+        self.assertNotIn("apply", next_action_names)
+        self.assertEqual(context["next_actions"][0]["kind"], "diagnostic_tab")
         self.assertEqual(context["failure_recovery"]["stage"], "plan")
         self.assertEqual(context["failure_recovery"]["suggested_next_action"], guidance)
         self.assertIn("PLAN.md", context["failure_recovery"]["artifacts"])
         activity = context["agent_activity"]
         self.assertEqual(activity["tone"], "failed")
-        self.assertIsNone(activity["next_action"])
+        self.assertEqual(activity["next_action"]["name"], "inspect_events")
+        self.assertEqual(activity["next_action"]["kind"], "diagnostic_tab")
         self.assertIn(guidance, activity["conversation_state"]["next_step"])
-        self.assertEqual(activity["conversation_state"]["suggestions"], [])
+        self.assertEqual([item["id"] for item in activity["conversation_state"]["suggestions"]], next_action_names)
         self.assertIn("修复", activity["conversation_state"]["composer_placeholder"])
 
     def test_context_can_merge_trace_when_requested_and_returns_cursors(self) -> None:
