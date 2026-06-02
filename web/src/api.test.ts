@@ -3,6 +3,7 @@ import {
   applyRun,
   applyConfigProfile,
   cleanupRun,
+  createProvider,
   createRun,
   fetchArtifact,
   fetchConfig,
@@ -162,5 +163,44 @@ describe("Patchbay API client", () => {
         body: JSON.stringify({ profile: "economy" })
       }
     ]);
+  });
+
+  it("creates custom providers and can activate economy routing", async () => {
+    const fetchMock = vi.fn(() => jsonResponse({ provider: "cheap_writer", activated_economy: true }));
+    const client = { fetch: fetchMock };
+
+    await createProvider(
+      {
+        provider_id: "cheap_writer",
+        roles: ["write", "fix"],
+        command: "deepseek-writer",
+        args: ["--json"],
+        prompt_mode: "stdin",
+        output_contract: "writer_diff",
+        activate_economy: true,
+        economy_model: "deepseek-chat",
+        economy_label: "DeepSeek cheap writer"
+      },
+      client
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/providers",
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider_id: "cheap_writer",
+          roles: ["write", "fix"],
+          command: "deepseek-writer",
+          args: ["--json"],
+          prompt_mode: "stdin",
+          output_contract: "writer_diff",
+          activate_economy: true,
+          economy_model: "deepseek-chat",
+          economy_label: "DeepSeek cheap writer"
+        })
+      })
+    );
   });
 });

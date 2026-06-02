@@ -265,6 +265,7 @@ function createClient(overrides: Partial<PatchbayClient> = {}): PatchbayClient {
       },
       next_actions: ["readiness", "start"]
     }),
+    createProvider: vi.fn().mockResolvedValue({ provider: "cheap_writer", activated_economy: true }),
     getDoctor: vi.fn().mockResolvedValue({
       ok: false,
       root: "C:/repo",

@@ -245,6 +245,8 @@ patchbay skill doctor codex
 patchbay skill print codex --json
 ```
 
+Skill host 参数也接受 `Codex Desktop`、`Codex CLI`、`Codex 桌面` 等 Codex 别名；返回结果仍使用 canonical `codex`。
+
 默认安装位置是 `$CODEX_HOME/skills` 或 `~/.codex/skills`。触发语包括“走多模型流程”和“multi-agent workflow”；MCP 工具仍需要单独注册。
 
 MCP 只是调用 `scripts.ai_flow.service` 中的同一套业务逻辑，不复制另一份流程。
@@ -329,7 +331,7 @@ python -m unittest discover -s tests -v
 
 ## 自定义 Provider 支持
 
-当前运行时已支持通过 `[providers.<id>]` 和 `patchbay config provider add-cli ...` 注册 CLI provider。对话式 Agent 也能用 `configure DeepSeek provider` 添加 DeepSeek CLI provider 模板，或用 `configure DeepSeek provider to <command>` 一步写入本机命令。若当前 economy writer/fix provider 缺少命令，doctor/readiness/setup 会返回 `configure_economy_provider_command` 动作，并可用 `configure economy provider command to <path>` 直接修复 `providers.<id>.command`。详见 [docs/custom-providers-plan.md](docs/custom-providers-plan.md) — 文档包含已实现的 CLI 基线，以及 HTTP/ACP 模式和更细安全约束的后续路线图。
+当前运行时已支持通过 `[providers.<id>]` 和 `patchbay config provider add-cli ...` 注册 CLI provider。Web API 的 `POST /api/providers` 也支持同一能力，可传 `activate_economy`、`economy_model`、`economy_label`，让桌面端一次添加低成本 provider 并把 write/fix 切到 economy 路由。对话式 Agent 也能用 `configure DeepSeek provider` 添加 DeepSeek CLI provider 模板，或用 `configure DeepSeek provider to <command>` 一步写入本机命令。若当前 economy writer/fix provider 缺少命令，doctor/readiness/setup 会返回 `configure_economy_provider_command` 动作，并可用 `configure economy provider command to <path>` 直接修复 `providers.<id>.command`。详见 [docs/custom-providers-plan.md](docs/custom-providers-plan.md) — 文档包含已实现的 CLI 基线，以及 HTTP/ACP 模式和更细安全约束的后续路线图。
 
 ## License
 

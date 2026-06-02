@@ -323,6 +323,9 @@ def _add_provider(root: Path, payload: dict[str, Any]) -> dict[str, Any]:
         provider_args=[str(arg) for arg in args],
         prompt_mode=str(payload.get("prompt_mode", "stdin")),
         output_contract=str(payload.get("output_contract", "")),
+        activate_economy=bool(payload.get("activate_economy", False)),
+        economy_model=str(payload.get("economy_model", "")),
+        economy_label=str(payload.get("economy_label", "")),
     )
 
 

@@ -237,6 +237,30 @@ class WebServerTest(unittest.TestCase):
         _, providers = self._request("GET", "/api/providers")
         self.assertIn("local_writer", providers["providers"])
 
+    def test_provider_endpoint_can_activate_economy_route(self) -> None:
+        payload = {
+            "provider_id": "cheap_writer",
+            "roles": ["write", "fix"],
+            "command": "deepseek-writer",
+            "args": ["--json"],
+            "prompt_mode": "stdin",
+            "output_contract": "writer_diff",
+            "activate_economy": True,
+            "economy_model": "deepseek-chat",
+            "economy_label": "DeepSeek cheap writer",
+        }
+
+        status, provider = self._request("POST", "/api/providers", payload)
+
+        self.assertEqual(status, 200)
+        self.assertEqual(provider["provider"], "cheap_writer")
+        self.assertTrue(provider["activated_economy"])
+        self.assertEqual(provider["economy_updated"]["phases.write.provider"], "cheap_writer")
+        self.assertEqual(provider["economy_updated"]["phases.fix.provider"], "cheap_writer")
+        self.assertEqual(provider["status"]["phase_strategy"]["write"]["provider"], "cheap_writer")
+        self.assertEqual(provider["status"]["phase_strategy"]["fix"]["model"], "deepseek-chat")
+        self.assertIn("action_groups", provider)
+
     def test_doctor_endpoint_can_suppress_mcp_followup_actions(self) -> None:
         from scripts.ai_flow import web_server
 

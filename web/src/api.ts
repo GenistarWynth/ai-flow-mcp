@@ -330,6 +330,30 @@ export type ConfigProfileStatus = {
   action_groups?: ActionGroup[];
 };
 
+export type CreateProviderPayload = {
+  provider_id: string;
+  roles: string[];
+  command: string;
+  args?: string[];
+  prompt_mode?: "stdin" | "arg" | "file" | string;
+  output_contract: "plan_json" | "review_verdict" | "worktree_diff" | "writer_diff" | string;
+  activate_economy?: boolean;
+  economy_model?: string;
+  economy_label?: string;
+};
+
+export type CreateProviderResult = {
+  config?: string;
+  provider?: string;
+  updated?: Record<string, unknown>;
+  activated_economy?: boolean;
+  economy_updated?: Record<string, unknown>;
+  status?: ConfigProfileStatus;
+  next_actions?: string[];
+  actions?: AgentHealthAction[];
+  action_groups?: ActionGroup[];
+};
+
 export type SetupResult = {
   ok?: boolean;
   dry_run?: boolean;
@@ -602,6 +626,7 @@ export type PatchbayClient = {
   getConfig(): Promise<unknown>;
   getConfigProfile(): Promise<ConfigProfileStatus>;
   applyConfigProfile(profile?: "economy" | string): Promise<ConfigProfileStatus>;
+  createProvider(payload: CreateProviderPayload): Promise<CreateProviderResult>;
   getDoctor(options?: { include_mcp?: boolean; skill_path?: string; host?: string; skip_mcp?: boolean }): Promise<DoctorReport>;
   runAction(runId: string, action: string): Promise<unknown>;
   apply(runId: string): Promise<unknown>;
@@ -708,6 +733,24 @@ export function applyConfigProfile(profile: "economy" | string = "economy", clie
   });
 }
 
+export function createProvider(payload: CreateProviderPayload, client?: ClientOptions) {
+  return requestJson<CreateProviderResult>("/api/providers", client, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      provider_id: payload.provider_id,
+      roles: payload.roles,
+      command: payload.command,
+      args: payload.args ?? [],
+      prompt_mode: payload.prompt_mode ?? "stdin",
+      output_contract: payload.output_contract,
+      activate_economy: Boolean(payload.activate_economy),
+      economy_model: payload.economy_model ?? "",
+      economy_label: payload.economy_label ?? ""
+    })
+  });
+}
+
 export function fetchDoctor(options: { include_mcp?: boolean; skill_path?: string; host?: string; skip_mcp?: boolean } = {}, client?: ClientOptions) {
   return requestJson<DoctorReport>(`/api/doctor${query(options)}`, client);
 }
@@ -737,6 +780,7 @@ export function createPatchbayClient(client?: ClientOptions): PatchbayClient {
     getConfig: () => fetchConfig(client),
     getConfigProfile: () => fetchConfigProfile(client),
     applyConfigProfile: (profile) => applyConfigProfile(profile, client),
+    createProvider: (payload) => createProvider(payload, client),
     getDoctor: (options) => fetchDoctor(options, client),
     runAction: (runId, action) => postRunAction(runId, action, client),
     apply: (runId) => applyRun(runId, client),
