@@ -614,6 +614,8 @@ test = []
         self.assertIn("patchbay setup without MCP", setup_capability["summary"])
         self.assertIn("install Codex Skill", setup_capability["summary"])
         self.assertIn("register MCP for Claude Desktop", setup_capability["summary"])
+        self.assertIn("recommendations", setup_capability["summary"])
+        self.assertIn("actions[]", setup_capability["summary"])
         custom_capability = next(item for item in response["capabilities"] if item["name"] == "custom-economy-provider")
         self.assertIn("configure DeepSeek provider to <command>", custom_capability["summary"])
         self.assertIn("configure economy provider command to <path>", custom_capability["summary"])

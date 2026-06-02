@@ -1503,7 +1503,7 @@ def _help_response(root: Path) -> dict[str, Any]:
     capabilities = [
         {
             "name": "setup",
-            "summary": "Send `patchbay setup` for Codex or `patchbay setup for Claude Desktop` / `install patchbay for Gemini CLI` to initialize project files, local config, Skill installation, host MCP guidance, and a doctor summary. Send `patchbay setup without MCP` for local-only setup, standalone `please don't use MCP` / `no MCP` for local_mode guidance, `install Codex Skill` for Skill-only setup, or `register MCP for Claude Desktop` for MCP-only registration.",
+            "summary": "Send `patchbay setup` for Codex or `patchbay setup for Claude Desktop` / `install patchbay for Gemini CLI` to initialize project files, local config, Skill installation, host MCP guidance, a doctor summary, top-level recommendations, and safe actions[]. Send `patchbay setup without MCP` for local-only setup, standalone `please don't use MCP` / `no MCP` for local_mode guidance, `install Codex Skill` for Skill-only setup, or `register MCP for Claude Desktop` for MCP-only registration.",
         },
         {
             "name": "start",
