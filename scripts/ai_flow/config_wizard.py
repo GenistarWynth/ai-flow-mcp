@@ -477,6 +477,8 @@ def _profile_actions(status: dict[str, Any], *, include_validate: bool = False) 
             else:
                 status = _first_not_ready_command_status(economy.get("command_status"))
                 source = str(status.get("source") or "providers.<id>.command")
+                if source.startswith("providers."):
+                    actions.append(_configure_provider_command_action(source, str(target.get("label") or "the configured")))
                 actions.append(
                     {
                         "id": "inspect_economy_provider_command",
@@ -487,8 +489,6 @@ def _profile_actions(status: dict[str, Any], *, include_validate: bool = False) 
                         "reason": "Inspect the command or provider setup for the configured economy target.",
                     }
                 )
-                if source.startswith("providers."):
-                    actions.append(_configure_provider_command_action(source, str(target.get("label") or "the configured")))
         else:
             actions.append(
                 {

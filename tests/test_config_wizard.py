@@ -378,6 +378,11 @@ model = "cheap-model"
         status = shown["economy"]["command_status"]["write"]
         self.assertEqual(status["status"], "not_found")
         self.assertEqual(status["source"], "providers.cheap_writer.command")
+        action_ids = [item["id"] for item in shown["actions"]]
+        self.assertLess(
+            action_ids.index("configure_economy_provider_command"),
+            action_ids.index("inspect_economy_provider_command"),
+        )
         actions = {item["id"]: item for item in shown["actions"]}
         self.assertIn("inspect_economy_provider_command", actions)
         self.assertEqual(

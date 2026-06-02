@@ -175,6 +175,11 @@ model = "cheap-model"
         self.assertEqual(profile["profile"], "economy")
         self.assertFalse(profile["economy"]["command_ready"])
         self.assertTrue(any("providers.cheap_writer.command" in item for item in result["recommendations"]))
+        action_ids = [item["id"] for item in result["actions"]]
+        self.assertLess(
+            action_ids.index("configure_economy_provider_command"),
+            action_ids.index("inspect_economy_provider_command"),
+        )
         actions = {item["id"]: item for item in result["actions"]}
         self.assertIn("inspect_economy_provider_command", actions)
         self.assertEqual(actions["configure_economy_provider_command"]["kind"], "command")

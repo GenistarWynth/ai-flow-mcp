@@ -893,8 +893,17 @@ test = []
         self.assertEqual(blocker["phase"], "write")
         self.assertEqual(blocker["source"], "providers.cheap_writer.command")
         self.assertIn("providers.cheap_writer.command", blocker["message"])
-        self.assertEqual(blocker["action"]["id"], "inspect_economy_provider_command")
+        self.assertEqual(blocker["action"]["id"], "configure_economy_provider_command")
+        self.assertEqual(
+            blocker["action"]["command"],
+            "patchbay config --set-key providers.cheap_writer.command --set-value <command>",
+        )
         self.assertEqual(status["routing_evidence"]["command_not_ready_phases"], ["write", "fix"])
+        action_ids = [item["id"] for item in status["routing_evidence"]["actions"]]
+        self.assertLess(
+            action_ids.index("configure_economy_provider_command"),
+            action_ids.index("inspect_economy_provider_command"),
+        )
         actions = {item["id"]: item for item in status["routing_evidence"]["actions"]}
         self.assertEqual(
             actions["configure_economy_provider_command"]["command"],
@@ -940,7 +949,11 @@ test = []
         blocker = status["blocked_next_action"]
         self.assertEqual(blocker["phase"], "fix")
         self.assertEqual(blocker["source"], "providers.cheap_fixer.command")
-        self.assertEqual(blocker["action"]["id"], "inspect_economy_provider_command")
+        self.assertEqual(blocker["action"]["id"], "configure_economy_provider_command")
+        self.assertEqual(
+            blocker["action"]["command"],
+            "patchbay config --set-key providers.cheap_fixer.command --set-value <command>",
+        )
 
     def test_writer_scope_rejects_unexplained_file_outside_plan(self) -> None:
         run_id = self.create_planned_run()

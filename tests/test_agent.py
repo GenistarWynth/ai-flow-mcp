@@ -1923,7 +1923,8 @@ model = "cheap-model"
         self.assertFalse(routing["economy_command_ready"])
         self.assertEqual(routing["command_not_ready_phases"], ["write", "fix"])
         self.assertEqual(routing["economy_health"]["next_action"], "inspect_economy_provider_command")
-        self.assertEqual(routing["actions"][0]["id"], "inspect_economy_provider_command")
+        self.assertEqual(routing["actions"][0]["id"], "configure_economy_provider_command")
+        self.assertEqual(routing["actions"][1]["id"], "inspect_economy_provider_command")
         self.assertEqual(routing["phases"]["write"]["command_status"]["source"], "providers.cheap_writer.command")
 
     def test_mcp_patchbay_agent_continue_without_run_returns_guidance(self) -> None:

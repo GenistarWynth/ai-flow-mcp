@@ -2160,7 +2160,12 @@ def _routing_health_actions(health: dict[str, Any]) -> list[dict[str, Any]]:
             }
         ]
     if next_action == "inspect_economy_provider_command":
-        actions = [
+        actions = []
+        status = _first_not_ready_command_status(health)
+        source = str(status.get("source") or "")
+        if source.startswith("providers."):
+            actions.append(_configure_provider_command_action(source, target_name))
+        actions.append(
             {
                 "id": "inspect_economy_provider_command",
                 "label": "Inspect provider command",
@@ -2169,11 +2174,7 @@ def _routing_health_actions(health: dict[str, Any]) -> list[dict[str, Any]]:
                 "safe": True,
                 "reason": f"Open readiness to inspect the configured {target_name} economy provider command.",
             }
-        ]
-        status = _first_not_ready_command_status(health)
-        source = str(status.get("source") or "")
-        if source.startswith("providers."):
-            actions.append(_configure_provider_command_action(source, target_name))
+        )
         return actions
     if next_action == "apply_economy_profile":
         return [

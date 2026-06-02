@@ -299,6 +299,8 @@ def _structured_actions(
     if economy.get("command_ready") is False and target.get("provider") != "reasonix_cli":
         status = _first_not_ready_command_status(economy.get("command_status"))
         source = str(status.get("source") or "providers.<id>.command")
+        if source.startswith("providers."):
+            actions.append(_configure_provider_command_action(source, target_name))
         actions.append(
             {
                 "id": "inspect_economy_provider_command",
@@ -309,8 +311,6 @@ def _structured_actions(
                 "reason": f"Inspect the configured command for the {target_name} economy provider.",
             }
         )
-        if source.startswith("providers."):
-            actions.append(_configure_provider_command_action(source, target_name))
     if next_actions or recommendations:
         actions.append(
             {
