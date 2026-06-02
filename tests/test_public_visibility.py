@@ -110,6 +110,15 @@ class PublicVisibilityTest(unittest.TestCase):
         self.assertIn("background", tools["patchbay_agent"]["inputSchema"]["properties"])
         self.assertIn("skill_path", tools["patchbay_setup"]["inputSchema"]["properties"])
 
+    def test_chinese_readme_surfaces_custom_economy_provider_agent_prompts(self) -> None:
+        text = (PROJECT_ROOT / "README.zh-CN.md").read_text(encoding="utf-8")
+
+        self.assertIn("configure DeepSeek provider", text)
+        self.assertIn("configure DeepSeek provider to <command>", text)
+        self.assertIn("configure economy provider command to <path>", text)
+        self.assertIn("configure_economy_provider_command", text)
+        self.assertIn("providers.<id>.command", text)
+
     def test_background_plan_returns_job_metadata(self) -> None:
         from scripts.ai_flow import service
         from scripts.ai_flow.mcp_server import patchbay_plan
