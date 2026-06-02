@@ -34,6 +34,8 @@ class DoctorTest(unittest.TestCase):
         actions = {item["id"]: item for item in result["actions"]}
         self.assertEqual(actions["probe_mcp"]["command"], "patchbay doctor --host codex --probe-mcp --json")
         self.assertEqual(actions["probe_mcp"]["host"], "codex")
+        action_groups = {item["id"]: item for item in result["action_groups"]}
+        self.assertIn("probe_mcp", action_groups["setup"]["action_ids"])
 
     def test_unified_doctor_can_suppress_mcp_followups_for_local_only_readiness(self) -> None:
         from scripts.ai_flow.doctor import run_doctor
@@ -141,6 +143,8 @@ provider = "mock"
         self.assertEqual(actions["configure_deepseek_provider"]["kind"], "local_agent")
         self.assertEqual(actions["configure_deepseek_provider"]["message"], "configure DeepSeek provider")
         self.assertNotIn("apply_economy_profile", actions)
+        action_groups = {item["id"]: item for item in result["action_groups"]}
+        self.assertIn("configure_reasonix_command", action_groups["routing"]["action_ids"])
 
     def test_doctor_recommends_custom_economy_provider_command(self) -> None:
         from scripts.ai_flow import service

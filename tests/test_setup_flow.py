@@ -65,6 +65,10 @@ class SetupFlowTest(unittest.TestCase):
         self.assertIn("configure reasonix command", result["next_actions"])
         actions = {item["id"]: item for item in result["actions"]}
         doctor_actions = {item["id"]: item for item in result["doctor"]["actions"]}
+        action_groups = {item["id"]: item for item in result["action_groups"]}
+        doctor_groups = {item["id"]: item for item in result["doctor"]["action_groups"]}
+        self.assertIn("configure_reasonix_command", action_groups["routing"]["action_ids"])
+        self.assertIn("configure_reasonix_command", doctor_groups["routing"]["action_ids"])
         self.assertNotIn("probe_mcp", actions)
         self.assertNotIn("install_mcp", actions)
         self.assertNotIn("register_mcp", actions)
@@ -310,6 +314,8 @@ model = "mock"
                 self.assertEqual(payload["setup_host"], "gemini")
                 self.assertTrue((skill_path / "patchbay" / "SKILL.md").exists())
                 actions = {item["id"]: item for item in payload["actions"]}
+                action_groups = {item["id"]: item for item in payload["action_groups"]}
+                self.assertIn("refresh_readiness", action_groups["setup"]["action_ids"])
                 self.assertNotIn("probe_mcp", actions)
                 self.assertNotIn("install_mcp", actions)
                 self.assertNotIn("register_mcp", actions)

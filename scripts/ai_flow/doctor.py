@@ -5,6 +5,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from .action_contract import group_actions
 from .config import config_path, example_config_path, find_project_root, load_config, route_label
 from .config_wizard import _configure_reasonix_action, _profile_status, _run_doctor as run_config_doctor
 from .mcp_install import normalize_mcp_host, run_mcp_doctor
@@ -123,6 +124,13 @@ def _summarize(root: Path, checks: dict[str, Any], *, host: str, suppress_mcp_ac
     next_actions = _next_actions(checks, host=normalized_host, suppress_mcp_actions=suppress_mcp_actions)
     recommendations = _recommendations(checks)
     routing = _routing_digest(checks)
+    actions = _structured_actions(
+        checks,
+        next_actions,
+        recommendations,
+        host=normalized_host,
+        suppress_mcp_actions=suppress_mcp_actions,
+    )
     ok = all(bool(checks.get(section, {}).get("ok")) for section in required_sections) and not next_actions
     summary = {
         "ok": ok,
@@ -131,13 +139,8 @@ def _summarize(root: Path, checks: dict[str, Any], *, host: str, suppress_mcp_ac
         "checks": checks,
         "next_actions": next_actions,
         "recommendations": recommendations,
-        "actions": _structured_actions(
-            checks,
-            next_actions,
-            recommendations,
-            host=normalized_host,
-            suppress_mcp_actions=suppress_mcp_actions,
-        ),
+        "actions": actions,
+        "action_groups": group_actions(actions),
     }
     if routing:
         summary["routing"] = routing

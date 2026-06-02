@@ -5,6 +5,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from .action_contract import group_actions
 from .errors import AiFlowError
 
 
@@ -28,24 +29,28 @@ def run_skill_install(
     skills_root = _skills_root(path)
     destination = skills_root / SKILL_NAME
     if dry_run:
+        actions = [_skill_doctor_action(path)]
         return {
             "host": "codex",
             "source": str(source),
             "destination": str(destination),
             "dry_run": True,
-            "actions": [_skill_doctor_action(path)],
+            "actions": actions,
+            "action_groups": group_actions(actions),
         }
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
         shutil.rmtree(destination)
     shutil.copytree(source, destination)
+    actions = [_skill_doctor_action(path)]
     return {
         "host": "codex",
         "source": str(source),
         "destination": str(destination),
         "installed": True,
         "note": "Restart or reload Codex so the new Skill metadata is discovered.",
-        "actions": [_skill_doctor_action(path)],
+        "actions": actions,
+        "action_groups": group_actions(actions),
     }
 
 
@@ -106,6 +111,7 @@ def run_skill_doctor(cwd: Path, host: str = "codex", *, path: str | Path | None 
         "doctor_command": "patchbay skill doctor codex",
         "next_actions": next_actions,
         "actions": actions,
+        "action_groups": group_actions(actions),
     }
 
 

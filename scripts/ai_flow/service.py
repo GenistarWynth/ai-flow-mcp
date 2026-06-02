@@ -2608,6 +2608,7 @@ def metrics(cwd: Path, run_id: str) -> dict[str, Any]:
     status_data = status(cwd, run_id)
     routing = status_data.get("routing_evidence", {})
     efficiency = status_data.get("efficiency_summary", {})
+    actions = routing.get("actions", []) if isinstance(routing, dict) else []
     return {
         "run_id": run_id,
         "status": status_data.get("status"),
@@ -2615,7 +2616,8 @@ def metrics(cwd: Path, run_id: str) -> dict[str, Any]:
         "effective_phase_providers": status_data.get("effective_phase_providers", {}),
         "routing_evidence": routing,
         "efficiency_summary": efficiency,
-        "actions": routing.get("actions", []) if isinstance(routing, dict) else [],
+        "actions": actions,
+        "action_groups": group_actions(actions),
         "run_metrics": status_data.get("run_metrics", {}),
     }
 

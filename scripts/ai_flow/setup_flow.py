@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from . import service
+from .action_contract import group_actions
 from .artifacts import read_text, write_text
 from .config import config_path, example_config_path, find_project_root
 from .doctor import run_doctor
@@ -81,6 +82,7 @@ def run_setup(
     if skip_mcp:
         next_actions = _without_mcp_followup_text(next_actions)
         actions = _without_mcp_followup_actions(actions)
+    actions = _dedupe_actions(actions)
     return {
         "ok": bool(doctor.get("ok")),
         "dry_run": dry_run,
@@ -95,7 +97,8 @@ def run_setup(
         "routing": doctor.get("routing"),
         "recommendations": recommendations,
         "next_actions": _dedupe(next_actions),
-        "actions": _dedupe_actions(actions),
+        "actions": actions,
+        "action_groups": group_actions(actions),
     }
 
 

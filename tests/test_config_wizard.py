@@ -288,11 +288,16 @@ class ConfigWizardTest(unittest.TestCase):
         self.assertEqual(actions["configure_reasonix_command"]["message"], "configure reasonix command")
         self.assertIn("commands.reasonix", actions["configure_reasonix_command"]["command"])
         self.assertEqual(actions["validate_config"]["command"], "patchbay config --doctor --json")
+        action_groups = {item["id"]: item for item in result["action_groups"]}
+        self.assertIn("configure_reasonix_command", action_groups["routing"]["action_ids"])
+        self.assertIn("validate_config", action_groups["setup"]["action_ids"])
 
         shown = run_config_wizard(self.tmp, show_profile=True)
         shown_actions = {item["id"]: item for item in shown["actions"]}
+        shown_groups = {item["id"]: item for item in shown["action_groups"]}
         self.assertEqual(shown["next_actions"], ["configure reasonix command", "readiness"])
         self.assertEqual(shown_actions["configure_reasonix_command"]["label"], "Configure Reasonix")
+        self.assertIn("configure_reasonix_command", shown_groups["routing"]["action_ids"])
 
     def test_custom_economy_profile_target_applies_without_reasonix_action(self) -> None:
         from scripts.ai_flow.config import load_config, resolve_phase
@@ -488,6 +493,8 @@ model = "mock"
         self.assertEqual(actions["apply_economy_profile"]["kind"], "local_agent")
         self.assertEqual(actions["apply_economy_profile"]["message"], "apply economy profile")
         self.assertTrue(actions["apply_economy_profile"]["safe"])
+        action_groups = {item["id"]: item for item in result["action_groups"]}
+        self.assertIn("apply_economy_profile", action_groups["routing"]["action_ids"])
 
     def test_profile_show_treats_command_key_mismatch_as_custom_route(self) -> None:
         from scripts.ai_flow.config_wizard import run_config_wizard

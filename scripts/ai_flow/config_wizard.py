@@ -14,6 +14,8 @@ from typing import Any
 
 import tomlkit
 
+from .action_contract import group_actions
+
 
 ECONOMY_PROFILE = {
     "profile": "economy",
@@ -147,12 +149,12 @@ def run_config_wizard(
 
     if show_profile:
         status = _profile_status(cfg)
-        return {
+        return _with_action_groups({
             "config": str(cfg_path),
             **status,
             "next_actions": _profile_next_actions(status),
             "actions": _profile_actions(status),
-        }
+        })
 
     if profile:
         return _apply_profile(cfg_path, cfg, profile)
@@ -296,6 +298,13 @@ def _add_cli_provider(
                 "actions": _profile_actions(status, include_validate=True),
             }
         )
+    return _with_action_groups(result)
+
+
+def _with_action_groups(result: dict[str, Any]) -> dict[str, Any]:
+    actions = result.get("actions")
+    if isinstance(actions, list):
+        result["action_groups"] = group_actions(actions)
     return result
 
 
@@ -427,7 +436,7 @@ def _apply_profile(cfg_path: Path, cfg: dict[str, Any], profile: str) -> dict[st
         status = _first_not_ready_command_status(economy.get("command_status"))
         source = str(status.get("source") or "providers.<id>.command")
         next_actions.insert(0, f"Set `{source}` to a runnable provider command.")
-    return {
+    return _with_action_groups({
         "config": str(cfg_path),
         "profile": name,
         "summary": definition["summary"],
@@ -437,7 +446,7 @@ def _apply_profile(cfg_path: Path, cfg: dict[str, Any], profile: str) -> dict[st
         "status": status,
         "next_actions": next_actions,
         "actions": _profile_actions(status, include_validate=True),
-    }
+    })
 
 
 def _profile_next_actions(status: dict[str, Any]) -> list[str]:

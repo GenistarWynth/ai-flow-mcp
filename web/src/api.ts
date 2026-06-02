@@ -302,6 +302,7 @@ export type DoctorReport = {
   next_actions?: string[];
   recommendations?: string[];
   actions?: AgentHealthAction[];
+  action_groups?: ActionGroup[];
 };
 
 export type ConfigProfileStatus = {
@@ -325,6 +326,7 @@ export type ConfigProfileStatus = {
   updated?: Record<string, unknown>;
   next_actions?: string[];
   actions?: AgentHealthAction[];
+  action_groups?: ActionGroup[];
 };
 
 export type SetupResult = {
@@ -346,6 +348,7 @@ export type SetupResult = {
   };
   next_actions?: string[];
   actions?: AgentHealthAction[];
+  action_groups?: ActionGroup[];
   [key: string]: unknown;
 };
 
@@ -533,6 +536,8 @@ export type AgentResponse = {
     run_metrics?: RunMetrics;
     routing_evidence?: RoutingEvidence;
     efficiency_summary?: EfficiencySummary;
+    actions?: AgentHealthAction[];
+    action_groups?: ActionGroup[];
     [key: string]: unknown;
   };
   capabilities?: { name: string; summary: string }[];

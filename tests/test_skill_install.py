@@ -165,10 +165,12 @@ class SkillInstallTest(unittest.TestCase):
         with patch.dict(os.environ, {"CODEX_HOME": str(self.tmp / "codex-home")}):
             default_before = run_skill_doctor(self.tmp)
         default_actions = {item["id"]: item for item in default_before["actions"]}
+        default_groups = {item["id"]: item for item in default_before["action_groups"]}
         self.assertEqual(default_actions["install_skill"]["kind"], "local_agent")
         self.assertEqual(default_actions["install_skill"]["message"], "install Codex Skill")
         self.assertEqual(default_actions["install_skill"]["host"], "codex")
         self.assertEqual(default_actions["install_skill"]["command"], "patchbay skill install codex")
+        self.assertIn("install_skill", default_groups["setup"]["action_ids"])
 
         target = self.tmp / "skills-root"
         before = run_skill_doctor(self.tmp, path=target)
@@ -179,17 +181,22 @@ class SkillInstallTest(unittest.TestCase):
         self.assertFalse(before["installed"])
         self.assertTrue(any("skill install codex" in action for action in before["next_actions"]))
         before_actions = {item["id"]: item for item in before["actions"]}
+        before_groups = {item["id"]: item for item in before["action_groups"]}
         self.assertEqual(before_actions["install_skill"]["kind"], "command")
         self.assertNotIn("message", before_actions["install_skill"])
         self.assertIn("patchbay skill install codex", before_actions["install_skill"]["command"])
         self.assertIn(str(target), before_actions["install_skill"]["command"])
         self.assertEqual(before_actions["refresh_skill_doctor"]["kind"], "command")
         self.assertIn("--json", before_actions["refresh_skill_doctor"]["command"])
+        self.assertIn("install_skill", before_groups["setup"]["action_ids"])
+        self.assertIn("refresh_skill_doctor", before_groups["setup"]["action_ids"])
 
         installed = run_skill_install(self.tmp, path=target)
         installed_actions = {item["id"]: item for item in installed["actions"]}
+        installed_groups = {item["id"]: item for item in installed["action_groups"]}
         self.assertIn("refresh_skill_doctor", installed_actions)
         self.assertIn(str(target), installed_actions["refresh_skill_doctor"]["command"])
+        self.assertIn("refresh_skill_doctor", installed_groups["setup"]["action_ids"])
         after = run_skill_doctor(self.tmp, path=target)
         self.assertTrue(after["ok"])
         self.assertTrue(after["ready"])
@@ -198,6 +205,7 @@ class SkillInstallTest(unittest.TestCase):
         self.assertEqual(Path(after["destination"]), target / "patchbay")
         self.assertEqual(after["next_actions"], [])
         self.assertEqual(after["actions"], [])
+        self.assertEqual(after["action_groups"], [])
 
 
 if __name__ == "__main__":
