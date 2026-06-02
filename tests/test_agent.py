@@ -677,6 +677,7 @@ test = []
         self.assertIn("capabilities", response)
         self.assertIn("setup", response["next_actions"])
         self.assertIn("setup without MCP", response["next_actions"])
+        self.assertIn("local mode", response["next_actions"])
         self.assertIn("readiness", response["next_actions"])
         self.assertIn("install Codex Skill", response["next_actions"])
         self.assertIn("register MCP for Claude Desktop", response["next_actions"])
@@ -706,6 +707,9 @@ test = []
         self.assertEqual(actions["run_setup"]["host"], "codex")
         self.assertEqual(actions["run_local_setup"]["message"], "patchbay setup without MCP")
         self.assertEqual(actions["run_local_setup"]["host"], "codex")
+        self.assertEqual(actions["use_local_mode"]["kind"], "local_agent")
+        self.assertEqual(actions["use_local_mode"]["message"], "走本地模式，不走 MCP")
+        self.assertEqual(actions["use_local_mode"]["host"], "codex")
         self.assertEqual(actions["install_skill_only"]["message"], "install Codex Skill")
         self.assertEqual(actions["install_skill_only"]["host"], "codex")
         self.assertEqual(actions["setup_claude_code"]["message"], "patchbay setup for claude-code")
@@ -733,6 +737,8 @@ test = []
         self.assertEqual(actions["configure_reasonix_command"]["message"], "configure reasonix command")
         self.assertIn("commands.reasonix", actions["configure_reasonix_command"]["command"])
         self.assertEqual(actions["show_runs"]["message"], "status")
+        action_groups = {item["id"]: item for item in response["action_groups"]}
+        self.assertIn("use_local_mode", action_groups["setup"]["action_ids"])
         self.assertTrue(all(item["safe"] for item in actions.values()))
         self.assertFalse((self.repo / ".ai" / "runs").exists())
 

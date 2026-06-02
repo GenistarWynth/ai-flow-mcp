@@ -1619,6 +1619,7 @@ def _help_next_actions(target: dict[str, Any]) -> list[str]:
     actions = [
         "setup",
         "setup without MCP",
+        "local mode",
         "install Codex Skill",
         "register MCP for Claude Desktop",
         "start",
@@ -1652,6 +1653,15 @@ def _help_actions(target: dict[str, Any]) -> list[dict[str, Any]]:
             "host": "codex",
             "safe": True,
             "reason": "Initialize local config and Codex Skill installation without attempting MCP host registration.",
+        },
+        {
+            "id": "use_local_mode",
+            "label": "Use local mode",
+            "kind": "local_agent",
+            "message": "走本地模式，不走 MCP",
+            "host": "codex",
+            "safe": True,
+            "reason": "Switch the conversational flow to local CLI/Skill actions and hide MCP probe/register follow-ups.",
         },
         {
             "id": "install_skill_only",
