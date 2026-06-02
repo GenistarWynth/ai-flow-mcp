@@ -18,6 +18,9 @@ from .skill_install import run_skill_doctor, run_skill_install, run_skill_print
 from .web_server import serve as serve_web
 
 
+SKILL_HOST_HELP = "Skill host or Codex alias: codex, Codex CLI, Codex Desktop, Codex 桌面."
+
+
 def config_wizard_run(cwd: Path, args: argparse.Namespace) -> Any:
     config_command = getattr(args, "config_command", "")
     if config_command == "show":
@@ -341,15 +344,15 @@ def build_parser() -> argparse.ArgumentParser:
     skill = sub.add_parser("skill", help="Install, inspect, or validate the Patchbay Codex Skill bundle.")
     skill_sub = skill.add_subparsers(dest="skill_command")
     skill_install = skill_sub.add_parser("install", help="Install Patchbay as a Codex Skill.")
-    skill_install.add_argument("host", nargs="?", default="codex", help="Skill host: codex.")
+    skill_install.add_argument("host", nargs="?", default="codex", help=SKILL_HOST_HELP)
     skill_install.add_argument("--path", default="", help="Destination skills root; defaults to $CODEX_HOME/skills or ~/.codex/skills.")
     skill_install.add_argument("--dry-run", action="store_true", help="Show destination without copying files.")
     _add_json(skill_install)
     skill_print = skill_sub.add_parser("print", help="Print the Patchbay Skill files for inspection.")
-    skill_print.add_argument("host", nargs="?", default="codex", help="Skill host: codex.")
+    skill_print.add_argument("host", nargs="?", default="codex", help=SKILL_HOST_HELP)
     _add_json(skill_print)
     skill_doctor = skill_sub.add_parser("doctor", help="Validate bundled and installed Patchbay Skill state.")
-    skill_doctor.add_argument("host", nargs="?", default="codex", help="Skill host: codex.")
+    skill_doctor.add_argument("host", nargs="?", default="codex", help=SKILL_HOST_HELP)
     skill_doctor.add_argument("--path", default="", help="Destination skills root; defaults to $CODEX_HOME/skills or ~/.codex/skills.")
     _add_json(skill_doctor)
 

@@ -130,6 +130,28 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertIn("ai_flow_config_profile_apply", TOOLS)
         self.assertIn("ai_flow_config_profile_show", TOOLS)
 
+    def test_skill_parser_accepts_codex_aliases(self) -> None:
+        import contextlib
+        import io
+
+        from scripts.ai_flow.cli import build_parser
+
+        parser = build_parser()
+        install = parser.parse_args(["skill", "install", "Codex Desktop", "--dry-run", "--json"])
+        self.assertEqual(install.host, "Codex Desktop")
+        self.assertTrue(install.dry_run)
+
+        doctor = parser.parse_args(["skill", "doctor", "Codex 桌面", "--path", "C:/tmp/skills", "--json"])
+        self.assertEqual(doctor.host, "Codex 桌面")
+        self.assertEqual(doctor.path, "C:/tmp/skills")
+
+        help_output = io.StringIO()
+        with self.assertRaises(SystemExit) as exit_info, contextlib.redirect_stdout(help_output):
+            parser.parse_args(["skill", "install", "--help"])
+        self.assertEqual(exit_info.exception.code, 0)
+        self.assertIn("Codex Desktop", help_output.getvalue())
+        self.assertIn("Codex 桌面", help_output.getvalue())
+
     def test_mcp_initialize(self) -> None:
         from scripts.ai_flow.mcp_server import handle
         response = handle({"method": "initialize", "id": 1, "params": {}})

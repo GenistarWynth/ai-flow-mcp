@@ -140,6 +140,33 @@ class SkillInstallTest(unittest.TestCase):
         self.assertTrue(result["dry_run"])
         self.assertFalse((target / "patchbay").exists())
 
+    def test_skill_commands_accept_codex_host_aliases(self) -> None:
+        from scripts.ai_flow.skill_install import run_skill_doctor, run_skill_install, run_skill_print
+
+        target = self.tmp / "skills-root"
+        install = run_skill_install(self.tmp, host="Codex 桌面", path=target, dry_run=True)
+        self.assertEqual(install["host"], "codex")
+        self.assertTrue(install["dry_run"])
+
+        printed = run_skill_print(self.tmp, host="Codex Desktop")
+        self.assertEqual(printed["host"], "codex")
+        self.assertIn("SKILL.md", printed["files"])
+
+        doctor = run_skill_doctor(self.tmp, host="Codex CLI", path=target)
+        self.assertEqual(doctor["host"], "codex")
+        self.assertTrue(doctor["ok"])
+
+    def test_skill_commands_reject_non_codex_hosts(self) -> None:
+        from scripts.ai_flow.errors import AiFlowError
+        from scripts.ai_flow.skill_install import run_skill_doctor
+
+        with self.assertRaises(AiFlowError) as raised:
+            run_skill_doctor(self.tmp, host="Claude Desktop", path=self.tmp / "skills-root")
+
+        self.assertEqual(raised.exception.stage, "skill")
+        self.assertIn("Only the Codex Skill currently supports diagnostics", str(raised.exception))
+        self.assertIn("Accepted Codex aliases", str(raised.exception))
+
     def test_cli_skill_doctor_json_reports_ready_state(self) -> None:
         script = PROJECT_ROOT / "scripts" / "patchbay"
         target = self.tmp / "skills-root"

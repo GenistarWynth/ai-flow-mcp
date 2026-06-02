@@ -7,9 +7,11 @@ from typing import Any
 
 from .action_contract import group_actions
 from .errors import AiFlowError
+from .mcp_install import normalize_mcp_host
 
 
 SKILL_NAME = "patchbay"
+CODEX_SKILL_HOST_ALIASES = "codex, Codex CLI, Codex Desktop, Codex 桌面, OpenAI Codex"
 SKILL_SOURCE_CANDIDATES = [
     Path(__file__).resolve().parent / "skill_templates" / SKILL_NAME,
     Path(__file__).resolve().parents[2] / "skills" / SKILL_NAME,
@@ -23,8 +25,7 @@ def run_skill_install(
     path: str | Path | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    if host.lower() != "codex":
-        raise AiFlowError("Only Codex Skill installation is currently supported.", stage="skill")
+    _normalize_skill_host(host, action="installation")
     source = _skill_source()
     skills_root = _skills_root(path)
     destination = skills_root / SKILL_NAME
@@ -55,8 +56,7 @@ def run_skill_install(
 
 
 def run_skill_print(cwd: Path, host: str = "codex") -> dict[str, Any]:
-    if host.lower() != "codex":
-        raise AiFlowError("Only Codex Skill printing is currently supported.", stage="skill")
+    _normalize_skill_host(host, action="printing")
     source = _skill_source()
     files: dict[str, str] = {}
     for file_path in sorted(source.rglob("*")):
@@ -66,8 +66,7 @@ def run_skill_print(cwd: Path, host: str = "codex") -> dict[str, Any]:
 
 
 def run_skill_doctor(cwd: Path, host: str = "codex", *, path: str | Path | None = None) -> dict[str, Any]:
-    if host.lower() != "codex":
-        raise AiFlowError("Only Codex Skill diagnostics are currently supported.", stage="skill")
+    _normalize_skill_host(host, action="diagnostics")
     source = _find_skill_source()
     skills_root = _skills_root(path)
     destination = skills_root / SKILL_NAME
@@ -113,6 +112,27 @@ def run_skill_doctor(cwd: Path, host: str = "codex", *, path: str | Path | None 
         "actions": actions,
         "action_groups": group_actions(actions),
     }
+
+
+def _normalize_skill_host(host: str | None, *, action: str) -> str:
+    raw = str(host or "codex").strip() or "codex"
+    try:
+        normalized = normalize_mcp_host(raw, strict=True)
+    except AiFlowError as exc:
+        raise AiFlowError(
+            f"Unknown Skill host: {raw}. Only the Codex Skill currently supports {action}. "
+            f"Accepted Codex aliases: {CODEX_SKILL_HOST_ALIASES}.",
+            stage="skill",
+            suggested_next_action='Run `patchbay skill install codex` or `patchbay skill install "Codex Desktop"`.',
+        ) from exc
+    if normalized != "codex":
+        raise AiFlowError(
+            f"Only the Codex Skill currently supports {action}; {raw} is an MCP host, not a Codex Skill host. "
+            f"Accepted Codex aliases: {CODEX_SKILL_HOST_ALIASES}.",
+            stage="skill",
+            suggested_next_action='Run `patchbay skill install codex` or `patchbay skill install "Codex Desktop"`.',
+        )
+    return normalized
 
 
 def _skills_root(path: str | Path | None) -> Path:
