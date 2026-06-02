@@ -2587,6 +2587,7 @@ def _profile_apply_response(root: Path) -> dict[str, Any]:
     reply += f" {routing['summary']}"
     if routing.get("economy_command_ready") is False:
         reply += " " + _economy_command_not_ready_sentence(routing)
+    reply = _with_workload_policy_summary(reply, routing)
     return _stateless_response(
         action="profile_apply",
         reply=reply,
@@ -2621,6 +2622,7 @@ def _custom_provider_setup_response(root: Path, message: str) -> dict[str, Any]:
         )
         if routing.get("economy_command_ready") is False:
             reply += " " + _economy_command_not_ready_sentence(routing)
+        reply = _with_workload_policy_summary(reply, routing)
         return _stateless_response(
             action="custom_provider_configure",
             reply=reply,
@@ -2916,12 +2918,21 @@ def _routing_preview(root: Path) -> dict[str, Any]:
         reply += " " + str(result.get("recommendation") or "Run `patchbay config profile apply economy`.")
     elif routing.get("economy_command_ready") is False:
         reply += " " + _economy_command_not_ready_sentence(routing)
+    reply = _with_workload_policy_summary(reply, routing)
     return {
         "profile": result,
         "routing": routing,
         "actions": list(result.get("actions") or []),
         "reply_suffix": reply,
     }
+
+
+def _with_workload_policy_summary(reply: str, routing: dict[str, Any]) -> str:
+    workload_policy = routing.get("workload_policy") if isinstance(routing.get("workload_policy"), dict) else {}
+    workload_summary = str(workload_policy.get("summary") or "").strip()
+    if workload_summary and workload_summary not in reply:
+        reply += " " + workload_summary
+    return reply
 
 
 def _stateless_response(

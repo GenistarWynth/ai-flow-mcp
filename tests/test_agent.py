@@ -344,6 +344,9 @@ test = []
         self.assertIn("simple", shown["routing"]["workload_policy"]["summary"].lower())
         self.assertIn("low-cost", shown["routing"]["workload_policy"]["summary"].lower())
         self.assertIn("config profile apply economy", shown["reply"])
+        self.assertIn("write/fix", shown["reply"])
+        self.assertIn("low-cost", shown["reply"])
+        self.assertIn("plan/review", shown["reply"])
         shown_actions = {item["id"]: item for item in shown["actions"]}
         self.assertEqual(shown_actions["apply_economy_profile"]["kind"], "local_agent")
         self.assertEqual(shown_actions["apply_economy_profile"]["message"], "apply economy profile")
@@ -360,6 +363,8 @@ test = []
         self.assertEqual(applied["routing"]["workload_policy"]["target_label"], "Reasonix/DeepSeek")
         self.assertEqual(applied["routing"]["workload_policy"]["phase_roles"]["write"], "economy")
         self.assertEqual(applied["routing"]["workload_policy"]["phase_roles"]["review"], "supervision")
+        self.assertIn("write/fix", applied["reply"])
+        self.assertIn("plan/review", applied["reply"])
         self.assertEqual(applied["routing"]["phases"]["write"]["command_status"]["status"], "missing_config")
         self.assertIn("commands.reasonix", applied["reply"])
         self.assertEqual(applied["routing"]["command_not_ready_phases"], ["write", "fix"])
