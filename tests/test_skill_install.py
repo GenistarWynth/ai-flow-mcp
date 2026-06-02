@@ -64,6 +64,13 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("configure DeepSeek provider", result["files"]["SKILL.md"])
         self.assertIn("configure DeepSeek provider to <command>", result["files"]["SKILL.md"])
         self.assertIn("providers.<id>.command", result["files"]["SKILL.md"])
+        local_prompt_list = result["files"]["SKILL.md"].split(
+            "- `patchbay_agent` for conversational setup/start/resume/advance while preserving gates. It also answers explicit local prompts such as ",
+            1,
+        )[1].split(" with setup results", 1)[0]
+        self.assertIn("configure DeepSeek provider", local_prompt_list)
+        self.assertIn("configure DeepSeek provider to <command>", local_prompt_list)
+        self.assertIn("configure economy provider command to <path>", local_prompt_list)
         self.assertIn("配置 Reasonix 命令", result["files"]["SKILL.md"])
         self.assertIn("把 Reasonix 命令设为 <path>", result["files"]["SKILL.md"])
         self.assertIn("command_not_ready", result["files"]["SKILL.md"])
