@@ -855,20 +855,20 @@ describe("Workbench", () => {
           },
           actions: [
             {
-              id: "inspect_economy_provider_command",
-              label: "Inspect provider command",
-              kind: "local_agent",
-              message: "readiness",
-              safe: true,
-              reason: "Open readiness to inspect the configured Cheap writer economy provider command."
-            },
-            {
               id: "configure_economy_provider_command",
               label: "Copy provider command",
               kind: "command",
               command,
               safe: true,
               reason: "Copy the command for the Cheap writer economy provider into .ai/patchbay.toml."
+            },
+            {
+              id: "inspect_economy_provider_command",
+              label: "Inspect provider command",
+              kind: "local_agent",
+              message: "readiness",
+              safe: true,
+              reason: "Open readiness to inspect the configured Cheap writer economy provider command."
             }
           ]
         }

@@ -181,20 +181,20 @@ class HandoffContextTest(unittest.TestCase):
                     },
                     "actions": [
                         {
-                            "id": "inspect_economy_provider_command",
-                            "label": "Inspect provider command",
-                            "kind": "local_agent",
-                            "message": "readiness",
-                            "safe": True,
-                            "reason": "Inspect the configured command.",
-                        },
-                        {
                             "id": "configure_economy_provider_command",
                             "label": "Copy provider command",
                             "kind": "command",
                             "command": "patchbay config --set-key providers.cheap_writer.command --set-value <command>",
                             "safe": True,
                             "reason": "Copy the command fix.",
+                        },
+                        {
+                            "id": "inspect_economy_provider_command",
+                            "label": "Inspect provider command",
+                            "kind": "local_agent",
+                            "message": "readiness",
+                            "safe": True,
+                            "reason": "Inspect the configured command.",
                         },
                     ],
                 }
