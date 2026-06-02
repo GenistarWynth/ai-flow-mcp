@@ -495,7 +495,8 @@ def _tool_schema(name: str) -> dict[str, Any]:
         "patchbay_diff": "Return the current FINAL.diff for the run.",
         "patchbay_apply": "Apply the reviewed patch to the original repository (no LLM executor).",
     }
-    description = descriptions.get(name, name.replace("_", " "))
+    canonical_name = _canonical_description_name(name)
+    description = descriptions.get(canonical_name, name.replace("_", " "))
     if name in LEGACY_TOOLS:
         description += " (legacy ai-flow alias — use patchbay_* names for new integrations)"
     return {
@@ -507,6 +508,14 @@ def _tool_schema(name: str) -> dict[str, Any]:
             "required": required,
         },
     }
+
+
+def _canonical_description_name(name: str) -> str:
+    if name not in LEGACY_TOOLS:
+        return name
+    if name.startswith("ai_flow_"):
+        return "patchbay_" + name[len("ai_flow_") :]
+    return name
 
 
 def _response(request_id: Any, result: Any) -> dict[str, Any]:

@@ -1706,6 +1706,11 @@ class McpSchemaTests(unittest.TestCase):
         self.assertIn("legacy", tools["ai_flow_plan"].lower())
         self.assertIn("ai_flow_install", tools)
         self.assertIn("legacy", tools["ai_flow_install"].lower())
+        self.assertIn("Primary conversational Patchbay Agent", tools["ai_flow_agent"])
+        self.assertIn("initialize patchbay", tools["ai_flow_install"].lower())
+        self.assertIn("Codex Desktop", tools["ai_flow_skill_install"])
+        self.assertIn("Codex 桌面", tools["ai_flow_skill_install"])
+        self.assertIn("economy write/fix route", tools["ai_flow_config_provider_add_cli"])
 
     def test_canonical_and_legacy_names_both_present(self) -> None:
         from scripts.ai_flow.mcp_server import handle
