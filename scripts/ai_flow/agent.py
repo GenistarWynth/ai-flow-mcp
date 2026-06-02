@@ -1781,7 +1781,12 @@ def _setup_response(root: Path, message: str) -> dict[str, Any]:
         ok=bool(result.get("ok")),
         error=None if result.get("ok") else reply,
         next_actions=next_actions or ["readiness", "start"],
-        extra={"setup": result, "setup_host": result.get("setup_host") or host, "actions": actions},
+        extra={
+            "setup": result,
+            "setup_host": result.get("setup_host") or host,
+            "routing": result.get("routing"),
+            "actions": actions,
+        },
     )
 
 

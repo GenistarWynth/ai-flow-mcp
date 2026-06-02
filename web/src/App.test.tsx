@@ -3297,12 +3297,31 @@ describe("Workbench", () => {
   });
 
   it("runs local-only setup from the readiness panel without creating a run", async () => {
+    const setupRouting = {
+      profile: "economy",
+      economy_configured: true,
+      target: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix", label: "Reasonix/DeepSeek" },
+      summary: "Economy routing profile is active: write reasonix_cli / deepseek-v4-pro, fix reasonix_cli / deepseek-v4-pro.",
+      phases: {
+        write: { configured: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" }, configured_economy: true },
+        fix: { configured: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" }, configured_economy: true }
+      },
+      workload_policy: {
+        summary: "Simple high-volume write/fix work uses the low-cost Reasonix/DeepSeek route; plan/review stay on supervision models.",
+        target_label: "Reasonix/DeepSeek",
+        economy_phases: ["write", "fix"],
+        supervision_phases: ["plan", "review"],
+        phase_roles: { plan: "supervision", write: "economy", fix: "economy", review: "supervision" }
+      }
+    };
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: null,
       action: "setup",
       ok: true,
       reply: "Patchbay local setup completed.",
+      routing: setupRouting,
       setup: {
+        routing: setupRouting,
         doctor: {
           ok: true,
           root: "C:/repo",
@@ -3328,6 +3347,9 @@ describe("Workbench", () => {
     await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("patchbay setup without MCP"));
     expect(agentMessage).not.toHaveBeenCalledWith("patchbay setup");
     expect(await screen.findByText("环境就绪")).toBeVisible();
+    const routingResult = await screen.findByLabelText("Routing result");
+    expect(within(routingResult).getByText("Simple high-volume write/fix work uses the low-cost Reasonix/DeepSeek route; plan/review stay on supervision models.")).toBeVisible();
+    expect(within(routingResult).getByText("write/fix → Reasonix/DeepSeek")).toBeVisible();
     expect(client.getStatus).not.toHaveBeenCalled();
   });
 

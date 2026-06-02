@@ -90,6 +90,7 @@ def run_setup(
         "skill": skill,
         "mcp": mcp,
         "doctor": doctor,
+        "routing": doctor.get("routing"),
         "next_actions": _dedupe(next_actions),
         "actions": _dedupe_actions(actions),
     }

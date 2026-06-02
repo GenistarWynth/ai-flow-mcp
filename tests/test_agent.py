@@ -658,6 +658,9 @@ test = []
         self.assertTrue(response["ok"])
         self.assertIsNone(response["run_id"])
         self.assertIn("setup", response)
+        self.assertIn("routing", response)
+        self.assertEqual(response["routing"], response["setup"]["routing"])
+        self.assertEqual(response["routing"]["workload_policy"]["economy_phases"], ["write", "fix"])
         self.assertTrue((codex_home / "skills" / "patchbay" / "SKILL.md").exists())
         runs_path = self.repo / ".ai" / "runs"
         self.assertFalse(runs_path.exists() and any(runs_path.iterdir()))

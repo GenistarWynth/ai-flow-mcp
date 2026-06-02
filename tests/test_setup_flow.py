@@ -56,6 +56,11 @@ class SetupFlowTest(unittest.TestCase):
         self.assertTrue(result["config"]["created"])
         self.assertTrue(result["skill"]["installed"])
         self.assertTrue(result["doctor"]["ok"])
+        self.assertIn("routing", result)
+        self.assertEqual(result["routing"], result["doctor"]["routing"])
+        self.assertEqual(result["routing"]["profile"], "economy")
+        self.assertEqual(result["routing"]["workload_policy"]["economy_phases"], ["write", "fix"])
+        self.assertEqual(result["routing"]["workload_policy"]["supervision_phases"], ["plan", "review"])
         actions = {item["id"]: item for item in result["actions"]}
         doctor_actions = {item["id"]: item for item in result["doctor"]["actions"]}
         self.assertNotIn("probe_mcp", actions)
