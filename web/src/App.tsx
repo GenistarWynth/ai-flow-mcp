@@ -1718,6 +1718,26 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }
   };
 
+  const runGenericLocalAgentAction = async (message: string) => {
+    if (!message || profileInFlight) return;
+    setError("");
+    setProfileInFlight(true);
+    try {
+      const response = await client.agentMessage(message, { include: { plan: true }, background: true });
+      if (selectedRun) appendLocalAgentReply(response);
+      else setNewTaskReply(response);
+      if (response.run_id && isLatestRunReadOnlyResponse(response)) {
+        await refreshRun(response.run_id, response);
+      } else {
+        await loadRuns(selectedRun || undefined, { autoSelect: false });
+      }
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setProfileInFlight(false);
+    }
+  };
+
   const openReadinessAction = async (force = false, host: SetupHostOption = readinessHost, skipMcp = localOnlyMode) => {
     if (skipMcp) setLocalOnlyMode(true);
     if (host.id !== readinessHost.id) {
@@ -1921,6 +1941,10 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       } catch (err) {
         setError(String(err));
       }
+      return;
+    }
+    if (action.message) {
+      await runGenericLocalAgentAction(action.message);
     }
   };
 

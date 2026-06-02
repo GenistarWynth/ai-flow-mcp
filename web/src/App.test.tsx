@@ -2843,6 +2843,61 @@ describe("Workbench", () => {
     expect(client.apply).not.toHaveBeenCalled();
   });
 
+  it("runs DeepSeek provider help actions through the local Agent", async () => {
+    const agentMessage = vi
+      .fn()
+      .mockResolvedValueOnce({
+        run_id: "run-ready",
+        action: "help",
+        ok: true,
+        reply: "DeepSeek provider setup is available.",
+        actions: [
+          {
+            id: "configure_deepseek_provider",
+            label: "Configure DeepSeek provider",
+            kind: "local_agent",
+            message: "configure DeepSeek provider",
+            safe: true,
+            reason: "Configure a cheap writer/fixer provider for high-volume work."
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        run_id: null,
+        action: "custom_provider_configure",
+        ok: true,
+        reply: "Provide the DeepSeek writer command.",
+        next_actions: []
+      });
+    const client = createClient({ agentMessage });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(composer, "help{enter}");
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith("help", {
+        runId: "run-ready",
+        include: { diff: true, review: true },
+        background: true
+      })
+    );
+    const localActions = await screen.findByLabelText("Agent 建议动作");
+    await userEvent.click(within(localActions).getByRole("button", { name: "Configure DeepSeek provider" }));
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith("configure DeepSeek provider", {
+        include: { plan: true },
+        background: true
+      })
+    );
+    expect(await screen.findByText("Provide the DeepSeek writer command.")).toBeVisible();
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
   it("preserves no-MCP setup action messages from local agent replies", async () => {
     const agentMessage = vi
       .fn()
