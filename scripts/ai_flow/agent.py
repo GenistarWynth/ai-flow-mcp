@@ -575,9 +575,15 @@ def mark_finished(run_dir, code):
         job["exit_code"] = code
         job["finished_at"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
         job["finished_at_epoch"] = time.time()
-        with job_path.open("w", encoding="utf-8", newline="\\n") as handle:
-            json.dump(job, handle, indent=2, ensure_ascii=False, sort_keys=True)
-            handle.write("\\n")
+        temp_path = job_path.with_name(f".{job_path.name}.{os.getpid()}.{time.time_ns()}.tmp")
+        try:
+            with temp_path.open("w", encoding="utf-8", newline="\\n") as handle:
+                json.dump(job, handle, indent=2, ensure_ascii=False, sort_keys=True)
+                handle.write("\\n")
+            temp_path.replace(job_path)
+        finally:
+            if temp_path.exists():
+                temp_path.unlink()
     except FileNotFoundError:
         pass
     except Exception:
@@ -2957,7 +2963,7 @@ def _agent_response(
         "reply": reply,
         "run_id": run_id,
         "status": current,
-        "context": service.context(root, run_id, since_event=since, include_trace=include_trace),
+        "context": service.context(root, run_id, since_event=since, include_trace=include_trace, status_data=current),
         "events": service.events(root, run_id, since=since, phase=effective_include.get("event_phase") or None),
         "artifacts": _included_artifacts(root, run_id, effective_include),
         "diff": service.diff(root, run_id) if effective_include.get("diff") else None,

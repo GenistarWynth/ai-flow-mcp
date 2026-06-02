@@ -35,6 +35,7 @@ from .artifacts import (
     read_text,
     run_dir as artifact_run_dir,
     write_json,
+    write_json_atomic,
     write_text,
 )
 from .config import (
@@ -248,7 +249,7 @@ def _job_status_without_status(root: Path, run_id: str, job: dict[str, Any]) -> 
 
 
 def _record_job(run_path: Path, data: dict[str, Any]) -> None:
-    write_json(_job_path(run_path), data)
+    write_json_atomic(_job_path(run_path), data)
 
 
 def summarize_background_job(job: dict[str, Any]) -> dict[str, Any]:
@@ -339,9 +340,15 @@ def mark_finished(run_dir, code):
         job["exit_code"] = code
         job["finished_at"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
         job["finished_at_epoch"] = time.time()
-        with job_path.open("w", encoding="utf-8", newline="\\n") as handle:
-            json.dump(job, handle, indent=2, ensure_ascii=False, sort_keys=True)
-            handle.write("\\n")
+        temp_path = job_path.with_name(f".{job_path.name}.{os.getpid()}.{time.time_ns()}.tmp")
+        try:
+            with temp_path.open("w", encoding="utf-8", newline="\\n") as handle:
+                json.dump(job, handle, indent=2, ensure_ascii=False, sort_keys=True)
+                handle.write("\\n")
+            temp_path.replace(job_path)
+        finally:
+            if temp_path.exists():
+                temp_path.unlink()
     except FileNotFoundError:
         pass
     except Exception:
@@ -2578,11 +2585,13 @@ def context(
     since_event: int = 0,
     since_trace: int = 0,
     include_trace: bool = False,
+    status_data: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return a unified run handoff digest for CLI, MCP, and web clients."""
     root = resolve_root(cwd)
     run_path = _run_path_for_read(root, run_id)
-    status_data = status(root, run_id)
+    if status_data is None:
+        status_data = status(root, run_id)
     return build_handoff_context(
         run_path=run_path,
         status_data=status_data,

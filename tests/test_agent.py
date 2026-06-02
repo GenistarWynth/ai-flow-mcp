@@ -59,21 +59,52 @@ def run(
 
 
 class AgentTestCase(unittest.TestCase):
-    def setUp(self) -> None:
-        self.tempdir = Path(tempfile.mkdtemp(prefix="patchbay-agent-"))
-        self.repo = self.tempdir / "repo"
-        self.repo.mkdir()
-        self.script = PROJECT_ROOT / "scripts" / "patchbay"
-        run(["git", "init"], self.repo)
-        run(["git", "config", "user.email", "patchbay@example.test"], self.repo)
-        run(["git", "config", "user.name", "Patchbay tests"], self.repo)
-        (self.repo / "README.md").write_text("# Agent Repo\n", encoding="utf-8")
-        (self.repo / ".gitignore").write_text(
+    _template_root: Path | None = None
+    _template_repo: Path | None = None
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls._template_root = Path(tempfile.mkdtemp(prefix="patchbay-agent-template-"))
+        cls._template_repo = cls._template_root / "repo"
+        cls._template_repo.mkdir()
+
+        for command in (
+            ["git", "init"],
+            ["git", "config", "user.email", "patchbay@example.test"],
+            ["git", "config", "user.name", "Patchbay tests"],
+        ):
+            completed = run(command, cls._template_repo)
+            if completed.returncode != 0:
+                raise RuntimeError(completed.stderr)
+        (cls._template_repo / "README.md").write_text("# Agent Repo\n", encoding="utf-8")
+        (cls._template_repo / ".gitignore").write_text(
             ".ai/runs/\n.ai/logs/\n.ai/worktrees/\n.ai/patchbay.toml\n.patchbay-worktrees/\n",
             encoding="utf-8",
         )
-        run(["git", "add", "README.md", ".gitignore"], self.repo)
-        run(["git", "commit", "-m", "initial"], self.repo)
+        for command in (
+            ["git", "add", "README.md", ".gitignore"],
+            ["git", "commit", "-m", "initial"],
+        ):
+            completed = run(command, cls._template_repo)
+            if completed.returncode != 0:
+                raise RuntimeError(completed.stderr)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls._template_root is not None:
+            shutil.rmtree(cls._template_root, ignore_errors=True)
+        cls._template_root = None
+        cls._template_repo = None
+        super().tearDownClass()
+
+    def setUp(self) -> None:
+        self.tempdir = Path(tempfile.mkdtemp(prefix="patchbay-agent-"))
+        self.repo = self.tempdir / "repo"
+        self.script = PROJECT_ROOT / "scripts" / "patchbay"
+        if self._template_repo is None:
+            self.fail("Agent test template repository was not initialized")
+        shutil.copytree(self._template_repo, self.repo)
         self._write_mock_config(allow_without_tests=True)
 
     def tearDown(self) -> None:
@@ -1230,6 +1261,19 @@ test = []
         self.assertIsNone(response["run_id"])
         self.assertIsNone(response["run_reference"])
         self.assertEqual(response["requested_view"]["tab"], "Diff")
+
+    def test_agent_response_reuses_loaded_status_for_context(self) -> None:
+        planned = agent_message(self.repo, "status reuse target")
+        run_id = planned["run_id"]
+
+        from scripts.ai_flow import service
+
+        with mock.patch.object(service, "status", wraps=service.status) as status_mock:
+            response = agent_message(self.repo, "context", run_id=run_id)
+
+        self.assertEqual(response["action"], "context")
+        self.assertEqual(response["run_id"], run_id)
+        self.assertEqual(status_mock.call_count, 1)
 
     def test_agent_run_bound_view_prompts_return_diagnostic_actions(self) -> None:
         planned = agent_message(self.repo, "selected run diagnostics")
