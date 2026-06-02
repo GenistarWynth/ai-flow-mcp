@@ -465,7 +465,33 @@ def _tool_schema(name: str) -> dict[str, Any]:
         required = ["run_id"]
 
     descriptions: dict[str, str] = {
-        "patchbay_agent": "Primary conversational Patchbay Agent tool. Starts, resumes, advances, applies runs, and returns metrics/cost/token evidence while preserving plan/apply approval gates; explicit setup, help, status, readiness, readiness for Claude Desktop, what should I do next, 下一步是什么, why can't I apply, what is blocking apply, what model will write/fix use, is writer using cheap model, 门禁状态, 为什么不能应用, 现在写手是不是走便宜模型, patchbay doctor, Patchbay 怎么用, 查看最近运行, 任务列表, 检查环境, 环境自检, 检查 Gemini 命令行环境, economy profile, configure DeepSeek provider, configure DeepSeek provider to <command>, configure economy provider command to <path>, configure reasonix command, configure reasonix command to <path>, 配置 Reasonix 命令, and 把 Reasonix 命令设为 <path> prompts return local answers with structured actions[] and action_groups[] for safe client follow-ups, including host-specific setup/readiness shortcuts from help; explicit `patchbay setup without MCP` selects local-only setup, while standalone `please don't use MCP`, `no MCP`, `use Chrome Skill instead of MCP`, `少用这个MCP`, and `不要用这个MCP` return local_mode guidance with safe local CLI/Skill/readiness actions; readiness without MCP suppresses MCP probe/register actions; configure DeepSeek provider returns a safe command action for patchbay_config_provider_add_cli / add-cli --activate-economy, while configure DeepSeek provider to <command> registers that CLI writer and activates write/fix economy routing; configure economy provider command to <path> or patchbay config --set-key providers.<id>.command --set-value <path> repairs the active custom economy provider command without starting a run; custom provider command gaps report providers.<id>.command and expose configure_economy_provider_command copyable command actions; metrics/cost/token and view prompts like diff/logs/artifact/查看失败原因 without run_id inspect the latest run when available and return requested_view plus safe diagnostic_tab actions for the matching diagnostic tab; next-step prompts return action next_step plus machine-readable next_action/run_reference.next_action without advancing gates, gate-status prompts return action gate_status with gate_diagnosis.next_action without advancing gates, blocked direct apply also returns gate_diagnosis.next_action plus safe diagnostic actions, routing questions return read-only action profile_show and include metrics.efficiency_summary when a run_id is supplied, host-targeted readiness replies include setup_host/doctor.host, setup prompts can target hosts like Claude Desktop, Claude 桌面, Gemini CLI, Gemini 命令行, install Codex Skill, register MCP for Claude Desktop, 安装 Codex Skill, 注册 MCP 到 Gemini 命令行, or 帮我配置 Patchbay 到 Claude 桌面, and gate-changing prompts such as approve/continue/apply without run_id return local guidance instead of choosing a run automatically.",
+        "patchbay_agent": (
+            "Primary conversational Patchbay Agent tool. Starts, resumes, advances, applies runs, and returns metrics/cost/token "
+            "evidence while preserving plan/apply approval gates; explicit setup, help, status, readiness, readiness for Claude Desktop, "
+            "what should I do next, 下一步是什么, why can't I apply, what is blocking apply, what model will write/fix use, "
+            "is writer using cheap model, 门禁状态, 为什么不能应用, 现在写手是不是走便宜模型, patchbay doctor, Patchbay 怎么用, "
+            "查看最近运行, 任务列表, 检查环境, 环境自检, 检查 Gemini 命令行环境, economy profile, configure DeepSeek provider, "
+            "configure DeepSeek provider to <command>, configure economy provider command to <path>, 简单 writer/fix 用 DeepSeek 省钱, "
+            "configure reasonix command, configure reasonix command to <path>, 配置 Reasonix 命令, and 把 Reasonix 命令设为 <path> "
+            "prompts return local answers with structured actions[] and action_groups[] for safe client follow-ups, including host-specific "
+            "setup/readiness shortcuts from help; explicit `patchbay setup without MCP` selects local-only setup, while standalone "
+            "`please don't use MCP`, `no MCP`, `use Chrome Skill instead of MCP`, `少用这个MCP`, `不要用这个MCP`, `不走 MCP`, "
+            "`走本地模式`, and `只用本地工具` return local_mode guidance with safe local CLI/Skill/readiness actions; readiness without MCP "
+            "suppresses MCP probe/register actions; configure DeepSeek provider returns a safe command action for patchbay_config_provider_add_cli "
+            "/ add-cli --activate-economy, while configure DeepSeek provider to <command> registers that CLI writer and activates write/fix economy "
+            "routing; mixed cost prompts such as `简单 writer/fix 用 DeepSeek 省钱` apply the economy profile without starting a run; "
+            "configure economy provider command to <path> or patchbay config --set-key providers.<id>.command --set-value <path> repairs the "
+            "active custom economy provider command without starting a run; custom provider command gaps report providers.<id>.command and expose "
+            "configure_economy_provider_command copyable command actions; metrics/cost/token and view prompts like diff/logs/artifact/查看失败原因 "
+            "without run_id inspect the latest run when available and return requested_view plus safe diagnostic_tab actions for the matching "
+            "diagnostic tab; next-step prompts return action next_step plus machine-readable next_action/run_reference.next_action without advancing "
+            "gates, gate-status prompts return action gate_status with gate_diagnosis.next_action without advancing gates, blocked direct apply also "
+            "returns gate_diagnosis.next_action plus safe diagnostic actions, routing questions return read-only action profile_show and include "
+            "metrics.efficiency_summary when a run_id is supplied, host-targeted readiness replies include setup_host/doctor.host, setup prompts "
+            "can target hosts like Claude Desktop, Claude 桌面, Gemini CLI, Gemini 命令行, install Codex Skill, register MCP for Claude Desktop, "
+            "安装 Codex Skill, 注册 MCP 到 Gemini 命令行, or 帮我配置 Patchbay 到 Claude 桌面, and gate-changing prompts such as approve/continue/apply "
+            "without run_id return local guidance instead of choosing a run automatically."
+        ),
         "patchbay_plan": "Run the planning phase (host-agnostic — provider configurable via [phases.plan] in .ai/patchbay.toml).",
         "patchbay_approve": "Approve the plan so the writer phase can proceed.",
         "patchbay_write": "Run the implementation phase (provider configurable via [phases.write] / [writer].provider).",
