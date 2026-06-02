@@ -3827,6 +3827,23 @@ describe("Workbench", () => {
             }
           }
         },
+        routing: {
+          profile: "economy",
+          economy_configured: true,
+          target: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix", label: "Reasonix/DeepSeek" },
+          summary: "Economy routing profile is active: write reasonix_cli / deepseek-v4-pro, fix reasonix_cli / deepseek-v4-pro.",
+          phases: {
+            write: { configured: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" }, configured_economy: true },
+            fix: { configured: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" }, configured_economy: true }
+          },
+          workload_policy: {
+            summary: "Simple high-volume write/fix work uses the low-cost Reasonix/DeepSeek route; plan/review stay on supervision models.",
+            target_label: "Reasonix/DeepSeek",
+            economy_phases: ["write", "fix"],
+            supervision_phases: ["plan", "review"],
+            phase_roles: { plan: "supervision", write: "economy", fix: "economy", review: "supervision" }
+          }
+        },
         next_actions: [],
         recommendations: []
       })
@@ -3841,6 +3858,11 @@ describe("Workbench", () => {
     const details = screen.getByRole("complementary", { name: "诊断详情" });
     expect(await within(details).findByText("路由")).toBeVisible();
     expect(within(details).getByText("经济路由已启用")).toBeVisible();
+    expect(
+      within(details).getByText("Simple high-volume write/fix work uses the low-cost Reasonix/DeepSeek route; plan/review stay on supervision models.")
+    ).toBeVisible();
+    expect(within(details).getByText("write/fix → Reasonix/DeepSeek")).toBeVisible();
+    expect(within(details).getByText("plan/review → supervision")).toBeVisible();
     expect(within(details).getAllByText("实现")).toHaveLength(2);
     expect(within(details).getAllByText("修复")).toHaveLength(2);
     expect(within(details).getAllByText("reasonix_cli / deepseek-v4-pro")).toHaveLength(4);

@@ -3100,6 +3100,7 @@ function DoctorPanel({
   const checks = Object.entries(report?.checks ?? {});
   const profile = doctorProfileStatus(report);
   const economy = profile?.economy;
+  const routing = report?.routing;
   const doctorActions = report?.actions ?? [];
   const selectedHost = readinessHost ?? setupHostById(report?.host);
   const hostSelectLabel = localOnlyMode ? "Setup host" : "MCP host";
@@ -3183,7 +3184,12 @@ function DoctorPanel({
           </div>
         </section>
       ) : null}
-      {profile ? (
+      {routing ? (
+        <section>
+          <h2>路由</h2>
+          <RoutingEvidenceCard routing={routing} />
+        </section>
+      ) : profile ? (
         <section>
           <h2>路由</h2>
           <div className={`doctor-profile ${economy?.matches ? "ready" : "custom"}`}>

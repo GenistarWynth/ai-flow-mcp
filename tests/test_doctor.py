@@ -111,6 +111,10 @@ provider = "mock"
         self.assertEqual(profile["economy"]["fix"]["provider"], "mock")
         self.assertEqual(profile["phase_strategy"]["write"]["tier"], "economy")
         self.assertFalse(profile["phase_strategy"]["write"]["economy_route"])
+        self.assertEqual(result["routing"]["profile"], "custom")
+        self.assertFalse(result["routing"]["economy_configured"])
+        self.assertEqual(result["routing"]["workload_policy"]["economy_phases"], ["write", "fix"])
+        self.assertEqual(result["routing"]["workload_policy"]["supervision_phases"], ["plan", "review"])
         self.assertTrue(result["checks"]["mcp"]["skipped"])
         self.assertTrue(any("patchbay config profile apply economy" in item for item in result["recommendations"]))
 
@@ -125,6 +129,10 @@ provider = "mock"
         profile = result["checks"]["config"]["profile"]
         self.assertEqual(profile["profile"], "economy")
         self.assertFalse(profile["economy"]["command_ready"])
+        self.assertEqual(result["routing"]["profile"], "economy")
+        self.assertTrue(result["routing"]["economy_configured"])
+        self.assertFalse(result["routing"]["economy_command_ready"])
+        self.assertEqual(result["routing"]["workload_policy"]["target_label"], "Reasonix/DeepSeek")
         self.assertTrue(any("commands.reasonix" in item for item in result["recommendations"]))
         actions = {item["id"]: item for item in result["actions"]}
         self.assertEqual(actions["configure_reasonix_command"]["kind"], "local_agent")

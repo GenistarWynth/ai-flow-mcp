@@ -11,12 +11,13 @@ from typing import Any
 
 from . import service
 from .artifacts import now_iso, read_text
-from .config import economy_target, load_config, route_matches_economy
+from .config import economy_target, load_config
 from .config_wizard import run_config_wizard
 from .doctor import run_doctor
 from .errors import StateError
 from .events import append_event
 from .mcp_install import HOST_ALIASES, normalize_mcp_host
+from .routing import profile_routing_digest as _profile_routing_digest, route_label as _route_label
 from .setup_flow import run_setup, _without_mcp_followup_actions, _without_mcp_followup_text
 from .state import (
     APPLIED,
@@ -2430,6 +2431,7 @@ def _doctor_response(root: Path, message: str = "") -> dict[str, Any]:
             "doctor": report,
             "setup_host": report.get("host") or host,
             "recommendations": recommendations,
+            "routing": report.get("routing"),
             "actions": actions,
         },
     )
@@ -2442,98 +2444,6 @@ def _doctor_suggested_actions(next_actions: list[str], recommendations: list[str
     if any("commands.reasonix" in item for item in recommendations):
         actions.append("configure reasonix command")
     return _dedupe_strings(actions)
-
-
-def _profile_routing_digest(profile_result: dict[str, Any]) -> dict[str, Any]:
-    status = profile_result.get("status") if isinstance(profile_result.get("status"), dict) else profile_result
-    economy = status.get("economy") if isinstance(status.get("economy"), dict) else {}
-    write = _phase_route_snapshot(economy.get("write") if isinstance(economy.get("write"), dict) else {})
-    fix = _phase_route_snapshot(economy.get("fix") if isinstance(economy.get("fix"), dict) else {})
-    economy_active = bool(economy.get("matches"))
-    target = _phase_route_snapshot(economy.get("target") if isinstance(economy.get("target"), dict) else {})
-    if isinstance(economy.get("target"), dict) and economy["target"].get("label"):
-        target["label"] = str(economy["target"].get("label") or "")
-    command_status = economy.get("command_status") if isinstance(economy.get("command_status"), dict) else {}
-    command_not_ready = [
-        phase
-        for phase in ("write", "fix")
-        if isinstance(command_status.get(phase), dict)
-        and command_status[phase].get("required")
-        and command_status[phase].get("ready") is False
-    ]
-    command_ready = economy.get("command_ready")
-    recommendation = str(status.get("recommendation") or profile_result.get("recommendation") or "")
-    workload_policy = _workload_policy(target)
-    return {
-        "profile": status.get("profile") or profile_result.get("profile") or ("economy" if economy_active else "custom"),
-        "target": target if target.get("provider") else {"provider": service.ECONOMY_PROVIDER, "model": service.ECONOMY_MODEL},
-        "economy_configured": economy_active,
-        "economy_command_ready": bool(command_ready) if command_ready is not None else None,
-        "workload_policy": workload_policy,
-        "command_not_ready_phases": command_not_ready,
-        "phase_strategy": status.get("phase_strategy") or {},
-        "phases": {
-            "write": {
-                "configured": write,
-                "configured_economy": _phase_is_economy(write, target),
-                "command_status": command_status.get("write") if isinstance(command_status.get("write"), dict) else None,
-            },
-            "fix": {
-                "configured": fix,
-                "configured_economy": _phase_is_economy(fix, target),
-                "command_status": command_status.get("fix") if isinstance(command_status.get("fix"), dict) else None,
-            },
-        },
-        "summary": _profile_routing_summary(economy_active=economy_active, write=write, fix=fix),
-        "recommendation": recommendation,
-    }
-
-
-def _workload_policy(target: dict[str, Any]) -> dict[str, Any]:
-    effective_target = target if target.get("provider") else {"provider": service.ECONOMY_PROVIDER, "model": service.ECONOMY_MODEL}
-    target_label = str(effective_target.get("label") or _route_label(effective_target) or "the configured economy target")
-    return {
-        "target_label": target_label,
-        "economy_phases": ["write", "fix"],
-        "supervision_phases": ["plan", "review"],
-        "phase_roles": {
-            "plan": "supervision",
-            "write": "economy",
-            "fix": "economy",
-            "review": "supervision",
-        },
-        "summary": (
-            f"Simple high-volume write/fix work uses the low-cost {target_label} route; "
-            "plan/review stay on supervision models."
-        ),
-    }
-
-
-def _phase_route_snapshot(route: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "provider": str(route.get("provider") or ""),
-        "model": str(route.get("model") or ""),
-        "command_key": str(route.get("command_key") or ""),
-    }
-
-
-def _phase_is_economy(route: dict[str, Any], target: dict[str, Any]) -> bool:
-    if not target:
-        target = {"provider": service.ECONOMY_PROVIDER, "model": service.ECONOMY_MODEL}
-    return route_matches_economy(route, target)
-
-
-def _route_label(route: dict[str, Any]) -> str:
-    if route.get("label"):
-        return str(route.get("label"))
-    provider = str(route.get("provider") or "-")
-    model = str(route.get("model") or "")
-    return f"{provider} / {model}" if model else provider
-
-
-def _profile_routing_summary(*, economy_active: bool, write: dict[str, Any], fix: dict[str, Any]) -> str:
-    prefix = "Economy routing profile is active" if economy_active else "Economy routing profile is not active"
-    return f"{prefix}: write {_route_label(write)}, fix {_route_label(fix)}."
 
 
 def _economy_command_not_ready_sentence(routing: dict[str, Any]) -> str:

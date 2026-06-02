@@ -8,6 +8,7 @@ from typing import Any
 from .config import config_path, example_config_path, find_project_root, load_config, route_label
 from .config_wizard import _configure_reasonix_action, _profile_status, _run_doctor as run_config_doctor
 from .mcp_install import normalize_mcp_host, run_mcp_doctor
+from .routing import profile_routing_digest
 from .skill_install import run_skill_doctor
 
 
@@ -121,8 +122,9 @@ def _summarize(root: Path, checks: dict[str, Any], *, host: str, suppress_mcp_ac
     normalized_host = _doctor_host(host)
     next_actions = _next_actions(checks, host=normalized_host, suppress_mcp_actions=suppress_mcp_actions)
     recommendations = _recommendations(checks)
+    routing = _routing_digest(checks)
     ok = all(bool(checks.get(section, {}).get("ok")) for section in required_sections) and not next_actions
-    return {
+    summary = {
         "ok": ok,
         "root": str(root),
         "host": normalized_host,
@@ -137,6 +139,15 @@ def _summarize(root: Path, checks: dict[str, Any], *, host: str, suppress_mcp_ac
             suppress_mcp_actions=suppress_mcp_actions,
         ),
     }
+    if routing:
+        summary["routing"] = routing
+    return summary
+
+
+def _routing_digest(checks: dict[str, Any]) -> dict[str, Any] | None:
+    config = checks.get("config", {}) if isinstance(checks.get("config"), dict) else {}
+    profile = config.get("profile") if isinstance(config.get("profile"), dict) else None
+    return profile_routing_digest(profile) if profile else None
 
 
 def _next_actions(checks: dict[str, Any], *, host: str, suppress_mcp_actions: bool = False) -> list[str]:

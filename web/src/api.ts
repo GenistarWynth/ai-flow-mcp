@@ -297,6 +297,7 @@ export type DoctorReport = {
   root?: string;
   host?: string;
   checks?: Record<string, DoctorCheck>;
+  routing?: RoutingEvidence;
   next_actions?: string[];
   recommendations?: string[];
   actions?: AgentHealthAction[];

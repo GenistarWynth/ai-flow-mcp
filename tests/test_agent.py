@@ -144,6 +144,11 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertEqual(response["action"], "doctor")
         self.assertIn("doctor", response)
         self.assertIn("checks", response["doctor"])
+        self.assertIn("routing", response)
+        self.assertIn("routing", response["doctor"])
+        self.assertEqual(response["routing"]["profile"], "custom")
+        self.assertEqual(response["routing"]["workload_policy"]["economy_phases"], ["write", "fix"])
+        self.assertEqual(response["doctor"]["routing"]["workload_policy"]["supervision_phases"], ["plan", "review"])
         self.assertIsNone(response["run_id"])
         self.assertFalse((self.repo / ".ai" / "runs").exists())
 
