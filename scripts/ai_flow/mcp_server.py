@@ -26,6 +26,7 @@ else:
 ROOT = Path(os.environ.get("PATCHBAY_ROOT") or Path.cwd())
 SERVER_NAME = "patchbay"
 SERVER_VERSION = "0.1.0"
+SKILL_HOST_DESCRIPTION = "Codex Skill host or alias: codex, Codex CLI, Codex Desktop, Codex 桌面."
 
 
 def patchbay_plan(task: str, background: bool = False) -> dict[str, Any]:
@@ -340,17 +341,17 @@ def _tool_schema(name: str) -> dict[str, Any]:
         required = ["run_id"]
     elif name.endswith("_skill_install"):
         properties = {
-            "host": {"type": "string", "description": "Skill host: codex."},
+            "host": {"type": "string", "description": SKILL_HOST_DESCRIPTION},
             "skill_path": {"type": "string", "description": "Optional Codex skills root to install into."},
             "dry_run": {"type": "boolean", "description": "Preview Skill installation without copying files."},
         }
         required = []
     elif name.endswith("_skill_print"):
-        properties = {"host": {"type": "string", "description": "Skill host: codex."}}
+        properties = {"host": {"type": "string", "description": SKILL_HOST_DESCRIPTION}}
         required = []
     elif name.endswith("_skill_doctor"):
         properties = {
-            "host": {"type": "string", "description": "Skill host: codex."},
+            "host": {"type": "string", "description": SKILL_HOST_DESCRIPTION},
             "skill_path": {
                 "type": "string",
                 "description": "Optional Codex skills root to inspect.",
@@ -477,9 +478,9 @@ def _tool_schema(name: str) -> dict[str, Any]:
         "patchbay_doctor": "Run unified read-only readiness checks for CLI shims, config, bundled Skill source, and Skill installation state; skips stdio MCP probing by default and returns next_actions, recommendations, structured actions[], and action_groups[], with host-aware concrete MCP registration actions, probe actions, and a safe local_agent install_skill action when the Codex Skill is missing. Set skip_mcp=true for local-only readiness without MCP probe/register follow-up actions.",
         "patchbay_setup": "Initialize Patchbay project files, create local config, install the Codex Skill, return MCP registration guidance, include a doctor summary, and expose top-level recommendations, recommendation-derived next_actions, structured actions[], and action_groups[] for safe follow-ups. Set skip_mcp=true for local-only setup without MCP registration or follow-up actions.",
         "patchbay_install": "Alias for patchbay_setup: initialize Patchbay project files, create local config, install the Codex Skill, register MCP when possible, include a doctor summary, and expose top-level recommendations, recommendation-derived next_actions, structured actions[], and action_groups[]. Set skip_mcp=true for local-only setup without MCP registration or follow-up actions.",
-        "patchbay_skill_install": "Install only the bundled Patchbay Codex Skill into a selected skills root and return safe actions[] plus action_groups[] for follow-up validation.",
-        "patchbay_skill_print": "Return the bundled Patchbay Skill files for inspection or external installation.",
-        "patchbay_skill_doctor": "Validate the bundled Patchbay Skill source and whether it is installed in the selected Codex skills root, returning safe install_skill local_agent and refresh_skill_doctor actions plus action_groups[] when follow-up is needed.",
+        "patchbay_skill_install": "Install only the bundled Patchbay Codex Skill into a selected skills root and return safe actions[] plus action_groups[] for follow-up validation. Host accepts Codex aliases such as Codex Desktop, Codex CLI, and Codex 桌面.",
+        "patchbay_skill_print": "Return the bundled Patchbay Skill files for inspection or external installation. Host accepts Codex aliases such as Codex Desktop, Codex CLI, and Codex 桌面.",
+        "patchbay_skill_doctor": "Validate the bundled Patchbay Skill source and whether it is installed in the selected Codex skills root, returning safe install_skill local_agent and refresh_skill_doctor actions plus action_groups[] when follow-up is needed. Host accepts Codex aliases such as Codex Desktop, Codex CLI, and Codex 桌面.",
         "patchbay_events": "Return the append-only event log (JSONL stream) for a run so any host can see what every phase/agent did.",
         "patchbay_trace": "Return the structured trace log (JSONL stream) for lower-level agent/tool activity with redacted raw payloads.",
         "patchbay_runs": "List recent Patchbay runs.",

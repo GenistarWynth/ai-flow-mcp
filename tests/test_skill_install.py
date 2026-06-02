@@ -167,6 +167,27 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("Only the Codex Skill currently supports diagnostics", str(raised.exception))
         self.assertIn("Accepted Codex aliases", str(raised.exception))
 
+    def test_mcp_skill_tools_accept_codex_aliases(self) -> None:
+        from scripts.ai_flow import mcp_server
+
+        target = self.tmp / "skills-root"
+        response = mcp_server.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {
+                    "name": "patchbay_skill_doctor",
+                    "arguments": {"host": "Codex Desktop", "skill_path": str(target)},
+                },
+            }
+        )
+
+        self.assertFalse(response["result"].get("isError"), response)
+        result = json.loads(response["result"]["content"][0]["text"])
+        self.assertEqual(result["host"], "codex")
+        self.assertTrue(result["ok"])
+
     def test_cli_skill_doctor_json_reports_ready_state(self) -> None:
         script = PROJECT_ROOT / "scripts" / "patchbay"
         target = self.tmp / "skills-root"

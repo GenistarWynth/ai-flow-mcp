@@ -1688,6 +1688,12 @@ class McpSchemaTests(unittest.TestCase):
         self.assertIn("patchbay_config_profile_show", tools)
         self.assertIn("action_groups[]", tools["patchbay_config_profile_show"])
         self.assertIn("configure_reasonix_command", tools["patchbay_config_profile_show"])
+        for name in ("patchbay_skill_install", "patchbay_skill_print", "patchbay_skill_doctor"):
+            self.assertIn(name, tools)
+            self.assertIn("Codex Desktop", tools[name])
+            self.assertIn("Codex 桌面", tools[name])
+            self.assertIn("Codex Desktop", tool_items[name]["inputSchema"]["properties"]["host"]["description"])
+            self.assertIn("Codex 桌面", tool_items[name]["inputSchema"]["properties"]["host"]["description"])
         self.assertIn("patchbay_config_provider_add_cli", tools)
         self.assertIn("economy write/fix route", tools["patchbay_config_provider_add_cli"])
         provider_schema = tool_items["patchbay_config_provider_add_cli"]["inputSchema"]["properties"]
