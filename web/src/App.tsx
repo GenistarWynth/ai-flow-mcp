@@ -615,6 +615,10 @@ function isLatestRunReadOnlyResponse(response: AgentResponse): response is Agent
   return (response.actions ?? []).some((action) => action.kind === "open_run" && action.run_id === response.run_id && action.safe !== false);
 }
 
+function selectsLocalOnlyMode(response?: AgentResponse | null) {
+  return response?.action === "local_mode" || response?.local_mode?.skip_mcp === true;
+}
+
 function previewArtifactName(status?: RunStatus | null) {
   return status?.artifacts?.find((name) => name.endsWith(".log") || name.endsWith(".md")) ?? null;
 }
@@ -1842,6 +1846,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     setProfileInFlight(true);
     try {
       const response = await client.agentMessage(message, { include: { plan: true }, background: true });
+      if (selectsLocalOnlyMode(response)) setLocalOnlyMode(true);
       if (selectedRun) appendLocalAgentReply(response);
       else setNewTaskReply(response);
       if (response.run_id && isLatestRunReadOnlyResponse(response)) {
@@ -2087,6 +2092,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     try {
       if (!selectedRun) {
         const created = await client.agentMessage(text, { include: { plan: true }, background: true });
+        if (selectsLocalOnlyMode(created)) setLocalOnlyMode(true);
         setComposer("");
         setNewTaskReply(null);
         if (isLatestRunReadOnlyResponse(created)) {
@@ -2124,6 +2130,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
           include: { diff: true, review: true },
           background: true
         });
+        if (selectsLocalOnlyMode(response)) setLocalOnlyMode(true);
         appendLocalAgentReply(response);
         await refreshRun(selectedRun, response);
       }

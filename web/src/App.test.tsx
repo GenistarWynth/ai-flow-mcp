@@ -3276,6 +3276,66 @@ describe("Workbench", () => {
     await waitFor(() => expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "claude-desktop", skip_mcp: true }));
   });
 
+  it("persists local-only mode after using the help local-mode action", async () => {
+    const agentMessage = vi
+      .fn()
+      .mockResolvedValueOnce({
+        run_id: "run-ready",
+        action: "help",
+        ok: true,
+        reply: "Local mode shortcut available.",
+        actions: [
+          {
+            id: "use_local_mode",
+            label: "Use local mode",
+            kind: "local_agent",
+            message: "走本地模式，不走 MCP",
+            host: "codex",
+            safe: true,
+            reason: "Use local CLI and Skill actions."
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        run_id: "run-ready",
+        action: "local_mode",
+        ok: true,
+        reply: "Local-only mode selected.",
+        local_mode: { skip_mcp: true },
+        actions: []
+      });
+    const getDoctor = vi.fn().mockResolvedValue({
+      ok: true,
+      host: "claude-desktop",
+      root: "C:/repo",
+      checks: { repo: { ok: true }, skill: { ok: true }, mcp: { ok: true, skipped: true } },
+      next_actions: []
+    });
+    const client = createClient({ agentMessage, getDoctor });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(composer, "help{enter}");
+    const localActions = await screen.findByLabelText("Agent 建议动作");
+    await userEvent.click(within(localActions).getByRole("button", { name: "Use local mode" }));
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith("走本地模式，不走 MCP", {
+        include: { plan: true },
+        background: true
+      })
+    );
+    await userEvent.click(screen.getByRole("button", { expanded: false }));
+    await userEvent.click(screen.getAllByRole("tab")[1]);
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    expect(within(details).queryByRole("combobox", { name: "MCP host" })).not.toBeInTheDocument();
+    await userEvent.selectOptions(within(details).getByRole("combobox", { name: "Setup host" }), "claude-desktop");
+
+    await waitFor(() => expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "claude-desktop", skip_mcp: true }));
+  });
+
   it("routes no-MCP readiness replies to doctor checks instead of setup", async () => {
     const agentMessage = vi.fn().mockResolvedValueOnce({
       run_id: "run-ready",

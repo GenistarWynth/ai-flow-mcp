@@ -552,6 +552,10 @@ export type AgentResponse = {
   doctor?: DoctorReport;
   setup?: SetupResult;
   setup_host?: string;
+  local_mode?: {
+    skip_mcp?: boolean;
+    [key: string]: unknown;
+  };
   recovery?: FailureRecovery;
   profile?: Record<string, unknown>;
   routing?: RoutingEvidence;
