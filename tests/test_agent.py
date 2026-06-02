@@ -279,6 +279,8 @@ test = []
         actions = {item["id"]: item for item in response["actions"]}
         self.assertEqual(actions["configure_reasonix_command"]["kind"], "local_agent")
         self.assertEqual(actions["configure_reasonix_command"]["message"], "configure reasonix command")
+        self.assertEqual(actions["configure_deepseek_provider"]["kind"], "local_agent")
+        self.assertEqual(actions["configure_deepseek_provider"]["message"], "configure DeepSeek provider")
         self.assertNotIn("apply_economy_profile", actions)
 
     def test_agent_doctor_points_custom_provider_command_gaps_to_provider_command_action(self) -> None:

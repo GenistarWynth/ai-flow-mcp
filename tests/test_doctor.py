@@ -138,6 +138,8 @@ provider = "mock"
         self.assertEqual(actions["configure_reasonix_command"]["kind"], "local_agent")
         self.assertEqual(actions["configure_reasonix_command"]["message"], "configure reasonix command")
         self.assertIn("commands.reasonix", actions["configure_reasonix_command"]["command"])
+        self.assertEqual(actions["configure_deepseek_provider"]["kind"], "local_agent")
+        self.assertEqual(actions["configure_deepseek_provider"]["message"], "configure DeepSeek provider")
         self.assertNotIn("apply_economy_profile", actions)
 
     def test_doctor_recommends_custom_economy_provider_command(self) -> None:

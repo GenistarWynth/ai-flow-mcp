@@ -33,7 +33,7 @@ timeout = 900
 
 旧的 `[models]`、`[commands]` 和 `[writer].provider` 键仍然作为默认值保留。
 
-默认的经济型路由会把大量实现/修复工作交给更便宜的 Reasonix/DeepSeek writer，而把规划和审查留给更强的模型。如果 Reasonix 命令还没配置，就绪检查会先返回 `configure_reasonix_command` 动作；运行 `patchbay agent message "配置 Reasonix 命令" --json` 可用默认 `reasonix` 可执行文件补齐配置，也可以用 `patchbay agent message "把 Reasonix 命令设为 <path>" --json` 写入完整本机路径，两者都不会创建模型 run。英文 `configure reasonix command` / `configure reasonix command to <path>` 仍然可用。需要恢复这套路由时，直接运行 `patchbay config profile apply economy`。
+默认的经济型路由会把大量实现/修复工作交给更便宜的 Reasonix/DeepSeek writer，而把规划和审查留给更强的模型。如果 Reasonix 命令还没配置，就绪检查会先返回 `configure_reasonix_command` 动作；运行 `patchbay agent message "配置 Reasonix 命令" --json` 可用默认 `reasonix` 可执行文件补齐配置，也可以用 `patchbay agent message "把 Reasonix 命令设为 <path>" --json` 写入完整本机路径，两者都不会创建模型 run。同一个就绪响应也会暴露 `configure_deepseek_provider`，桌面端/MCP/Skill 客户端可以直接给出自定义 DeepSeek CLI writer 模板，作为低成本写手的替代配置路径。英文 `configure reasonix command` / `configure reasonix command to <path>` 仍然可用。需要恢复这套路由时，直接运行 `patchbay config profile apply economy`。
 
 ## 功能概览
 

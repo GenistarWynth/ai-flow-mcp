@@ -296,6 +296,7 @@ def _structured_actions(
         )
     if any("commands.reasonix" in item for item in recommendations):
         actions.append(_configure_reasonix_action(target_name))
+        actions.append(_configure_deepseek_provider_action())
     if economy.get("command_ready") is False and target.get("provider") != "reasonix_cli":
         status = _first_not_ready_command_status(economy.get("command_status"))
         source = str(status.get("source") or "providers.<id>.command")
@@ -343,6 +344,17 @@ def _configure_provider_command_action(source: str, target_name: str) -> dict[st
         "command": f"patchbay config --set-key {source} --set-value <command>",
         "safe": True,
         "reason": f"Copy the command for the {target_name} economy provider into .ai/patchbay.toml.",
+    }
+
+
+def _configure_deepseek_provider_action() -> dict[str, Any]:
+    return {
+        "id": "configure_deepseek_provider",
+        "label": "Configure DeepSeek provider",
+        "kind": "local_agent",
+        "message": "configure DeepSeek provider",
+        "safe": True,
+        "reason": "Offer a custom low-cost CLI writer template when the default Reasonix/DeepSeek route is not executable.",
     }
 
 
