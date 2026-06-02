@@ -81,6 +81,9 @@ patchbay config     # Interactive wizard — no hand-editing required
 patchbay config profile apply economy  # keep write/fix on Reasonix + DeepSeek
 patchbay agent message "apply economy profile" --json  # same routing change through the conversational Agent
 patchbay agent message "configure reasonix command" --json  # set commands.reasonix; append `to <path>` or use `把 Reasonix 命令设为 <path>`
+patchbay agent message "configure DeepSeek provider" --json  # add a custom DeepSeek CLI provider template
+patchbay agent message "configure DeepSeek provider to <command>" --json  # add the template and set providers.<id>.command
+patchbay agent message "configure economy provider command to <path>" --json  # repair the active economy writer/fix provider command
 patchbay doctor     # Unified config/Skill readiness checks; skips stdio MCP probing by default
 patchbay doctor --local-only     # Readiness without MCP probe/register follow-up actions
 patchbay doctor --probe-mcp     # Add stdio MCP initialize/tools-list verification when needed
@@ -104,6 +107,9 @@ python scripts/patchbay agent message status --json
 python scripts/patchbay agent message context --json
 python scripts/patchbay agent message readiness --json
 python scripts/patchbay agent message "readiness for Claude Desktop" --json
+python scripts/patchbay agent message "configure DeepSeek provider" --json
+python scripts/patchbay agent message "configure DeepSeek provider to <command>" --json
+python scripts/patchbay agent message "configure economy provider command to <path>" --json
 python scripts/patchbay web --port 8765
 python scripts/patchbay approve <run_id>
 python scripts/patchbay write <run_id>
