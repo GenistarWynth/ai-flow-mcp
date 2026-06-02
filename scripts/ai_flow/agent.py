@@ -1776,6 +1776,8 @@ def _setup_response(root: Path, message: str) -> dict[str, Any]:
     reply = "Patchbay setup completed."
     if next_actions:
         reply = "Patchbay setup completed with follow-up steps: " + " ".join(next_actions)
+    if recommendations:
+        reply += " Recommendations: " + " ".join(recommendations)
     return _stateless_response(
         action="setup",
         reply=reply,
