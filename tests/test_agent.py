@@ -682,6 +682,8 @@ test = []
         self.assertEqual(actions["readiness_claude_desktop"]["host"], "claude-desktop")
         self.assertEqual(actions["readiness_gemini"]["message"], "readiness for gemini")
         self.assertEqual(actions["readiness_gemini"]["host"], "gemini")
+        self.assertEqual(actions["configure_deepseek_provider"]["kind"], "local_agent")
+        self.assertEqual(actions["configure_deepseek_provider"]["message"], "configure DeepSeek provider")
         self.assertEqual(actions["configure_custom_economy_provider"]["kind"], "command")
         self.assertIn("--activate-economy", actions["configure_custom_economy_provider"]["command"])
         self.assertEqual(actions["apply_economy_profile"]["message"], "apply economy profile")

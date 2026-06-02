@@ -1686,6 +1686,14 @@ def _help_actions(target: dict[str, Any]) -> list[dict[str, Any]]:
             "safe": True,
             "reason": f"Route high-volume write/fix work to the {target_label} economy profile.",
         },
+        {
+            "id": "configure_deepseek_provider",
+            "label": "Configure DeepSeek provider",
+            "kind": "local_agent",
+            "message": "configure DeepSeek provider",
+            "safe": True,
+            "reason": "Open the conversational custom-provider setup path and return a safe copyable command template.",
+        },
         _custom_provider_setup_action(),
         {
             "id": "show_runs",
