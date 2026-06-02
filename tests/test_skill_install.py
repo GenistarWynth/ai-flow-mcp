@@ -118,6 +118,22 @@ class SkillInstallTest(unittest.TestCase):
         ):
             self.assertTrue((PROJECT_ROOT / "scripts" / "ai_flow" / "skill_templates" / "patchbay" / required).exists())
 
+    def test_pyproject_has_clean_wheel_metadata_for_data_dirs(self) -> None:
+        data = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+
+        self.assertEqual(data["project"]["license"], "MIT")
+        self.assertFalse(any("License :: OSI Approved" in item for item in data["project"]["classifiers"]))
+        packages = data["tool"]["setuptools"]["packages"]
+        for package in (
+            "ai_flow.skill_templates",
+            "ai_flow.skill_templates.patchbay",
+            "ai_flow.skill_templates.patchbay.agents",
+            "ai_flow.skill_templates.patchbay.references",
+            "ai_flow.web_static",
+            "ai_flow.web_static.assets",
+        ):
+            self.assertIn(package, packages)
+
     def test_skill_install_copies_bundle(self) -> None:
         from scripts.ai_flow.skill_install import run_skill_install
 
