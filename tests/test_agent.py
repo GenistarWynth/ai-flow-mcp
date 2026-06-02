@@ -244,6 +244,21 @@ test = []
         self.assertEqual(actions["configure_reasonix_command"]["message"], "configure reasonix command")
         self.assertNotIn("apply_economy_profile", actions)
 
+    def test_agent_doctor_points_custom_provider_command_gaps_to_provider_command_action(self) -> None:
+        agent_message(self.repo, "configure DeepSeek provider to definitely-missing-cheap-writer")
+
+        response = agent_message(self.repo, "readiness")
+
+        self.assertEqual(response["action"], "doctor")
+        self.assertTrue(any("providers.cheap_writer.command" in item for item in response["recommendations"]))
+        self.assertIn("configure economy provider command", response["next_actions"])
+        actions = {item["id"]: item for item in response["actions"]}
+        self.assertEqual(actions["configure_economy_provider_command"]["kind"], "command")
+        self.assertEqual(
+            actions["configure_economy_provider_command"]["command"],
+            "patchbay config --set-key providers.cheap_writer.command --set-value <command>",
+        )
+
     def test_agent_can_show_and_apply_economy_profile_without_starting_run(self) -> None:
         from scripts.ai_flow.config import load_config, resolve_phase
 

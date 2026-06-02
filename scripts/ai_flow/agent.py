@@ -2450,6 +2450,8 @@ def _doctor_suggested_actions(next_actions: list[str], recommendations: list[str
         actions.append("apply economy profile")
     if any("commands.reasonix" in item for item in recommendations):
         actions.append("configure reasonix command")
+    if any("providers." in item and ".command" in item for item in recommendations):
+        actions.append("configure economy provider command")
     return _dedupe_strings(actions)
 
 
