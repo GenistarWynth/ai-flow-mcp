@@ -466,6 +466,13 @@ describe("Workbench", () => {
             command: "patchbay skill install codex",
             safe: true,
             reason: "Install the bundled Patchbay Skill without MCP registration."
+          },
+          {
+            label: "Copy doctor command",
+            kind: "command",
+            command: "patchbay doctor --json",
+            safe: true,
+            reason: "Copy the read-only doctor command."
           }
         ],
         action_groups: [
@@ -481,6 +488,13 @@ describe("Workbench", () => {
             label: "Setup and readiness",
             reason: "Run setup or Skill readiness follow-ups.",
             action_ids: ["install_skill"],
+            count: 1
+          },
+          {
+            id: "commands",
+            label: "Copyable commands",
+            reason: "Commands that can be copied or run outside the Agent.",
+            action_ids: ["patchbay doctor --json"],
             count: 1
           }
         ]
@@ -500,6 +514,9 @@ describe("Workbench", () => {
     expect(within(groups).getByText("就绪设置")).toBeVisible();
     expect(within(groups).getByText("Run setup or Skill readiness follow-ups.")).toBeVisible();
     expect(within(groups).getByRole("button", { name: "Install Codex Skill" })).toBeVisible();
+    expect(within(groups).getByText("命令")).toBeVisible();
+    expect(within(groups).getByText("patchbay doctor --json")).toBeVisible();
+    expect(within(groups).getByRole("button", { name: "Copy command Copy doctor command" })).toBeVisible();
   });
 
   it("runs generic DeepSeek provider readiness actions through the local Agent", async () => {

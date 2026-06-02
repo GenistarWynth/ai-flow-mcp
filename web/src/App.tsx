@@ -316,23 +316,33 @@ function groupedHealthActions(actions: AgentHealthAction[] | undefined, groups: 
   if (!groups?.length) return [{ id: "suggested", label: "建议动作", reason: undefined, actions: safeActions }];
   const byId = new Map<string, AgentHealthAction>();
   for (const action of safeActions) {
-    byId.set(action.id || action.label, action);
+    for (const key of healthActionKeys(action)) {
+      byId.set(key, action);
+    }
   }
   const used = new Set<string>();
   const result: { id: string; label: string; reason?: string; actions: AgentHealthAction[] }[] = [];
   for (const group of groups) {
     const grouped = (group.action_ids ?? []).map((id) => byId.get(id)).filter(Boolean) as AgentHealthAction[];
     const unique = grouped.filter((action) => {
-      const key = action.id || action.label;
+      const key = healthActionKey(action);
       if (used.has(key)) return false;
       used.add(key);
       return true;
     });
     if (unique.length) result.push({ id: group.id, label: localReplyActionGroupLabel(group), reason: group.reason, actions: unique });
   }
-  const remaining = safeActions.filter((action) => !used.has(action.id || action.label));
+  const remaining = safeActions.filter((action) => !used.has(healthActionKey(action)));
   if (remaining.length) result.push({ id: "suggested", label: "建议动作", actions: remaining });
   return result;
+}
+
+function healthActionKeys(action: AgentHealthAction) {
+  return dedupeStrings([action.id, action.message, action.command, action.label]);
+}
+
+function healthActionKey(action: AgentHealthAction) {
+  return healthActionKeys(action)[0] ?? action.label;
 }
 
 function enrichLocalReplyAction(action: LocalReplyAction | null, response?: AgentResponse | null): LocalReplyAction | null {
