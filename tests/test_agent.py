@@ -18,17 +18,44 @@ from scripts.ai_flow.agent import APPLY_CONFIRMATION, PLAN_CONFIRMATION, agent_m
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def run(command: list[str], cwd: Path, *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        command,
-        cwd=str(cwd),
-        env=env,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
+def _timeout_output(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
+
+
+def run(
+    command: list[str],
+    cwd: Path,
+    *,
+    env: dict[str, str] | None = None,
+    timeout: float = 60.0,
+) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            command,
+            cwd=str(cwd),
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stderr = _timeout_output(exc.stderr)
+        message = f"Timed out after {timeout:g} seconds while running: {' '.join(command)}"
+        if stderr:
+            message = f"{message}\n{stderr}"
+        return subprocess.CompletedProcess(
+            command,
+            124,
+            stdout=_timeout_output(exc.stdout),
+            stderr=message,
+        )
 
 
 class AgentTestCase(unittest.TestCase):
@@ -104,6 +131,16 @@ test = []
 
 
 class AgentWorkflowTests(AgentTestCase):
+    def test_cli_helper_times_out_subprocesses_with_diagnostic(self) -> None:
+        completed = run(
+            [sys.executable, "-c", "import time; time.sleep(2)"],
+            self.repo,
+            timeout=0.1,
+        )
+
+        self.assertEqual(completed.returncode, 124)
+        self.assertIn("Timed out after 0.1 seconds", completed.stderr)
+
     def test_agent_new_message_returns_plan_and_gate(self) -> None:
         response = agent_message(self.repo, "agent plans first")
 
