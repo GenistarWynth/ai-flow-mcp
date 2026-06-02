@@ -188,6 +188,8 @@ class AgentWorkflowTests(AgentTestCase):
         actions = {item["id"]: item for item in response["actions"]}
         self.assertEqual(actions["apply_economy_profile"]["message"], "apply economy profile")
         self.assertTrue(actions["apply_economy_profile"]["safe"])
+        action_groups = {item["id"]: item for item in response["action_groups"]}
+        self.assertIn("apply_economy_profile", action_groups["routing"]["action_ids"])
         self.assertFalse((self.repo / ".ai" / "runs" / response["run_id"] / "APPROVAL.json").exists())
 
     def test_agent_start_response_surfaces_economy_command_gap_before_approval(self) -> None:
@@ -2188,6 +2190,10 @@ model = "cheap-model"
         self.assertEqual(actions["poll_events"]["message"], "events")
         self.assertEqual(actions["apply_economy_profile"]["message"], "apply economy profile")
         self.assertTrue(all(item["safe"] for item in response["actions"]))
+        action_groups = {item["id"]: item for item in response["action_groups"]}
+        self.assertEqual(action_groups["background_polling"]["action_ids"], ["poll_status", "poll_context", "poll_events"])
+        self.assertIn("open_background_run", action_groups["diagnostics"]["action_ids"])
+        self.assertIn("apply_economy_profile", action_groups["routing"]["action_ids"])
         background_actions = {item["id"]: item for item in response["background_job"]["actions"]}
         self.assertEqual(background_actions["open_background_run"]["run_id"], run_id)
         self.assertEqual(background_actions["open_trace"]["tab"], "Trace")
@@ -2195,9 +2201,14 @@ model = "cheap-model"
         self.assertEqual(background_actions["poll_context"]["message"], "context")
         self.assertEqual(background_actions["poll_events"]["message"], "events")
         self.assertNotIn("apply_economy_profile", background_actions)
+        background_groups = {item["id"]: item for item in response["background_job"]["action_groups"]}
+        self.assertEqual(background_groups["background_polling"]["action_ids"], ["poll_status", "poll_context", "poll_events"])
+        self.assertNotIn("routing", background_groups)
         status_actions = {item["id"]: item for item in service.status(self.repo, run_id)["background_job"]["actions"]}
         self.assertEqual(status_actions["open_background_run"]["run_id"], run_id)
         self.assertEqual(status_actions["open_trace"]["tab"], "Trace")
+        status_groups = {item["id"]: item for item in service.status(self.repo, run_id)["background_job"]["action_groups"]}
+        self.assertIn("poll_context", status_groups["background_polling"]["action_ids"])
         job_actions = {item["id"]: item for item in json.loads((run_path / "JOB.json").read_text(encoding="utf-8"))["actions"]}
         self.assertEqual(job_actions["poll_status"]["message"], "status")
         self.assertEqual(job_actions["poll_context"]["message"], "context")

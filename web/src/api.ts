@@ -262,6 +262,7 @@ export type BackgroundJob = {
   trace_path?: string | null;
   error?: string | null;
   actions?: AgentHealthAction[];
+  action_groups?: ActionGroup[];
 };
 
 export type RunStatus = {
@@ -455,6 +456,14 @@ export type AgentAction = NextAction & {
   label?: string;
 };
 
+export type ActionGroup = {
+  id: string;
+  label?: string;
+  reason?: string;
+  action_ids?: string[];
+  count?: number;
+};
+
 export type SuggestedAction = {
   id: string;
   label: string;
@@ -528,6 +537,7 @@ export type AgentResponse = {
   };
   capabilities?: { name: string; summary: string }[];
   actions?: AgentHealthAction[];
+  action_groups?: ActionGroup[];
   next_actions?: string[];
   recommendations?: string[];
   diff?: string | null;

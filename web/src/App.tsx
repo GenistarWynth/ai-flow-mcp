@@ -19,6 +19,7 @@ import {
   User
 } from "lucide-react";
 import {
+  ActionGroup,
   AgentResponse,
   AgentActivity,
   AgentAction,
@@ -66,6 +67,7 @@ type DoctorProfileStatus = {
 };
 type LocalReplyAction = {
   id: string;
+  sourceId?: string;
   label: string;
   message: string;
   icon: "play" | "settings" | "shield" | "search";
@@ -238,26 +240,67 @@ function localReplyActions(response: AgentResponse | null): LocalReplyAction[] {
     const mapped = enrichLocalReplyAction(mapStructuredLocalReplyAction(action), response);
     if (!mapped || seen.has(mapped.id)) continue;
     seen.add(mapped.id);
-    result.push(mapped);
+    result.push({ ...mapped, sourceId: action.id || action.message || action.command || mapped.id });
   }
   const actions = response?.next_actions ?? [];
   for (const raw of actions) {
     const mapped = enrichLocalReplyAction(mapLocalReplyAction(raw), response);
     if (!mapped || seen.has(mapped.id)) continue;
     seen.add(mapped.id);
-    result.push(mapped);
+    result.push({ ...mapped, sourceId: raw });
   }
   const primaryAction = mapPrimaryNextLocalReplyAction(response);
   if (primaryAction && !seen.has(primaryAction.id)) {
     seen.add(primaryAction.id);
-    result.push(primaryAction);
+    result.push({ ...primaryAction, sourceId: primaryAction.sourceId ?? primaryAction.id });
   }
   const gateAction = mapGateNextLocalReplyAction(response);
   if (gateAction && !seen.has(gateAction.id)) {
     seen.add(gateAction.id);
-    result.push(gateAction);
+    result.push({ ...gateAction, sourceId: gateAction.sourceId ?? gateAction.id });
   }
   return result;
+}
+
+function localReplyActionGroups(response: AgentResponse | null, actions: LocalReplyAction[]) {
+  const groups = response?.action_groups ?? [];
+  if (!groups.length) {
+    return actions.length ? [{ id: "suggested", label: "建议动作", reason: undefined, actions }] : [];
+  }
+  const bySource = new Map<string, LocalReplyAction>();
+  for (const action of actions) {
+    bySource.set(action.sourceId ?? action.id, action);
+  }
+  const used = new Set<string>();
+  const result: { id: string; label: string; reason?: string; actions: LocalReplyAction[] }[] = [];
+  for (const group of groups) {
+    const grouped = (group.action_ids ?? []).map((id) => bySource.get(id)).filter(Boolean) as LocalReplyAction[];
+    const unique = grouped.filter((action) => {
+      if (used.has(action.id)) return false;
+      used.add(action.id);
+      return true;
+    });
+    if (unique.length) {
+      result.push({ id: group.id, label: localReplyActionGroupLabel(group), reason: group.reason, actions: unique });
+    }
+  }
+  const remaining = actions.filter((action) => !used.has(action.id));
+  if (remaining.length) result.push({ id: "suggested", label: "建议动作", actions: remaining });
+  return result;
+}
+
+function localReplyActionGroupLabel(group: ActionGroup) {
+  const labels: Record<string, string> = {
+    background_polling: "后台轮询",
+    routing: "经济路由",
+    setup: "就绪设置",
+    diagnostics: "诊断",
+    gate: "门禁动作",
+    new_task: "新任务",
+    commands: "命令",
+    local: "本地 Agent"
+  };
+  return labels[group.id] ?? group.label ?? "建议动作";
 }
 
 function enrichLocalReplyAction(action: LocalReplyAction | null, response?: AgentResponse | null): LocalReplyAction | null {
@@ -2746,6 +2789,7 @@ function LocalAgentResponseDetails({
   if (!response) return null;
   const commands = localReplyCommandActions(response);
   const suggestions = localReplyActions(response).filter((action) => !(response.run_id && action.id === "open-latest-run" && action.runId === response.run_id));
+  const suggestionGroups = localReplyActionGroups(response, suggestions);
   const efficiency = response.efficiency_summary ?? response.metrics?.efficiency_summary;
   const hasPanels = Boolean(
     response.gate_diagnosis ||
@@ -2754,7 +2798,7 @@ function LocalAgentResponseDetails({
       response.metrics?.routing_evidence ||
       efficiency ||
       commands.length ||
-      suggestions.length
+      suggestionGroups.length
   );
   if (!hasPanels) return null;
   return (
@@ -2774,29 +2818,36 @@ function LocalAgentResponseDetails({
           ))}
         </div>
       ) : null}
-      {suggestions.length ? (
-        <div className="empty-actions local-agent-actions" aria-label="Agent 建议动作">
-          {suggestions.map((action) => (
-            <button
-              className={`empty-action ${action.id === "apply-economy" ? "" : "secondary"}`}
-              type="button"
-              key={action.id}
-              aria-label={action.label}
-              title={action.reason}
-              onClick={() => onAction?.(action)}
-              disabled={!onAction || actionBusy}
-            >
-              {action.icon === "settings" ? (
-                <Settings size={14} />
-              ) : action.icon === "shield" ? (
-                <ShieldCheck size={14} />
-              ) : action.icon === "search" ? (
-                <Search size={14} />
-              ) : (
-                <Play size={14} />
-              )}
-              {action.label}
-            </button>
+      {suggestionGroups.length ? (
+        <div className="local-agent-action-groups" aria-label="Agent 建议动作">
+          {suggestionGroups.map((group) => (
+            <div className="local-agent-action-group" key={group.id}>
+              <span title={group.reason}>{group.label}</span>
+              <div className="empty-actions local-agent-actions">
+                {group.actions.map((action) => (
+                  <button
+                    className={`empty-action ${action.id === "apply-economy" ? "" : "secondary"}`}
+                    type="button"
+                    key={action.id}
+                    aria-label={action.label}
+                    title={action.reason}
+                    onClick={() => onAction?.(action)}
+                    disabled={!onAction || actionBusy}
+                  >
+                    {action.icon === "settings" ? (
+                      <Settings size={14} />
+                    ) : action.icon === "shield" ? (
+                      <ShieldCheck size={14} />
+                    ) : action.icon === "search" ? (
+                      <Search size={14} />
+                    ) : (
+                      <Play size={14} />
+                    )}
+                    {action.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       ) : null}

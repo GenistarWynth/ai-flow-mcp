@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from . import service
+from .action_contract import group_actions
 from .artifacts import now_iso, read_text
 from .config import economy_target, load_config
 from .config_wizard import run_config_wizard
@@ -2887,7 +2888,7 @@ def _stateless_response(
     }
     if extra:
         response.update(extra)
-    return response
+    return _with_action_groups(response)
 
 
 def _dedupe_strings(items: list[str]) -> list[str]:
@@ -2979,7 +2980,7 @@ def _agent_response(
         response["recovery"] = current["failure_recovery"]
     if extra:
         response.update(extra)
-    return response
+    return _with_action_groups(response)
 
 
 def _with_autopilot_error(response: dict[str, Any], autopilot: dict[str, Any]) -> dict[str, Any]:
@@ -3040,6 +3041,15 @@ def _background_pending_response(
         routing_actions = list(extra.get("routing_actions") or [])
         if routing_actions:
             response["actions"] = followup_actions + routing_actions
+    return _with_action_groups(response)
+
+
+def _with_action_groups(response: dict[str, Any]) -> dict[str, Any]:
+    actions = response.get("actions")
+    if isinstance(actions, list):
+        groups = group_actions(actions)
+        if groups:
+            response["action_groups"] = groups
     return response
 
 

@@ -142,6 +142,25 @@ textarea { resize: none; }
 .empty-thread strong { font-size: 18px; }
 .empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 6px; }
 .local-agent-actions { justify-content: flex-start; padding-left: 42px; }
+.local-agent-action-groups {
+  display: grid;
+  gap: 8px;
+  width: min(780px, calc(100% - 42px));
+  margin-left: 42px;
+}
+.local-agent-action-group {
+  display: grid;
+  gap: 5px;
+}
+.local-agent-action-group > span {
+  color: #647083;
+  font-size: 12px;
+  font-weight: 800;
+}
+.local-agent-action-group .local-agent-actions {
+  padding-left: 0;
+  margin-top: 0;
+}
 .local-agent-command-actions {
   display: grid;
   gap: 7px;

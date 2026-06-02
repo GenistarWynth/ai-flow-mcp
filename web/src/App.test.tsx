@@ -2514,6 +2514,22 @@ describe("Workbench", () => {
           safe: true,
           reason: "Run read-only setup diagnostics."
         }
+      ],
+      action_groups: [
+        {
+          id: "routing",
+          label: "Economy routing",
+          reason: "Inspect or repair the low-cost write/fix route.",
+          action_ids: ["apply_economy_profile"],
+          count: 1
+        },
+        {
+          id: "setup",
+          label: "Setup and readiness",
+          reason: "Run local setup or readiness follow-ups.",
+          action_ids: ["open_readiness"],
+          count: 1
+        }
       ]
     });
     const client = createClient({ agentMessage });
@@ -2539,6 +2555,9 @@ describe("Workbench", () => {
     expect(within(efficiencyResult).getByText("Not configured")).toBeVisible();
     expect(within(efficiencyResult).getByText("economy tokens 200 / 100%")).toBeVisible();
     expect(within(efficiencyResult).getByText("economy cost USD 0.02 / 100%")).toBeVisible();
+    const localActions = await screen.findByLabelText("Agent 建议动作");
+    expect(within(localActions).getByText("经济路由")).toBeVisible();
+    expect(within(localActions).getByText("就绪设置")).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "Apply economy profile" }));
 
     await waitFor(() => expect(client.applyConfigProfile).toHaveBeenCalledWith("economy"));

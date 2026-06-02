@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import git_utils
+from .action_contract import group_actions
 from .adapters import (
     FIXERS,
     PLANNERS,
@@ -160,6 +161,7 @@ def _background_job_summary(job: dict[str, Any]) -> dict[str, Any]:
         "trace_path": job.get("trace_path"),
         "error": job.get("reaper_error"),
         "actions": actions,
+        "action_groups": group_actions(actions),
     }
 
 
