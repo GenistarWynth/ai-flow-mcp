@@ -7,7 +7,18 @@ description: Use Patchbay for multi-agent/multi-model coding workflows when the 
 
 Patchbay is a gated local patch orchestrator. Use it instead of editing files directly when this skill triggers.
 
+## Recommended Conversational Entry
+
+Prefer the conversational Patchbay Agent entry point when it is available. It gives MCP hosts, Codex Desktop, and the local CLI the same setup/start/resume/diagnose behavior and returns structured `actions[]` for safe follow-ups.
+
+- With MCP tools, call `patchbay_agent` for natural-language setup, planning, status, readiness, routing, next-step, gate-status, and long-running background turns.
+- Without MCP, use the equivalent local CLI path: `scripts/patchbay agent message "<user task>" --background --json`, then poll `scripts/patchbay context <run_id>` or `scripts/patchbay events <run_id>`.
+- Still preserve the gates: show the generated plan before implementation, require explicit plan approval before write/test/review, and require a separate explicit apply confirmation after tests and review pass.
+- For simple high-volume implementation and repair work, inspect `routing`, `routing_evidence`, or `efficiency_summary` so the host can show whether write/fix are using the cheaper economy route before approving long work.
+
 ## Required Workflow
+
+Use this manual phase workflow when the conversational Agent tool is unavailable, when debugging a phase, or when a host explicitly needs direct phase control.
 
 1. Start with a plan:
 
