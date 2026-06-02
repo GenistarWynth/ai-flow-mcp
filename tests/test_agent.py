@@ -1157,6 +1157,9 @@ test = []
         self.assertEqual(recovery_actions["inspect_events"]["kind"], "diagnostic_tab")
         self.assertEqual(recovery_actions["inspect_artifacts"]["tab"], "Artifacts")
         self.assertEqual(recovery_actions["start_new_task"]["kind"], "focus_composer")
+        recovery_groups = {item["id"]: item for item in response["recovery"]["action_groups"]}
+        self.assertIn("inspect_events", recovery_groups["diagnostics"]["action_ids"])
+        self.assertIn("start_new_task", recovery_groups["new_task"]["action_ids"])
         self.assertIn("Inspect writer.log", response["reply"])
         self.assertEqual(response["next_actions"], ["status", "events", "artifact", "diff"])
 

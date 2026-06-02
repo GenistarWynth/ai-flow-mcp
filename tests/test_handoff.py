@@ -262,6 +262,9 @@ class HandoffContextTest(unittest.TestCase):
         self.assertEqual(context["failure_recovery"]["stage"], "plan")
         self.assertEqual(context["failure_recovery"]["suggested_next_action"], guidance)
         self.assertIn("PLAN.md", context["failure_recovery"]["artifacts"])
+        recovery_groups = {item["id"]: item for item in context["failure_recovery"]["action_groups"]}
+        self.assertIn("inspect_events", recovery_groups["diagnostics"]["action_ids"])
+        self.assertIn("start_new_task", recovery_groups["new_task"]["action_ids"])
         activity = context["agent_activity"]
         self.assertEqual(activity["tone"], "failed")
         self.assertEqual(activity["next_action"]["name"], "inspect_events")

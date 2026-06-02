@@ -1611,12 +1611,14 @@ def _failure_recovery(status_data: dict[str, Any]) -> dict[str, Any]:
     suggested = str(status_data.get("suggested_next_action") or "").strip()
     if not suggested:
         suggested = "Inspect diagnostics before retrying or starting a replacement run."
+    actions = _failure_recovery_actions(inspect)
     return {
         "stage": stage,
         "error": str(status_data.get("error") or "Run failed."),
         "suggested_next_action": suggested,
         "safe_actions": ["status", "events", "artifact", "diff", "new_run"],
-        "actions": _failure_recovery_actions(inspect),
+        "actions": actions,
+        "action_groups": group_actions(actions),
         "artifacts": inspect,
         "summary": f"Run failed in {stage}; inspect {', '.join(inspect) if inspect else 'diagnostics'} before taking another action.",
     }

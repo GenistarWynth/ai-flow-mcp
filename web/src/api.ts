@@ -39,6 +39,7 @@ export type FailureRecovery = {
   suggested_next_action?: string;
   safe_actions?: string[];
   actions?: AgentHealthAction[];
+  action_groups?: ActionGroup[];
   artifacts?: string[];
   summary?: string;
 };
