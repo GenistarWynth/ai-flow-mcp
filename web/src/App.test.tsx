@@ -3296,6 +3296,68 @@ describe("Workbench", () => {
     expect(within(commandActions).getByRole("button", { name: "Copy command Register MCP" })).toHaveTextContent("Copied");
   });
 
+  it("shows setup recommendations and keeps recommendation actions clickable", async () => {
+    const recommendation = "Set `commands.reasonix` so the Reasonix/DeepSeek write/fix economy route can actually execute.";
+    const agentMessage = vi
+      .fn()
+      .mockResolvedValueOnce({
+        run_id: null,
+        action: "setup",
+        ok: true,
+        reply: "Patchbay setup completed with follow-up steps.",
+        setup_host: "codex",
+        recommendations: [recommendation],
+        next_actions: ["configure reasonix command"],
+        setup: {
+          ok: true,
+          root: "C:/repo",
+          recommendations: [recommendation],
+          doctor: {
+            ok: true,
+            root: "C:/repo",
+            checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true } },
+            next_actions: [],
+            recommendations: [recommendation]
+          },
+          next_actions: ["configure reasonix command"]
+        },
+        actions: [
+          {
+            id: "configure_reasonix_command",
+            label: "Configure Reasonix",
+            kind: "local_agent",
+            message: "configure reasonix command",
+            safe: true,
+            reason: "Set commands.reasonix before starting write/fix work."
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        run_id: null,
+        action: "reasonix_command_configure",
+        ok: false,
+        reply: "Provide the Reasonix executable path.",
+        next_actions: []
+      });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      agentMessage
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.click(screen.getByRole("button", { name: "Setup Codex" }));
+
+    const setupResult = await screen.findByLabelText("Setup result");
+    expect(within(setupResult).getByText("建议")).toBeVisible();
+    expect(within(setupResult).getByText(recommendation)).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Configure Reasonix" }));
+
+    await waitFor(() => expect(agentMessage).toHaveBeenLastCalledWith("configure reasonix command"));
+    expect(await screen.findByText("Provide the Reasonix executable path.")).toBeVisible();
+  });
+
   it("runs local-only setup from the readiness panel without creating a run", async () => {
     const setupRouting = {
       profile: "economy",

@@ -333,6 +333,7 @@ export type SetupResult = {
   root?: string;
   doctor?: DoctorReport;
   routing?: RoutingEvidence;
+  recommendations?: string[];
   mcp?: {
     host?: string;
     command?: string;

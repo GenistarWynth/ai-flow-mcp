@@ -280,6 +280,18 @@ function localReplyCommandActions(response: AgentResponse | null): AgentHealthAc
   return result;
 }
 
+function dedupeStrings(items: Array<string | null | undefined>) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const item of items) {
+    const value = item?.trim();
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    result.push(value);
+  }
+  return result;
+}
+
 function mapPrimaryNextLocalReplyAction(response: AgentResponse | null): LocalReplyAction | null {
   if (!response?.run_id) return null;
   const action = response.next_action ?? response.run_reference?.next_action ?? null;
@@ -2820,6 +2832,11 @@ function SetupResultCard({ response }: { response: AgentResponse }) {
   const note = typeof mcp?.note === "string" ? mcp.note : "";
   const root = typeof setup.root === "string" ? setup.root : "";
   const nextActions = setup.next_actions ?? [];
+  const recommendations = dedupeStrings([
+    ...(setup.recommendations ?? []),
+    ...(response.recommendations ?? []),
+    ...(setup.doctor?.recommendations ?? [])
+  ]);
   return (
     <div className="setup-result-card" aria-label="Setup result">
       <div className="setup-result-head">
@@ -2844,6 +2861,14 @@ function SetupResultCard({ response }: { response: AgentResponse }) {
         <div className="setup-result-actions">
           {nextActions.slice(0, 3).map((action) => (
             <span key={action}>{action}</span>
+          ))}
+        </div>
+      ) : null}
+      {recommendations.length ? (
+        <div className="setup-result-recommendations">
+          <strong>建议</strong>
+          {recommendations.slice(0, 3).map((recommendation) => (
+            <span key={recommendation}>{recommendation}</span>
           ))}
         </div>
       ) : null}

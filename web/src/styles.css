@@ -262,6 +262,24 @@ textarea { resize: none; }
   font-weight: 700;
   overflow-wrap: anywhere;
 }
+.setup-result-recommendations {
+  display: grid;
+  gap: 5px;
+}
+.setup-result-recommendations strong {
+  color: #344255;
+  font-size: 12px;
+}
+.setup-result-recommendations span {
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 6px 8px;
+  color: #174ea6;
+  background: #eff6ff;
+  font-size: 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
 .routing-result-card {
   justify-self: center;
   display: grid;
