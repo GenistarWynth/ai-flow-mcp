@@ -303,6 +303,31 @@ function localReplyActionGroupLabel(group: ActionGroup) {
   return labels[group.id] ?? group.label ?? "建议动作";
 }
 
+function groupedHealthActions(actions: AgentHealthAction[] | undefined, groups: ActionGroup[] | undefined) {
+  const safeActions = (actions ?? []).filter((item) => item.safe !== false);
+  if (!safeActions.length) return [];
+  if (!groups?.length) return [{ id: "suggested", label: "建议动作", reason: undefined, actions: safeActions }];
+  const byId = new Map<string, AgentHealthAction>();
+  for (const action of safeActions) {
+    byId.set(action.id || action.label, action);
+  }
+  const used = new Set<string>();
+  const result: { id: string; label: string; reason?: string; actions: AgentHealthAction[] }[] = [];
+  for (const group of groups) {
+    const grouped = (group.action_ids ?? []).map((id) => byId.get(id)).filter(Boolean) as AgentHealthAction[];
+    const unique = grouped.filter((action) => {
+      const key = action.id || action.label;
+      if (used.has(key)) return false;
+      used.add(key);
+      return true;
+    });
+    if (unique.length) result.push({ id: group.id, label: localReplyActionGroupLabel(group), reason: group.reason, actions: unique });
+  }
+  const remaining = safeActions.filter((action) => !used.has(action.id || action.label));
+  if (remaining.length) result.push({ id: "suggested", label: "建议动作", actions: remaining });
+  return result;
+}
+
 function enrichLocalReplyAction(action: LocalReplyAction | null, response?: AgentResponse | null): LocalReplyAction | null {
   if (!action || action.id !== "open-latest-run") return action;
   const runId = action.runId ?? response?.run_reference?.run_id ?? response?.recent_run?.run_id ?? response?.run_id ?? undefined;
@@ -2461,6 +2486,7 @@ function NextActionCard({
   onRecoveryAction?: (action: AgentHealthAction) => void;
   onAction: (action: SuggestedAction | AgentAction | string) => void;
 }) {
+  const recoveryGroups = groupedHealthActions(failureRecovery?.actions, failureRecovery?.action_groups);
   if (busy) {
     return (
       <div className="next-card running" aria-label="后台任务运行中">
@@ -2487,16 +2513,21 @@ function NextActionCard({
               ))}
             </div>
           ) : null}
-          {failureRecovery?.actions?.length ? (
-            <div className="recovery-actions" aria-label="Failure recovery actions">
-              {failureRecovery.actions
-                .filter((item) => item.safe !== false)
-                .map((item) => (
-                  <button type="button" key={item.id || item.label} onClick={() => onRecoveryAction?.(item)}>
-                    {item.kind === "focus_composer" ? <Plus size={13} /> : <Search size={13} />}
-                    {item.label}
-                  </button>
-                ))}
+          {recoveryGroups.length ? (
+            <div className="recovery-action-groups" aria-label="Failure recovery actions">
+              {recoveryGroups.map((group) => (
+                <div className="recovery-action-group" key={group.id}>
+                  <span title={group.reason}>{group.label}</span>
+                  <div className="recovery-actions">
+                    {group.actions.map((item) => (
+                      <button type="button" key={item.id || item.label} onClick={() => onRecoveryAction?.(item)}>
+                        {item.kind === "focus_composer" ? <Plus size={13} /> : <Search size={13} />}
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           ) : null}
         </div>

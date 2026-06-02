@@ -4763,6 +4763,20 @@ describe("Workbench", () => {
               reason: "Start over with a narrower task."
             }
           ],
+          action_groups: [
+            {
+              id: "diagnostics",
+              label: "Diagnostics",
+              action_ids: ["inspect_events", "inspect_artifacts"],
+              count: 2
+            },
+            {
+              id: "new_task",
+              label: "New task",
+              action_ids: ["start_new_task"],
+              count: 1
+            }
+          ],
           artifacts: ["PLAN.md", "plan.json", "events.jsonl"],
           summary: "Run failed in plan; inspect PLAN.md, plan.json, events.jsonl before taking another action."
         },
@@ -4785,6 +4799,8 @@ describe("Workbench", () => {
     expect(within(card).getByText(guidance)).toBeVisible();
     expect(within(card).getByText("PLAN.md")).toBeVisible();
     expect(within(card).getByText("events.jsonl")).toBeVisible();
+    expect(within(card).getByText("诊断")).toBeVisible();
+    expect(within(card).getByText("新任务")).toBeVisible();
     expect(within(card).getByRole("button", { name: "Inspect events" })).toBeVisible();
     expect(within(card).getByRole("button", { name: "Inspect artifacts" })).toBeVisible();
     expect(within(card).getByRole("button", { name: "Start replacement task" })).toBeVisible();
