@@ -510,7 +510,7 @@ def _start_background_agent(
         extra={"background": True, "job": job, "background_job": service.summarize_background_job(job)},
     )
     response["requires_confirmation"] = None
-    response["next_actions"] = ["status", "events"]
+    response["next_actions"] = _background_next_actions()
     response["actions"] = background_actions
     return response
 
@@ -542,7 +542,7 @@ def _background_already_running_response(
         extra={"background": True, "already_running": True, "background_job": job, "actions": actions},
     )
     response["requires_confirmation"] = None
-    response["next_actions"] = ["status", "events"]
+    response["next_actions"] = _background_next_actions()
     return response
 
 
@@ -645,6 +645,10 @@ finally:
     if include.get("diff"):
         command.append("--include-diff")
     return command
+
+
+def _background_next_actions() -> list[str]:
+    return ["status", "context", "events"]
 
 
 def agent_status(cwd: Path, run_id: str, *, since: int = 0, include: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -3024,7 +3028,7 @@ def _background_pending_response(
         "artifacts": {},
         "diff": None,
         "requires_confirmation": None,
-        "next_actions": ["status", "events"],
+        "next_actions": _background_next_actions(),
         "error": None,
         "background": True,
         "job": job,

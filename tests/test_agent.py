@@ -2175,7 +2175,7 @@ model = "cheap-model"
         self.assertTrue(response["background_job"]["active"])
         self.assertEqual(response["background_job"]["status"], "running")
         self.assertEqual(response["background_job"]["phase"], "plan")
-        self.assertEqual(response["next_actions"], ["status", "events"])
+        self.assertEqual(response["next_actions"], ["status", "context", "events"])
         self.assertIn("routing", response)
         self.assertFalse(response["routing"]["economy_configured"])
         self.assertEqual(response["routing"]["phases"]["write"]["configured"]["provider"], "mock")
@@ -2383,7 +2383,7 @@ model = "cheap-model"
         self.assertTrue(second["background"])
         self.assertTrue(second["already_running"])
         self.assertIsNone(second["requires_confirmation"])
-        self.assertEqual(second["next_actions"], ["status", "events"])
+        self.assertEqual(second["next_actions"], ["status", "context", "events"])
         self.assertEqual(second["background_job"]["pid"], 9876)
         actions = {item["id"]: item for item in second["actions"]}
         self.assertEqual(actions["open_background_run"]["run_id"], run_id)
