@@ -84,8 +84,15 @@ def _server_command(root: Path) -> str:
     """Return the command string that starts the MCP server."""
     server_path = root / SERVER_SCRIPT
     if server_path.exists():
-        return f"python {server_path} --root {root}"
-    return f"patchbay-mcp --root {root}"
+        return f"python {_quote_command_arg(server_path)} --root {_quote_command_arg(root)}"
+    return f"patchbay-mcp --root {_quote_command_arg(root)}"
+
+
+def _quote_command_arg(value: str | Path) -> str:
+    text = str(value)
+    if text and not any(char.isspace() for char in text) and '"' not in text:
+        return text
+    return '"' + text.replace('"', '\\"') + '"'
 
 
 def _server_argv(root: Path) -> list[str]:

@@ -75,6 +75,28 @@ class McpInstallTest(unittest.TestCase):
         self.assertIn("codex mcp add patchbay", result["command"])
         self.assertTrue(result["dry_run"])
 
+    def test_dry_run_quotes_server_paths_with_spaces(self) -> None:
+        from scripts.ai_flow.mcp_install import install_codex
+
+        spaced = self.tmp / "root with space"
+        server = spaced / "scripts" / "patchbay_mcp_server.py"
+        server.parent.mkdir(parents=True)
+        server.write_text("print('ok')\n", encoding="utf-8")
+
+        result = install_codex(spaced, dry_run=True)
+
+        self.assertIn(f'python "{server}" --root "{spaced}"', result["command"])
+
+    def test_installed_command_quotes_root_with_spaces(self) -> None:
+        from scripts.ai_flow.mcp_install import install_codex
+
+        spaced = self.tmp / "installed root with space"
+        spaced.mkdir()
+
+        result = install_codex(spaced, dry_run=True)
+
+        self.assertIn(f'patchbay-mcp --root "{spaced}"', result["command"])
+
     def test_codex_install_executes_command_when_available(self) -> None:
         from scripts.ai_flow import mcp_install
         import subprocess

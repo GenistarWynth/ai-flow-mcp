@@ -202,10 +202,10 @@ Codex、Claude Code、Gemini 会先尝试自动执行注册命令，CLI 不可�
 # 如果 host CLI 不可用，会在结果里返回可复制的命令。
 
 # Codex CLI / Codex Desktop
-codex mcp add patchbay -- python scripts/patchbay_mcp_server.py
+codex mcp add patchbay -- patchbay-mcp --root /path/to/repo
 
 # Claude Code
-claude mcp add patchbay -- python scripts/patchbay_mcp_server.py
+claude mcp add patchbay -- patchbay-mcp --root /path/to/repo
 
 # Claude Desktop: 编辑 claude_desktop_config.json，在 mcpServers 中添加
 # Gemini CLI: 使用对应的 MCP server 注册方式
