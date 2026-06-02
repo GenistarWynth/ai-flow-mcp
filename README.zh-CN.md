@@ -253,6 +253,8 @@ patchbay skill print codex --json
 
 Skill host 参数也接受 `Codex Desktop`、`Codex CLI`、`Codex 桌面` 等 Codex 别名；返回结果仍使用 canonical `codex`。
 
+`patchbay skill doctor` 会同时检查内置 Skill 源和已安装副本是否一致。如果已安装 Skill 过旧或缺文件，会返回 `status: "outdated"`、`installed_matches_source: false`、`missing_installed_files`、`changed_installed_files`，并给出安全的重新安装动作。
+
 默认安装位置是 `$CODEX_HOME/skills` 或 `~/.codex/skills`。触发语包括“走多模型流程”和“multi-agent workflow”；MCP 工具仍需要单独注册。
 
 MCP 只是调用 `scripts.ai_flow.service` 中的同一套业务逻辑，不复制另一份流程。

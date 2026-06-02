@@ -84,4 +84,4 @@ patchbay skill doctor codex
 
 The host argument may be `codex` or a Codex alias such as `Codex Desktop`, `Codex CLI`, or `Codex 桌面`; output is normalized to `codex`.
 
-The default destination is `$CODEX_HOME/skills` or `~/.codex/skills`. The Skill triggers on phrases such as "走多模型流程" and "multi-agent workflow". It can use MCP tools when they are available, or the local CLI path when the user or host asks for no-MCP work.
+The default destination is `$CODEX_HOME/skills` or `~/.codex/skills`. `patchbay skill doctor` validates both the bundled Skill source and the installed copy; stale installs return `status: "outdated"`, `installed_matches_source: false`, `missing_installed_files`, `changed_installed_files`, and a safe reinstall action. The Skill triggers on phrases such as "走多模型流程" and "multi-agent workflow". It can use MCP tools when they are available, or the local CLI path when the user or host asks for no-MCP work.

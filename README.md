@@ -187,6 +187,8 @@ patchbay skill print codex --json
 
 The Skill host argument accepts Codex aliases such as `Codex Desktop`, `Codex CLI`, and `Codex 桌面`; responses still use the canonical `codex` host.
 
+`patchbay skill doctor` validates both the bundled Skill source and the installed copy. If the installed Skill is stale or missing files, it reports `status: "outdated"`, `installed_matches_source: false`, `missing_installed_files`, and `changed_installed_files`, then returns a safe reinstall action.
+
 By default the Skill installs to `$CODEX_HOME/skills` or `~/.codex/skills`. It triggers on phrases such as "走多模型流程" and "multi-agent workflow"; MCP tools still need MCP registration.
 `patchbay skill doctor` / `patchbay_skill_doctor` also return safe structured `install_skill` and `refresh_skill_doctor` actions when the Skill is missing. With the default skills root, `install_skill` is a `local_agent` action with message `install Codex Skill` and a copyable `patchbay skill install codex` command fallback, so desktop and MCP hosts can install the Skill without invoking MCP registration. When a custom `--path` is supplied, the action remains a command so the selected destination is preserved.
 

@@ -84,21 +84,36 @@ def run_skill_doctor(cwd: Path, host: str = "codex", *, path: str | Path | None 
     ]
     source_ok = bool(source) and not missing_source_files
     installed = (destination / "SKILL.md").exists()
+    installed_files: list[str] = []
+    missing_installed_files: list[str] = []
+    changed_installed_files: list[str] = []
+    installed_matches_source = False
+    if installed and source:
+        installed_files = [
+            str(file_path.relative_to(destination)).replace("\\", "/")
+            for file_path in sorted(destination.rglob("*"))
+            if file_path.is_file()
+        ]
+        missing_installed_files, changed_installed_files = _skill_install_drift(source, destination, source_files)
+        installed_matches_source = not missing_installed_files and not changed_installed_files
     next_actions: list[str] = []
     if not source_ok:
         next_actions.append("Reinstall Patchbay; the bundled Codex Skill source is missing or incomplete.")
     elif not installed:
         next_actions.append("Run `patchbay skill install codex` so Codex can discover the Patchbay Skill.")
+    elif not installed_matches_source:
+        next_actions.append("Run `patchbay skill install codex` to update the installed Patchbay Skill from the bundled source.")
     actions: list[dict[str, Any]] = []
-    if source_ok and not installed:
+    if source_ok and (not installed or not installed_matches_source):
         actions.append(_skill_install_action(path))
     if next_actions:
         actions.append(_skill_doctor_action(path))
+    ready = source_ok and installed and installed_matches_source
     return {
         "host": "codex",
         "ok": source_ok,
-        "ready": source_ok and installed,
-        "status": "installed" if source_ok and installed else "missing_source" if not source_ok else "not_installed",
+        "ready": ready,
+        "status": "installed" if ready else "missing_source" if not source_ok else "not_installed" if not installed else "outdated",
         "source": str(source) if source else "",
         "source_exists": bool(source),
         "source_file_count": len(source_files),
@@ -106,12 +121,30 @@ def run_skill_doctor(cwd: Path, host: str = "codex", *, path: str | Path | None 
         "skills_root": str(skills_root),
         "destination": str(destination),
         "installed": installed,
+        "installed_file_count": len(installed_files),
+        "installed_matches_source": installed_matches_source,
+        "missing_installed_files": missing_installed_files,
+        "changed_installed_files": changed_installed_files,
         "install_command": "patchbay skill install codex",
         "doctor_command": "patchbay skill doctor codex",
         "next_actions": next_actions,
         "actions": actions,
         "action_groups": group_actions(actions),
     }
+
+
+def _skill_install_drift(source: Path, destination: Path, source_files: list[str]) -> tuple[list[str], list[str]]:
+    missing: list[str] = []
+    changed: list[str] = []
+    for file_name in source_files:
+        source_file = source / file_name
+        installed_file = destination / file_name
+        if not installed_file.exists():
+            missing.append(file_name)
+            continue
+        if source_file.read_bytes() != installed_file.read_bytes():
+            changed.append(file_name)
+    return missing, changed
 
 
 def _normalize_skill_host(host: str | None, *, action: str) -> str:

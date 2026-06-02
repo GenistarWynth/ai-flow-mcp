@@ -96,6 +96,10 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("简单 writer/fix 用 DeepSeek 省钱", result["files"]["references/install.md"])
         self.assertIn("guarded economy-provider form", result["files"]["references/install.md"])
         self.assertIn("只用本地工具", result["files"]["references/install.md"])
+        self.assertIn('status: "outdated"', result["files"]["references/install.md"])
+        self.assertIn("installed_matches_source", result["files"]["references/install.md"])
+        self.assertIn("missing_installed_files", result["files"]["references/install.md"])
+        self.assertIn("changed_installed_files", result["files"]["references/install.md"])
         self.assertIn("providers.<id>.command", result["files"]["references/install.md"])
         self.assertIn("configure reasonix command", result["files"]["references/install.md"])
         self.assertIn("configure reasonix command to <path>", result["files"]["references/install.md"])
@@ -251,6 +255,9 @@ class SkillInstallTest(unittest.TestCase):
         self.assertEqual(before["status"], "not_installed")
         self.assertTrue(before["source_exists"])
         self.assertFalse(before["installed"])
+        self.assertFalse(before["installed_matches_source"])
+        self.assertEqual(before["missing_installed_files"], [])
+        self.assertEqual(before["changed_installed_files"], [])
         self.assertTrue(any("skill install codex" in action for action in before["next_actions"]))
         before_actions = {item["id"]: item for item in before["actions"]}
         before_groups = {item["id"]: item for item in before["action_groups"]}
@@ -274,10 +281,39 @@ class SkillInstallTest(unittest.TestCase):
         self.assertTrue(after["ready"])
         self.assertEqual(after["status"], "installed")
         self.assertTrue(after["installed"])
+        self.assertTrue(after["installed_matches_source"])
+        self.assertEqual(after["missing_installed_files"], [])
+        self.assertEqual(after["changed_installed_files"], [])
         self.assertEqual(Path(after["destination"]), target / "patchbay")
         self.assertEqual(after["next_actions"], [])
         self.assertEqual(after["actions"], [])
         self.assertEqual(after["action_groups"], [])
+
+    def test_skill_doctor_reports_outdated_installed_skill(self) -> None:
+        from scripts.ai_flow.skill_install import run_skill_doctor, run_skill_install
+
+        target = self.tmp / "skills-root"
+        run_skill_install(self.tmp, path=target)
+        installed_skill = target / "patchbay" / "SKILL.md"
+        installed_skill.write_text(installed_skill.read_text(encoding="utf-8") + "\n# stale local edit\n", encoding="utf-8")
+
+        result = run_skill_doctor(self.tmp, path=target)
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["installed"])
+        self.assertFalse(result["ready"])
+        self.assertEqual(result["status"], "outdated")
+        self.assertFalse(result["installed_matches_source"])
+        self.assertIn("SKILL.md", result["changed_installed_files"])
+        self.assertEqual(result["missing_installed_files"], [])
+        self.assertTrue(any("skill install codex" in action for action in result["next_actions"]))
+        actions = {item["id"]: item for item in result["actions"]}
+        self.assertIn("install_skill", actions)
+        self.assertIn(str(target), actions["install_skill"]["command"])
+        self.assertIn("refresh_skill_doctor", actions)
+        groups = {item["id"]: item for item in result["action_groups"]}
+        self.assertIn("install_skill", groups["setup"]["action_ids"])
+        self.assertIn("refresh_skill_doctor", groups["setup"]["action_ids"])
 
 
 if __name__ == "__main__":
