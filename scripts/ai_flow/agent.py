@@ -1566,7 +1566,7 @@ def _help_response(root: Path) -> dict[str, Any]:
     capabilities = [
         {
             "name": "setup",
-            "summary": "Send `patchbay setup` for Codex or `patchbay setup for Claude Desktop` / `install patchbay for Gemini CLI` to initialize project files, local config, Skill installation, host MCP guidance, a doctor summary, top-level recommendations, safe actions[], and action_groups[]. Send `patchbay setup without MCP` for local-only setup, standalone `please don't use MCP` / `no MCP` / `use Chrome Skill instead of MCP` / `少用这个MCP` for local_mode guidance, `install Codex Skill` for Skill-only setup, or `register MCP for Claude Desktop` for MCP-only registration.",
+            "summary": "Send `patchbay setup` for Codex or `patchbay setup for Claude Desktop` / `install patchbay for Gemini CLI` to initialize project files, local config, Skill installation, host MCP guidance, a doctor summary, top-level recommendations, safe actions[], and action_groups[]. Send `patchbay setup without MCP` for local-only setup, standalone `please don't use MCP` / `no MCP` / `use Chrome Skill instead of MCP` / `少用这个MCP` / `不要用这个MCP` / `不走 MCP` / `走本地模式` / `只用本地工具` for local_mode guidance, `install Codex Skill` for Skill-only setup, or `register MCP for Claude Desktop` for MCP-only registration.",
         },
         {
             "name": "start",
@@ -1582,7 +1582,7 @@ def _help_response(root: Path) -> dict[str, Any]:
         },
         {
             "name": "custom-economy-provider",
-            "summary": "Send `configure DeepSeek provider` to get the safe one-command template for registering a low-cost CLI writer, `configure DeepSeek provider to <command>` to register it immediately, or `configure economy provider command to <path>` to repair the active custom provider command without starting a run. If the custom provider command later fails readiness or metrics checks, clients should render the returned `configure_economy_provider_command` command action before falling back to inspection.",
+            "summary": "Send `configure DeepSeek provider` to get the safe one-command template for registering a low-cost CLI writer, `configure DeepSeek provider to <command>` to register it immediately, or `简单 writer/fix 用 DeepSeek 省钱` to apply economy routing for simple writer/fix work without starting a run. Send `configure economy provider command to <path>` to repair the active custom provider command without starting a run. If the custom provider command later fails readiness or metrics checks, clients should render the returned `configure_economy_provider_command` command action before falling back to inspection.",
         },
         {
             "name": "reasonix-command",
