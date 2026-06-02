@@ -688,6 +688,7 @@ test = []
         self.assertIn("register MCP for Claude Desktop", setup_capability["summary"])
         self.assertIn("recommendations", setup_capability["summary"])
         self.assertIn("actions[]", setup_capability["summary"])
+        self.assertIn("action_groups[]", setup_capability["summary"])
         custom_capability = next(item for item in response["capabilities"] if item["name"] == "custom-economy-provider")
         self.assertIn("configure DeepSeek provider to <command>", custom_capability["summary"])
         self.assertIn("configure economy provider command to <path>", custom_capability["summary"])
@@ -727,6 +728,16 @@ test = []
         self.assertEqual(actions["show_runs"]["message"], "status")
         self.assertTrue(all(item["safe"] for item in actions.values()))
         self.assertFalse((self.repo / ".ai" / "runs").exists())
+
+    def test_agent_failure_recovery_fallback_groups_actions(self) -> None:
+        from scripts.ai_flow import agent
+
+        recovery = agent._failure_recovery_summary({"status": "FAILED", "current_phase": "write"})
+
+        groups = {item["id"]: item for item in recovery["action_groups"]}
+        self.assertIn("inspect_events", groups["diagnostics"]["action_ids"])
+        self.assertIn("inspect_artifacts", groups["diagnostics"]["action_ids"])
+        self.assertIn("start_new_task", groups["new_task"]["action_ids"])
 
     def test_agent_chinese_help_prompts_return_help_without_starting_run(self) -> None:
         for message in ("Patchbay 怎么用", "如何使用 Patchbay", "使用说明", "新手引导"):

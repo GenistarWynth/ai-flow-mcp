@@ -1514,7 +1514,7 @@ def _help_response(root: Path) -> dict[str, Any]:
     capabilities = [
         {
             "name": "setup",
-            "summary": "Send `patchbay setup` for Codex or `patchbay setup for Claude Desktop` / `install patchbay for Gemini CLI` to initialize project files, local config, Skill installation, host MCP guidance, a doctor summary, top-level recommendations, and safe actions[]. Send `patchbay setup without MCP` for local-only setup, standalone `please don't use MCP` / `no MCP` for local_mode guidance, `install Codex Skill` for Skill-only setup, or `register MCP for Claude Desktop` for MCP-only registration.",
+            "summary": "Send `patchbay setup` for Codex or `patchbay setup for Claude Desktop` / `install patchbay for Gemini CLI` to initialize project files, local config, Skill installation, host MCP guidance, a doctor summary, top-level recommendations, safe actions[], and action_groups[]. Send `patchbay setup without MCP` for local-only setup, standalone `please don't use MCP` / `no MCP` for local_mode guidance, `install Codex Skill` for Skill-only setup, or `register MCP for Claude Desktop` for MCP-only registration.",
         },
         {
             "name": "start",
@@ -3475,36 +3475,38 @@ def _reply_for_status(status_data: dict[str, Any]) -> str:
 def _failure_recovery_summary(status_data: dict[str, Any]) -> dict[str, Any]:
     stage = str(status_data.get("stage") or status_data.get("current_phase") or "unknown")
     suggested = str(status_data.get("suggested_next_action") or "Inspect artifacts and events before continuing.")
+    actions = [
+        {
+            "id": "inspect_events",
+            "label": "Inspect events",
+            "kind": "diagnostic_tab",
+            "tab": "Trace",
+            "safe": True,
+            "reason": "Open the event and trace timeline for the failed run.",
+        },
+        {
+            "id": "inspect_artifacts",
+            "label": "Inspect artifacts",
+            "kind": "diagnostic_tab",
+            "tab": "Artifacts",
+            "safe": True,
+            "reason": "Open available run artifacts before retrying.",
+        },
+        {
+            "id": "start_new_task",
+            "label": "Start replacement task",
+            "kind": "focus_composer",
+            "safe": True,
+            "reason": "Start a narrower replacement task instead of retrying the failed run blindly.",
+        },
+    ]
     return {
         "stage": stage,
         "error": str(status_data.get("error") or "Run failed."),
         "suggested_next_action": suggested,
         "safe_actions": ["status", "events", "artifact", "diff", "new_run"],
-        "actions": [
-            {
-                "id": "inspect_events",
-                "label": "Inspect events",
-                "kind": "diagnostic_tab",
-                "tab": "Trace",
-                "safe": True,
-                "reason": "Open the event and trace timeline for the failed run.",
-            },
-            {
-                "id": "inspect_artifacts",
-                "label": "Inspect artifacts",
-                "kind": "diagnostic_tab",
-                "tab": "Artifacts",
-                "safe": True,
-                "reason": "Open available run artifacts before retrying.",
-            },
-            {
-                "id": "start_new_task",
-                "label": "Start replacement task",
-                "kind": "focus_composer",
-                "safe": True,
-                "reason": "Start a narrower replacement task instead of retrying the failed run blindly.",
-            },
-        ],
+        "actions": actions,
+        "action_groups": group_actions(actions),
         "artifacts": list(status_data.get("artifacts") or []),
         "summary": f"Run failed in {stage}.",
     }
