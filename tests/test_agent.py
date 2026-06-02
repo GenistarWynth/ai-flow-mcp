@@ -2074,6 +2074,21 @@ model = "cheap-model"
         self.assertEqual(response["profile"]["status"]["profile"], "economy")
         self.assertIsNone(response["run_id"])
 
+    def test_cli_agent_mixed_language_deepseek_writer_prompts_apply_economy_profile(self) -> None:
+        for message in (
+            "简单 writer/fix 用 DeepSeek 省钱",
+            "让 DeepSeek 处理简单 writer/fix",
+            "simple writer fix use DeepSeek",
+        ):
+            with self.subTest(message=message):
+                response = self.cli_json("agent", "message", message)
+
+                self.assertEqual(response["action"], "profile_apply")
+                self.assertEqual(response["profile"]["status"]["profile"], "economy")
+                self.assertIsNone(response["run_id"])
+        runs_path = self.repo / ".ai" / "runs"
+        self.assertFalse(runs_path.exists() and any(runs_path.iterdir()))
+
     def test_cli_agent_configure_reasonix_command_message(self) -> None:
         from scripts.ai_flow.config import load_config
 
@@ -2271,6 +2286,8 @@ model = "cheap-model"
             "不要用这个MCP好不好",
             "能不能少用这个MCP，用自带浏览器功能",
             "use Chrome Skill instead of MCP",
+            "走本地模式，不走 MCP",
+            "只用本地工具，不走 MCP",
         ):
             with self.subTest(message=message):
                 response = agent_message(self.repo, message, run_id=run_id)
@@ -2297,6 +2314,8 @@ model = "cheap-model"
             "能不能少用这个MCP，用自带浏览器功能",
             "不要用这个MCP，你明明有Chrome Skill",
             "please use browser skill instead of MCP",
+            "只用本地工具，不走 MCP",
+            "走本地模式，不走 MCP",
         ):
             with self.subTest(message=message):
                 response = agent_message(self.repo, message)

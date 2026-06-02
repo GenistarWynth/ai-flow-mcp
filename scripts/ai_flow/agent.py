@@ -1041,10 +1041,8 @@ def _config_profile_intent(text: str) -> str | None:
     write_fix_words = {"bulk", "fix", "implementation", "repair", "routine", "simple", "write", "writer"}
     if bool(words & {"deepseek", "economy", "reasonix"}) and bool(words & apply_words):
         return "profile_apply"
-    if (
-        bool(words & {"deepseek", "economy", "reasonix"})
-        and bool(words & write_fix_words)
-        and bool(words & {"for", "on", "to"})
+    if bool(words & {"deepseek", "economy", "reasonix"}) and bool(words & write_fix_words) and (
+        bool(words & {"for", "on", "to"}) or _has_any(text, ("用", "使用", "让", "交给", "给", "走", "路由", "干", "跑", "省钱"))
     ):
         return "profile_apply"
     if bool(words & {"cheap", "cost", "lower", "low", "economy"}) and bool(words & {"model", "models", "routing", "route", "profile"}):
@@ -1091,14 +1089,29 @@ def _chinese_economy_profile_intent(text: str) -> str | None:
     if not text:
         return None
     economy_terms = ("deepseek", "便宜", "低成本", "经济", "省钱", "性价比")
-    policy_work_terms = ("写手", "写作", "写代码", "简单工作", "简单任务", "大量", "低难度", "便宜模型", "低成本模型")
+    policy_work_terms = (
+        "写手",
+        "写作",
+        "写代码",
+        "简单工作",
+        "简单任务",
+        "大量",
+        "低难度",
+        "便宜模型",
+        "低成本模型",
+        "writer",
+        "write",
+        "fix",
+        "repair",
+        "implementation",
+    )
     if not _has_any(text, economy_terms + ("reasonix",)):
         return None
     if _has_any(text, ("查看", "状态", "检查", "当前", "现在", "只看", "读一下")):
         return "profile_show"
     if _has_task_intent(text) and not _has_any(text, economy_terms) and not _has_any(text, policy_work_terms):
         return None
-    if not _has_any(text, ("写手", "写作", "写代码", "实现", "修复", "简单工作", "简单任务", "大量", "低难度", "便宜模型", "低成本模型")):
+    if not _has_any(text, policy_work_terms + ("实现", "修复", "writer/fix")):
         return None
     if _has_any(text, ("用", "使用", "让", "交给", "给", "走", "路由", "干", "跑", "配置", "启用", "切到", "换成")):
         return "profile_apply"
@@ -1327,6 +1340,8 @@ def _is_mcp_avoidance_intent(text: str, words: set[str] | None = None) -> bool:
             "不要再用 mcp",
             "不要再用这个 mcp",
             "不要再用这个mcp",
+            "不走 mcp",
+            "不走mcp",
             "别用 mcp",
             "别用这个 mcp",
             "别用这个mcp",
@@ -1336,6 +1351,10 @@ def _is_mcp_avoidance_intent(text: str, words: set[str] | None = None) -> bool:
             "不用 mcp",
             "不用这个 mcp",
             "不用这个mcp",
+            "走本地",
+            "走本地模式",
+            "只用本地",
+            "只用本地工具",
             "少用 mcp",
             "少用这个 mcp",
             "少用这个mcp",

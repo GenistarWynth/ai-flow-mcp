@@ -405,6 +405,110 @@ describe("Workbench", () => {
     expect(client.runAction).not.toHaveBeenCalled();
   });
 
+  it("activates a DeepSeek economy provider directly from readiness", async () => {
+    const createProvider = vi.fn().mockResolvedValue({
+      provider: "cheap_writer",
+      activated_economy: true,
+      status: {
+        profile: "economy",
+        economy: {
+          matches: true,
+          target: { provider: "cheap_writer", model: "deepseek-chat", label: "DeepSeek cheap writer" },
+          write: { provider: "cheap_writer", model: "deepseek-chat" },
+          fix: { provider: "cheap_writer", model: "deepseek-chat" },
+          command_ready: true
+        }
+      },
+      next_actions: ["readiness"]
+    });
+    const getDoctor = vi.fn().mockResolvedValue({
+      ok: true,
+      root: "C:/repo",
+      checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true }, mcp: { ok: true, skipped: true } },
+      actions: [
+        {
+          id: "configure_deepseek_provider",
+          label: "Configure DeepSeek provider",
+          kind: "local_agent",
+          message: "configure DeepSeek provider",
+          safe: true,
+          reason: "Offer a custom low-cost CLI writer template."
+        }
+      ],
+      routing: {
+        profile: "economy",
+        economy_configured: true,
+        economy_command_ready: true,
+        target: { provider: "cheap_writer", model: "deepseek-chat", label: "DeepSeek cheap writer" },
+        summary: "Economy routing profile is active: write cheap_writer / deepseek-chat, fix cheap_writer / deepseek-chat."
+      }
+    });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      createProvider,
+      getDoctor,
+      getConfig: vi.fn().mockResolvedValue({ providers: { cheap_writer: { command: "deepseek-writer" } } })
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    const form = within(details).getByRole("form", { name: "Economy provider" });
+
+    expect(within(form).getByLabelText("Provider id")).toHaveValue("cheap_writer");
+    expect(within(form).getByLabelText("Writer command")).toHaveValue("deepseek-writer");
+    await userEvent.click(within(form).getByRole("button", { name: "Activate economy provider" }));
+
+    await waitFor(() =>
+      expect(createProvider).toHaveBeenCalledWith({
+        provider_id: "cheap_writer",
+        roles: ["write", "fix"],
+        command: "deepseek-writer",
+        args: [],
+        prompt_mode: "stdin",
+        output_contract: "writer_diff",
+        activate_economy: true,
+        economy_model: "deepseek-chat",
+        economy_label: "DeepSeek cheap writer"
+      })
+    );
+    expect(await screen.findByText("Economy provider cheap_writer activated.")).toBeVisible();
+    expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "codex" });
+    expect(client.agentMessage).not.toHaveBeenCalled();
+  });
+
+  it("does not expose the economy provider form when readiness has no provider action", async () => {
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      getDoctor: vi.fn().mockResolvedValue({
+        ok: true,
+        root: "C:/repo",
+        checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true }, mcp: { ok: true, skipped: true } },
+        actions: [],
+        routing: {
+          profile: "economy",
+          economy_configured: true,
+          economy_command_ready: true,
+          target: { provider: "cheap_writer", model: "deepseek-chat" },
+          summary: "Economy routing is healthy."
+        }
+      })
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+
+    expect(within(details).queryByRole("form", { name: "Economy provider" })).not.toBeInTheDocument();
+    expect(client.createProvider).not.toHaveBeenCalled();
+  });
+
   it("copies custom economy provider command fixes from readiness", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
@@ -476,6 +580,52 @@ describe("Workbench", () => {
     expect(screen.getAllByText(/patchbay skill install codex/)[0]).toBeVisible();
     expect(screen.getByRole("button", { name: "Refresh readiness" })).toBeVisible();
     expect(client.getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "codex" });
+  });
+
+  it("does not label custom write and fix providers as economy in the strategy map", async () => {
+    const routing = {
+      profile: "custom",
+      economy_configured: false,
+      summary: "Custom routing active.",
+      phases: {
+        write: { configured: { provider: "codex_cli", model: "gpt-5" }, configured_economy: false },
+        fix: { configured: { provider: "codex_cli", model: "gpt-5" }, configured_economy: false }
+      }
+    };
+    const customContext = {
+      ...readyContext,
+      run_metrics: {
+        ...readyContext.run_metrics!,
+        routing_evidence: routing
+      }
+    };
+    const client = createClient({
+      getStatus: vi.fn().mockResolvedValue({
+        run_id: "run-ready",
+        task: "Ship dashboard",
+        status: "REVIEWED_PASS",
+        current_phase: "apply",
+        gate_state: { approved: true, tests_passed: true, review_result: "PASS", ready_to_apply: true },
+        effective_phase_providers: {
+          plan: { provider: "claude_cli", model: "opus" },
+          write: { provider: "codex_cli", model: "gpt-5" },
+          fix: { provider: "codex_cli", model: "gpt-5" },
+          review: { provider: "codex_cli", model: "gpt-5" }
+        },
+        run_metrics: customContext.run_metrics
+      }),
+      getContext: vi.fn().mockResolvedValue(customContext)
+    });
+
+    render(<Workbench client={client} />);
+
+    expect(await screen.findByRole("heading", { name: "Ship dashboard" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+
+    expect(within(details).getByText("路由策略")).toBeVisible();
+    expect(within(details).getAllByText("自定义")).toHaveLength(2);
+    expect(within(details).queryByText("经济")).not.toBeInTheDocument();
   });
 
   it("surfaces token totals and retry phases in efficiency metrics", async () => {

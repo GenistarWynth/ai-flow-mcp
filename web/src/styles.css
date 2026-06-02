@@ -769,6 +769,7 @@ button.danger { color: #b42318; border-color: #f0b6b2; background: #fff8f7; }
 .phase-strategy-node { display: grid; gap: 6px; border: 1px solid #d9dee6; border-radius: 8px; padding: 8px; background: #ffffff; min-width: 0; }
 .phase-strategy-node.economy { border-color: #b7e4c7; background: #f1fbf6; }
 .phase-strategy-node.supervision { border-color: #bfdbfe; background: #eff6ff; }
+.phase-strategy-node.custom { border-color: #d9dee6; background: #fbfcfe; }
 .phase-strategy-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .phase-strategy-head span { color: #647083; font-size: 12px; font-weight: 800; }
 .phase-strategy-head strong { color: #172033; font-size: 12px; }
@@ -878,6 +879,50 @@ button.danger { color: #b42318; border-color: #f0b6b2; background: #fff8f7; }
 .reasonix-command-action button:disabled { color: #8b96a7; background: #eef2f7; cursor: not-allowed; }
 .provider-command-action.copied { border-color: #b7e4c7; background: #f1fbf6; }
 .provider-command-action.failed { border-color: #fed7aa; background: #fff7ed; }
+.economy-provider-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  align-items: end;
+  gap: 7px;
+  max-width: 100%;
+  border: 1px solid #b7e4c7;
+  border-radius: 8px;
+  padding: 8px;
+  background: #f1fbf6;
+}
+.economy-provider-form label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.economy-provider-form span { color: #3f6f52; font-size: 11px; font-weight: 800; }
+.economy-provider-form input {
+  width: 100%;
+  min-height: 30px;
+  border: 1px solid #a7d7b8;
+  border-radius: 7px;
+  padding: 5px 7px;
+  color: #172033;
+  background: #ffffff;
+  font-size: 12px;
+}
+.economy-provider-form input:focus { outline: 2px solid #b7e4c7; outline-offset: 1px; border-color: #168a54; }
+.economy-provider-form button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 30px;
+  border: 1px solid #168a54;
+  border-radius: 7px;
+  padding: 5px 8px;
+  color: #ffffff;
+  background: #168a54;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.economy-provider-form button:disabled { color: #7b8a82; border-color: #cfe8d8; background: #e9f7ee; cursor: not-allowed; }
 .doctor-actions span, .doctor-check { border: 1px solid #d9dee6; border-radius: 8px; padding: 8px 10px; background: #ffffff; overflow-wrap: anywhere; }
 .doctor-actions span { color: #344255; font-size: 12px; font-weight: 700; }
 .doctor-recommendation { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; border: 1px solid #bfdbfe; border-radius: 8px; padding: 8px 10px; color: #174ea6; background: #eff6ff; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }

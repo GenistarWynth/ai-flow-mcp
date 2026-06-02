@@ -85,6 +85,12 @@ type SetupHostOption = {
   label: string;
   message: string;
 };
+type EconomyProviderDraft = {
+  providerId: string;
+  command: string;
+  model: string;
+  label: string;
+};
 
 const phases = ["plan", "approve", "write", "test", "review", "fix", "apply", "cleanup"];
 const strategyPhases = ["plan", "write", "fix", "review"];
@@ -1071,6 +1077,7 @@ function healthStatusLabel(status?: string) {
 function strategyTierLabel(tier?: string) {
   if (tier === "economy") return "经济";
   if (tier === "supervision") return "监督";
+  if (tier === "custom") return "自定义";
   return tier || "自定义";
 }
 
@@ -1084,13 +1091,15 @@ function strategyReason(phase: string) {
 function strategyFromRouting(routing?: RoutingEvidence | null, providers?: Record<string, PhaseProvider>): Record<string, PhaseStrategy> {
   const strategy: Record<string, PhaseStrategy> = {};
   for (const phase of strategyPhases) {
-    const tier = phase === "write" || phase === "fix" ? "economy" : "supervision";
-    const configured = phase === "write" || phase === "fix" ? routing?.phases?.[phase]?.configured : undefined;
+    const isWriterPhase = phase === "write" || phase === "fix";
+    const configured = isWriterPhase ? routing?.phases?.[phase]?.configured : undefined;
+    const economyRoute = isWriterPhase ? Boolean(routing?.phases?.[phase]?.configured_economy) : false;
+    const tier = isWriterPhase ? (economyRoute ? "economy" : "custom") : "supervision";
     strategy[phase] = {
       ...(providers?.[phase] ?? configured ?? {}),
       tier,
-      reason: strategyReason(phase),
-      economy_route: phase === "write" || phase === "fix" ? Boolean(routing?.phases?.[phase]?.configured_economy) : false
+      reason: economyRoute || !isWriterPhase ? strategyReason(phase) : "Write/fix is not on the configured economy route.",
+      economy_route: economyRoute
     };
   }
   return strategy;
@@ -1786,6 +1795,47 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }
   };
 
+  const createEconomyProviderAction = async (draft: EconomyProviderDraft) => {
+    if (profileInFlight) return;
+    setError("");
+    setProfileInFlight(true);
+    try {
+      const result = await client.createProvider({
+        provider_id: draft.providerId,
+        roles: ["write", "fix"],
+        command: draft.command,
+        args: [],
+        prompt_mode: "stdin",
+        output_contract: "writer_diff",
+        activate_economy: true,
+        economy_model: draft.model,
+        economy_label: draft.label
+      });
+      const routing = result.status ? profileStatusToRouting(result.status) : undefined;
+      const response: AgentResponse = {
+        run_id: null,
+        action: "provider_create",
+        ok: true,
+        reply: `Economy provider ${result.provider ?? draft.providerId} activated.`,
+        profile: result.status,
+        routing,
+        actions: result.actions ?? [],
+        next_actions: result.next_actions ?? ["readiness", "start"]
+      };
+      if (selectedRun) appendLocalAgentReply(response);
+      else setNewTaskReply(response);
+      const [nextDoctor, nextConfig] = await Promise.all([client.getDoctor({ include_mcp: false, host: readinessHost.id }), client.getConfig()]);
+      setDoctor(nextDoctor);
+      setConfig(nextConfig);
+      if (selectedRun) await refreshRun(selectedRun);
+      else await loadRuns(undefined, { autoSelect: false });
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setProfileInFlight(false);
+    }
+  };
+
   const runGenericLocalAgentAction = async (message: string) => {
     if (!message || profileInFlight) return;
     setError("");
@@ -2337,6 +2387,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
               onReadinessHostChange={(host) => void openReadinessAction(true, host)}
               onRunSetup={runSetupAction}
               onApplyEconomy={applyEconomyProfileAction}
+              onCreateEconomyProvider={(draft) => void createEconomyProviderAction(draft)}
               onDoctorAction={(action) => void runDoctorAction(action)}
               onHealthAction={(action) => void runHealthAction(action)}
               onBackgroundAction={(action) => void runHealthAction(action)}
@@ -3072,10 +3123,11 @@ function PhaseStrategyMap({
   return (
     <div className="phase-strategy-map" aria-label="四阶段路由策略">
       {entries.map(([phase, item]) => {
-        const tier = item.tier ?? (phase === "write" || phase === "fix" ? "economy" : "supervision");
+        const isWriterPhase = phase === "write" || phase === "fix";
+        const tier = item.tier ?? (isWriterPhase ? (item.economy_route ? "economy" : "custom") : "supervision");
         const signal = routeEvidenceLabel(phase, routing);
         return (
-          <div className={`phase-strategy-node ${tier === "economy" ? "economy" : "supervision"}`} key={phase}>
+          <div className={`phase-strategy-node ${tier === "economy" ? "economy" : tier === "custom" ? "custom" : "supervision"}`} key={phase}>
             <div className="phase-strategy-head">
               <span>{phaseLabel(phase)}</span>
               <strong>{strategyTierLabel(tier)}</strong>
@@ -3219,6 +3271,53 @@ function DoctorActionButtons({
   );
 }
 
+function EconomyProviderForm({
+  onSubmit,
+  disabled
+}: {
+  onSubmit?: (draft: EconomyProviderDraft) => void;
+  disabled?: boolean;
+}) {
+  const [providerId, setProviderId] = useState("cheap_writer");
+  const [command, setCommand] = useState("deepseek-writer");
+  const [model, setModel] = useState("deepseek-chat");
+  const [label, setLabel] = useState("DeepSeek cheap writer");
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    onSubmit?.({
+      providerId: providerId.trim(),
+      command: command.trim(),
+      model: model.trim(),
+      label: label.trim()
+    });
+  };
+  const blocked = disabled || !providerId.trim() || !command.trim() || !model.trim();
+  return (
+    <form className="economy-provider-form" aria-label="Economy provider" onSubmit={submit}>
+      <label>
+        <span>Provider id</span>
+        <input aria-label="Provider id" value={providerId} onChange={(event) => setProviderId(event.target.value)} disabled={disabled} />
+      </label>
+      <label>
+        <span>Writer command</span>
+        <input aria-label="Writer command" value={command} onChange={(event) => setCommand(event.target.value)} disabled={disabled} />
+      </label>
+      <label>
+        <span>Model</span>
+        <input aria-label="Economy model" value={model} onChange={(event) => setModel(event.target.value)} disabled={disabled} />
+      </label>
+      <label>
+        <span>Label</span>
+        <input aria-label="Economy label" value={label} onChange={(event) => setLabel(event.target.value)} disabled={disabled} />
+      </label>
+      <button type="submit" disabled={!onSubmit || blocked}>
+        <Plus size={13} />
+        Activate economy provider
+      </button>
+    </form>
+  );
+}
+
 function DoctorPanel({
   report,
   readinessHost,
@@ -3226,6 +3325,7 @@ function DoctorPanel({
   onReadinessHostChange,
   onRunSetup,
   onApplyEconomy,
+  onCreateEconomyProvider,
   onDoctorAction,
   setupBusy,
   profileBusy
@@ -3236,6 +3336,7 @@ function DoctorPanel({
   onReadinessHostChange?: (host: SetupHostOption) => void;
   onRunSetup?: (host?: SetupHostOption, message?: string) => void;
   onApplyEconomy?: () => void;
+  onCreateEconomyProvider?: (draft: EconomyProviderDraft) => void;
   onDoctorAction?: (action: AgentHealthAction) => void;
   setupBusy?: boolean;
   profileBusy?: boolean;
@@ -3245,6 +3346,10 @@ function DoctorPanel({
   const economy = profile?.economy;
   const routing = report?.routing;
   const doctorActions = report?.actions ?? [];
+  const canCreateEconomyProvider = Boolean(
+    onCreateEconomyProvider &&
+      doctorActions.some((action) => action.id === "configure_deepseek_provider" || action.message === "configure DeepSeek provider")
+  );
   const selectedHost = readinessHost ?? setupHostById(report?.host);
   const hostSelectLabel = localOnlyMode ? "Setup host" : "MCP host";
   return (
@@ -3295,6 +3400,12 @@ function DoctorPanel({
         <section>
           <h2>Actions</h2>
           <DoctorActionButtons actions={doctorActions} onAction={onDoctorAction} setupBusy={setupBusy} profileBusy={profileBusy} />
+        </section>
+      ) : null}
+      {canCreateEconomyProvider ? (
+        <section>
+          <h2>Economy provider</h2>
+          <EconomyProviderForm onSubmit={onCreateEconomyProvider} disabled={profileBusy} />
         </section>
       ) : null}
       {report?.next_actions?.length ? (
@@ -3396,6 +3507,7 @@ function DetailPanel({
   onReadinessHostChange,
   onRunSetup,
   onApplyEconomy,
+  onCreateEconomyProvider,
   onDoctorAction,
   onHealthAction,
   onBackgroundAction,
@@ -3418,6 +3530,7 @@ function DetailPanel({
   onReadinessHostChange?: (host: SetupHostOption) => void;
   onRunSetup?: (host?: SetupHostOption, message?: string) => void;
   onApplyEconomy?: () => void;
+  onCreateEconomyProvider?: (draft: EconomyProviderDraft) => void;
   onDoctorAction?: (action: AgentHealthAction) => void;
   onHealthAction?: (action: AgentHealthAction) => void;
   onBackgroundAction?: (action: AgentHealthAction) => void;
@@ -3497,6 +3610,7 @@ function DetailPanel({
         onReadinessHostChange={onReadinessHostChange}
         onRunSetup={onRunSetup}
         onApplyEconomy={onApplyEconomy}
+        onCreateEconomyProvider={onCreateEconomyProvider}
         onDoctorAction={onDoctorAction}
         setupBusy={setupBusy}
         profileBusy={profileBusy}
