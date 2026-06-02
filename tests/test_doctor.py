@@ -82,6 +82,32 @@ class DoctorTest(unittest.TestCase):
         self.assertEqual(actions["install_skill"]["message"], "install Codex Skill")
         self.assertEqual(actions["install_skill"]["command"], "patchbay skill install codex")
 
+    def test_cli_check_detects_installed_console_scripts_without_path(self) -> None:
+        from scripts.ai_flow import doctor
+
+        scripts_dir = self.tmp / "venv" / "Scripts"
+        scripts_dir.mkdir(parents=True)
+        patchbay = scripts_dir / "patchbay.exe"
+        patchbay_mcp = scripts_dir / "patchbay-mcp.exe"
+        python = scripts_dir / "python.exe"
+        patchbay.write_text("", encoding="utf-8")
+        patchbay_mcp.write_text("", encoding="utf-8")
+        python.write_text("", encoding="utf-8")
+
+        with (
+            mock.patch.object(doctor.shutil, "which", return_value=None),
+            mock.patch.object(doctor.sys, "argv", [str(patchbay)]),
+            mock.patch.object(doctor.sys, "executable", str(python)),
+        ):
+            result = doctor._cli_check(self.tmp)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(Path(result["entrypoint"]), patchbay)
+        self.assertTrue(result["entrypoint_exists"])
+        self.assertEqual(Path(result["mcp_command"]), patchbay_mcp)
+        self.assertTrue(result["mcp_command_exists"])
+        self.assertFalse(result["command_exists"])
+
     def test_doctor_exposes_custom_profile_contract_without_mcp_probe(self) -> None:
         from scripts.ai_flow import service
         from scripts.ai_flow.doctor import run_doctor

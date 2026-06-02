@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import shutil
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -84,8 +85,15 @@ def _cli_check(root: Path) -> dict[str, Any]:
     package_cmd_script = Path(__file__).resolve().parents[1] / "patchbay.cmd"
     command = shutil.which("patchbay")
     mcp_command = shutil.which("patchbay-mcp")
+    entrypoint = _current_entrypoint("patchbay")
+    entrypoint_mcp = _current_entrypoint("patchbay-mcp")
     return {
-        "ok": script.exists() or cmd_script.exists() or package_script.exists() or package_cmd_script.exists() or bool(command),
+        "ok": script.exists()
+        or cmd_script.exists()
+        or package_script.exists()
+        or package_cmd_script.exists()
+        or bool(command)
+        or bool(entrypoint),
         "script": str(script),
         "script_exists": script.exists(),
         "windows_script": str(cmd_script),
@@ -94,11 +102,45 @@ def _cli_check(root: Path) -> dict[str, Any]:
         "package_script_exists": package_script.exists(),
         "package_windows_script": str(package_cmd_script),
         "package_windows_script_exists": package_cmd_script.exists(),
+        "entrypoint": str(entrypoint) if entrypoint else "",
+        "entrypoint_exists": bool(entrypoint),
         "command": command or "",
         "command_exists": bool(command),
-        "mcp_command": mcp_command or "",
-        "mcp_command_exists": bool(mcp_command),
+        "mcp_command": mcp_command or (str(entrypoint_mcp) if entrypoint_mcp else ""),
+        "mcp_command_exists": bool(mcp_command) or bool(entrypoint_mcp),
     }
+
+
+def _current_entrypoint(command_name: str) -> Path | None:
+    candidates = _current_entrypoint_candidates(command_name)
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _current_entrypoint_candidates(command_name: str) -> list[Path]:
+    candidates: list[Path] = []
+    argv0 = Path(sys.argv[0]).expanduser() if sys.argv and sys.argv[0] else None
+    argv_names = {f"{command_name}{suffix}".lower() for suffix in ("", ".exe", ".cmd", ".bat")}
+    if argv0 and argv0.name.lower() in argv_names:
+        candidates.append(argv0.resolve())
+    executable_dir = Path(sys.executable).expanduser().resolve().parent
+    for suffix in ("", ".exe", ".cmd", ".bat"):
+        candidates.append(executable_dir / f"{command_name}{suffix}")
+    return _dedupe_paths(candidates)
+
+
+def _dedupe_paths(paths: list[Path]) -> list[Path]:
+    seen: set[str] = set()
+    result: list[Path] = []
+    for path in paths:
+        key = str(path).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(path)
+    return result
 
 
 def _mcp_check(root: Path, *, include_mcp: bool) -> dict[str, Any]:
