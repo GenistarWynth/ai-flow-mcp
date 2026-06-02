@@ -87,6 +87,7 @@ def run_skill_doctor(cwd: Path, host: str = "codex", *, path: str | Path | None 
     installed_files: list[str] = []
     missing_installed_files: list[str] = []
     changed_installed_files: list[str] = []
+    extra_installed_files: list[str] = []
     installed_matches_source = False
     if installed and source:
         installed_files = [
@@ -94,8 +95,10 @@ def run_skill_doctor(cwd: Path, host: str = "codex", *, path: str | Path | None 
             for file_path in sorted(destination.rglob("*"))
             if file_path.is_file()
         ]
-        missing_installed_files, changed_installed_files = _skill_install_drift(source, destination, source_files)
-        installed_matches_source = not missing_installed_files and not changed_installed_files
+        missing_installed_files, changed_installed_files, extra_installed_files = _skill_install_drift(
+            source, destination, source_files, installed_files
+        )
+        installed_matches_source = not missing_installed_files and not changed_installed_files and not extra_installed_files
     next_actions: list[str] = []
     if not source_ok:
         next_actions.append("Reinstall Patchbay; the bundled Codex Skill source is missing or incomplete.")
@@ -125,6 +128,7 @@ def run_skill_doctor(cwd: Path, host: str = "codex", *, path: str | Path | None 
         "installed_matches_source": installed_matches_source,
         "missing_installed_files": missing_installed_files,
         "changed_installed_files": changed_installed_files,
+        "extra_installed_files": extra_installed_files,
         "install_command": "patchbay skill install codex",
         "doctor_command": "patchbay skill doctor codex",
         "next_actions": next_actions,
@@ -133,9 +137,12 @@ def run_skill_doctor(cwd: Path, host: str = "codex", *, path: str | Path | None 
     }
 
 
-def _skill_install_drift(source: Path, destination: Path, source_files: list[str]) -> tuple[list[str], list[str]]:
+def _skill_install_drift(
+    source: Path, destination: Path, source_files: list[str], installed_files: list[str]
+) -> tuple[list[str], list[str], list[str]]:
     missing: list[str] = []
     changed: list[str] = []
+    source_file_set = set(source_files)
     for file_name in source_files:
         source_file = source / file_name
         installed_file = destination / file_name
@@ -144,7 +151,8 @@ def _skill_install_drift(source: Path, destination: Path, source_files: list[str
             continue
         if source_file.read_bytes() != installed_file.read_bytes():
             changed.append(file_name)
-    return missing, changed
+    extra = [file_name for file_name in installed_files if file_name not in source_file_set]
+    return missing, changed, extra
 
 
 def _normalize_skill_host(host: str | None, *, action: str) -> str:

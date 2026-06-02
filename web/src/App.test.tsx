@@ -359,6 +359,83 @@ describe("Workbench", () => {
     expect(client.runAction).not.toHaveBeenCalled();
   });
 
+  it("shows outdated Skill drift details in readiness", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "setup",
+      ok: true,
+      reply: "Codex Skill updated.",
+      setup_host: "codex",
+      setup: {
+        doctor: {
+          ok: true,
+          host: "codex",
+          root: "C:/repo",
+          checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true, ready: true }, mcp: { ok: true, skipped: true } },
+          next_actions: []
+        }
+      }
+    });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      agentMessage,
+      getDoctor: vi.fn().mockResolvedValue({
+        ok: false,
+        root: "C:/repo",
+        host: "codex",
+        checks: {
+          repo: { ok: true },
+          config: { ok: true },
+          skill: {
+            ok: true,
+            ready: false,
+            status: "outdated",
+            installed: true,
+            installed_matches_source: false,
+            changed_installed_files: ["SKILL.md"],
+            missing_installed_files: ["references/install.md"],
+            extra_installed_files: ["legacy.md"]
+          },
+          mcp: { ok: true, skipped: true, note: "Skipped by web workbench." }
+        },
+        next_actions: ["Run `patchbay skill install codex` to update the installed Patchbay Skill from the bundled source."],
+        actions: [
+          {
+            id: "install_skill",
+            label: "Update Codex Skill",
+            kind: "local_agent",
+            message: "install Codex Skill",
+            host: "codex",
+            command: "patchbay skill install codex",
+            safe: true,
+            reason: "Update the installed Patchbay Skill from the bundled source without attempting MCP host registration."
+          }
+        ]
+      })
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    expect(within(details).getByText("需更新")).toBeVisible();
+    expect(within(details).getByText("status: outdated")).toBeVisible();
+    expect(within(details).getByText("missing installed files: references/install.md")).toBeVisible();
+    expect(within(details).getByText("changed installed files: SKILL.md")).toBeVisible();
+    expect(within(details).getByText("extra installed files: legacy.md")).toBeVisible();
+    const updateButton = within(details).getByRole("button", { name: "Update Codex Skill" });
+    expect(updateButton).toHaveAttribute(
+      "title",
+      "Update the installed Patchbay Skill from the bundled source without attempting MCP host registration."
+    );
+    await userEvent.click(updateButton);
+
+    await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("install Codex Skill"));
+    expect(await screen.findByText("Codex Skill updated.")).toBeVisible();
+  });
+
   it("runs generic DeepSeek provider readiness actions through the local Agent", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: null,

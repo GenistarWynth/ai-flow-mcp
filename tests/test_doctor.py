@@ -68,7 +68,8 @@ class DoctorTest(unittest.TestCase):
         from scripts.ai_flow.doctor import run_doctor
 
         service.init_project(self.tmp)
-        result = run_doctor(self.tmp, include_mcp=False, skill_path=self.tmp / "skills")
+        with mock.patch.dict("os.environ", {"CODEX_HOME": str(self.tmp / "codex-home")}):
+            result = run_doctor(self.tmp, include_mcp=False)
 
         self.assertTrue(result["checks"]["repo"]["ok"])
         self.assertTrue(result["checks"]["config"]["ok"])
@@ -81,6 +82,38 @@ class DoctorTest(unittest.TestCase):
         self.assertEqual(actions["install_skill"]["kind"], "local_agent")
         self.assertEqual(actions["install_skill"]["message"], "install Codex Skill")
         self.assertEqual(actions["install_skill"]["command"], "patchbay skill install codex")
+
+    def test_unified_doctor_surfaces_outdated_skill_update_action(self) -> None:
+        from scripts.ai_flow import service
+        from scripts.ai_flow.doctor import run_doctor
+        from scripts.ai_flow.skill_install import run_skill_install
+
+        service.init_project(self.tmp)
+        skills_root = self.tmp / "skills"
+        run_skill_install(self.tmp, path=skills_root)
+        installed_skill = skills_root / "patchbay" / "SKILL.md"
+        installed_skill.write_text(installed_skill.read_text(encoding="utf-8") + "\n# stale local copy\n", encoding="utf-8")
+
+        result = run_doctor(self.tmp, include_mcp=False, skill_path=skills_root)
+
+        self.assertFalse(result["ok"])
+        skill = result["checks"]["skill"]
+        self.assertTrue(skill["ok"])
+        self.assertFalse(skill["ready"])
+        self.assertEqual(skill["status"], "outdated")
+        self.assertFalse(skill["installed_matches_source"])
+        self.assertIn("SKILL.md", skill["changed_installed_files"])
+        self.assertEqual(skill["extra_installed_files"], [])
+        self.assertTrue(any("update the installed Patchbay Skill" in action for action in result["next_actions"]))
+        actions = {item["id"]: item for item in result["actions"]}
+        self.assertEqual(actions["install_skill"]["label"], "Update Codex Skill")
+        self.assertEqual(actions["install_skill"]["kind"], "command")
+        self.assertNotIn("message", actions["install_skill"])
+        self.assertIn("patchbay skill install codex", actions["install_skill"]["command"])
+        self.assertIn(str(skills_root), actions["install_skill"]["command"])
+        self.assertIn("selected Codex skills root", actions["install_skill"]["reason"])
+        action_groups = {item["id"]: item for item in result["action_groups"]}
+        self.assertIn("install_skill", action_groups["setup"]["action_ids"])
 
     def test_cli_check_detects_installed_console_scripts_without_path(self) -> None:
         from scripts.ai_flow import doctor

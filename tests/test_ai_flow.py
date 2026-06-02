@@ -1706,6 +1706,10 @@ class McpSchemaTests(unittest.TestCase):
         self.assertIn("installed_matches_source", tools["patchbay_skill_doctor"])
         self.assertIn("missing_installed_files", tools["patchbay_skill_doctor"])
         self.assertIn("changed_installed_files", tools["patchbay_skill_doctor"])
+        self.assertIn("extra_installed_files", tools["patchbay_skill_doctor"])
+        self.assertIn("outdated", tools["patchbay_doctor"])
+        self.assertIn("installed_matches_source", tools["patchbay_doctor"])
+        self.assertIn("extra_installed_files", tools["patchbay_doctor"])
         self.assertIn("patchbay_config_provider_add_cli", tools)
         self.assertIn("economy write/fix route", tools["patchbay_config_provider_add_cli"])
         provider_schema = tool_items["patchbay_config_provider_add_cli"]["inputSchema"]["properties"]

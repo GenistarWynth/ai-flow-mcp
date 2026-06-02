@@ -221,6 +221,8 @@ def _next_actions(checks: dict[str, Any], *, host: str, suppress_mcp_actions: bo
         actions.append("Reinstall Patchbay; the bundled Codex Skill source is missing.")
     elif not skill.get("installed"):
         actions.append("Run `patchbay skill install codex` so Codex can discover the Patchbay Skill.")
+    elif skill.get("installed_matches_source") is False:
+        actions.append("Run `patchbay skill install codex` to update the installed Patchbay Skill from the bundled source.")
     return actions
 
 
@@ -280,19 +282,29 @@ def _structured_actions(
                 "reason": "Initialize Patchbay project files, local config, Skill installation, MCP guidance, and a doctor summary.",
             }
         )
-    if skill.get("source_exists") and not skill.get("installed"):
-        actions.append(
-            {
-                "id": "install_skill",
-                "label": "Install Codex Skill",
-                "kind": "local_agent",
-                "message": "install Codex Skill",
-                "host": "codex",
-                "command": "patchbay skill install codex",
-                "safe": True,
-                "reason": "Install the bundled Patchbay Skill without attempting MCP host registration.",
+    if skill.get("source_exists") and (not skill.get("installed") or skill.get("installed_matches_source") is False):
+        outdated = bool(skill.get("installed")) and skill.get("installed_matches_source") is False
+        skill_action = _nested_action(skill, "install_skill") or {
+            "id": "install_skill",
+            "label": "Install Codex Skill",
+            "kind": "local_agent",
+            "message": "install Codex Skill",
+            "host": "codex",
+            "command": "patchbay skill install codex",
+            "safe": True,
+            "reason": "Install the bundled Patchbay Skill without attempting MCP host registration.",
+        }
+        if outdated:
+            skill_action = {
+                **skill_action,
+                "label": "Update Codex Skill",
+                "reason": (
+                    "Update the installed Patchbay Skill from the bundled source without attempting MCP host registration."
+                    if skill_action.get("kind") == "local_agent"
+                    else "Update the installed Patchbay Skill from the bundled source in the selected Codex skills root."
+                ),
             }
-        )
+        actions.append(skill_action)
     if not suppress_mcp_actions and mcp.get("skipped"):
         actions.append(
             {
@@ -370,6 +382,13 @@ def _structured_actions(
             }
         )
     return _dedupe_actions(actions)
+
+
+def _nested_action(payload: dict[str, Any], action_id: str) -> dict[str, Any] | None:
+    for action in payload.get("actions", []):
+        if isinstance(action, dict) and action.get("id") == action_id:
+            return dict(action)
+    return None
 
 
 def _first_not_ready_command_status(value: Any) -> dict[str, Any]:

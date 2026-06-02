@@ -29,6 +29,7 @@ import {
   BackgroundJob,
   ConfigProfileStatus,
   createPatchbayClient,
+  DoctorCheck,
   DoctorReport,
   EfficiencySummary,
   FailureRecovery,
@@ -1059,6 +1060,51 @@ function actionFromSuggestion(suggestion: SuggestedAction | AgentAction): Sugges
 function doctorProfileStatus(report?: DoctorReport | null): DoctorProfileStatus | null {
   const profile = report?.checks?.config?.profile;
   return profile && typeof profile === "object" ? (profile as DoctorProfileStatus) : null;
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
+}
+
+function doctorCheckIsReady(check: DoctorCheck): boolean {
+  if (check.skipped) return true;
+  if (typeof check.ready === "boolean") return check.ready;
+  return Boolean(check.ok);
+}
+
+function doctorCheckTone(check: DoctorCheck) {
+  if (check.skipped) return "idle";
+  return doctorCheckIsReady(check) ? "ready" : "blocked";
+}
+
+function doctorCheckStatusLabel(check: DoctorCheck) {
+  if (check.skipped) return "跳过";
+  if (typeof check.status === "string") {
+    if (check.status === "installed") return "通过";
+    if (check.status === "outdated") return "需更新";
+    if (check.status === "not_installed") return "未安装";
+    if (check.status === "missing_source") return "源缺失";
+  }
+  return doctorCheckIsReady(check) ? "通过" : "需处理";
+}
+
+function doctorCheckDetails(check: DoctorCheck): string[] {
+  const details: string[] = [];
+  const primary = check.error ?? check.note;
+  if (primary) details.push(String(primary));
+  if (typeof check.status === "string" && check.status !== "installed") {
+    details.push(`status: ${check.status}`);
+  }
+  const missing = stringList(check.missing_installed_files);
+  if (missing.length) details.push(`missing installed files: ${missing.join(", ")}`);
+  const changed = stringList(check.changed_installed_files);
+  if (changed.length) details.push(`changed installed files: ${changed.join(", ")}`);
+  const extra = stringList(check.extra_installed_files);
+  if (extra.length) details.push(`extra installed files: ${extra.join(", ")}`);
+  if (check.installed && check.installed_matches_source === false && !missing.length && !changed.length && !extra.length) {
+    details.push("installed Skill differs from bundled source");
+  }
+  return details;
 }
 
 function routeSummary(route?: PhaseProvider) {
@@ -3481,13 +3527,18 @@ function DoctorPanel({
         <h2>检查项</h2>
         <div className="doctor-checks">
           {checks.length ? (
-            checks.map(([name, check]) => (
-              <div className={`doctor-check ${check.ok ? "ready" : check.skipped ? "idle" : "blocked"}`} key={name}>
-                <span>{name}</span>
-                <strong>{check.ok ? "通过" : check.skipped ? "跳过" : "需处理"}</strong>
-                {check.error || check.note ? <small>{String(check.error ?? check.note)}</small> : null}
-              </div>
-            ))
+            checks.map(([name, check]) => {
+              const details = doctorCheckDetails(check);
+              return (
+                <div className={`doctor-check ${doctorCheckTone(check)}`} key={name}>
+                  <span>{name}</span>
+                  <strong>{doctorCheckStatusLabel(check)}</strong>
+                  {details.map((detail) => (
+                    <small key={detail}>{detail}</small>
+                  ))}
+                </div>
+              );
+            })
           ) : (
             <div className="doctor-check idle">
               <span>doctor</span>
