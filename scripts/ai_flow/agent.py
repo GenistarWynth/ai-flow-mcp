@@ -1286,7 +1286,21 @@ def _is_mcp_avoidance_intent(text: str, words: set[str] | None = None) -> bool:
         return False
     if _has_task_intent(text, token_words):
         return False
-    if bool(token_words & {"avoid", "disable", "except", "local", "localonly", "no", "omit", "skip", "without"}) and (
+    if bool(
+        token_words
+        & {
+            "avoid",
+            "disable",
+            "except",
+            "instead",
+            "local",
+            "localonly",
+            "no",
+            "omit",
+            "skip",
+            "without",
+        }
+    ) and (
         "mcp" in token_words or "mcp" in text
     ):
         return True
@@ -1302,16 +1316,35 @@ def _is_mcp_avoidance_intent(text: str, words: set[str] | None = None) -> bool:
             "local only",
             "local-only",
             "skill only",
+            "browser skill instead of mcp",
+            "chrome skill instead of mcp",
+            "built-in browser instead of mcp",
+            "use browser skill",
+            "use chrome skill",
             "不要用 mcp",
             "不要用这个 mcp",
             "不要用这个mcp",
+            "不要再用 mcp",
+            "不要再用这个 mcp",
+            "不要再用这个mcp",
             "别用 mcp",
             "别用这个 mcp",
             "别用这个mcp",
+            "别再用 mcp",
+            "别再用这个 mcp",
+            "别再用这个mcp",
             "不用 mcp",
             "不用这个 mcp",
             "不用这个mcp",
+            "少用 mcp",
+            "少用这个 mcp",
+            "少用这个mcp",
+            "少用 mcp 工具",
+            "少用这个 mcp 工具",
             "不要 mcp",
+            "自带浏览器",
+            "浏览器 skill",
+            "chrome skill",
             "只用 skill",
             "只装 skill",
             "只安装 skill",
@@ -1514,7 +1547,7 @@ def _help_response(root: Path) -> dict[str, Any]:
     capabilities = [
         {
             "name": "setup",
-            "summary": "Send `patchbay setup` for Codex or `patchbay setup for Claude Desktop` / `install patchbay for Gemini CLI` to initialize project files, local config, Skill installation, host MCP guidance, a doctor summary, top-level recommendations, safe actions[], and action_groups[]. Send `patchbay setup without MCP` for local-only setup, standalone `please don't use MCP` / `no MCP` for local_mode guidance, `install Codex Skill` for Skill-only setup, or `register MCP for Claude Desktop` for MCP-only registration.",
+            "summary": "Send `patchbay setup` for Codex or `patchbay setup for Claude Desktop` / `install patchbay for Gemini CLI` to initialize project files, local config, Skill installation, host MCP guidance, a doctor summary, top-level recommendations, safe actions[], and action_groups[]. Send `patchbay setup without MCP` for local-only setup, standalone `please don't use MCP` / `no MCP` / `use Chrome Skill instead of MCP` / `少用这个MCP` for local_mode guidance, `install Codex Skill` for Skill-only setup, or `register MCP for Claude Desktop` for MCP-only registration.",
         },
         {
             "name": "start",

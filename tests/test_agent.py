@@ -686,6 +686,8 @@ test = []
         self.assertIn("patchbay setup without MCP", setup_capability["summary"])
         self.assertIn("install Codex Skill", setup_capability["summary"])
         self.assertIn("register MCP for Claude Desktop", setup_capability["summary"])
+        self.assertIn("use Chrome Skill instead of MCP", setup_capability["summary"])
+        self.assertIn("少用这个MCP", setup_capability["summary"])
         self.assertIn("recommendations", setup_capability["summary"])
         self.assertIn("actions[]", setup_capability["summary"])
         self.assertIn("action_groups[]", setup_capability["summary"])
@@ -2263,7 +2265,13 @@ model = "cheap-model"
         planned = agent_message(self.repo, "selected run local mode target")
         run_id = planned["run_id"]
 
-        for message in ("please don't use MCP", "no MCP", "不要用这个MCP好不好"):
+        for message in (
+            "please don't use MCP",
+            "no MCP",
+            "不要用这个MCP好不好",
+            "能不能少用这个MCP，用自带浏览器功能",
+            "use Chrome Skill instead of MCP",
+        ):
             with self.subTest(message=message):
                 response = agent_message(self.repo, message, run_id=run_id)
 
@@ -2280,6 +2288,21 @@ model = "cheap-model"
 
                 self.assertEqual(response["action"], "missing_run")
                 self.assertFalse(response["ok"])
+                self.assertIsNone(response["run_id"])
+        runs_path = self.repo / ".ai" / "runs"
+        self.assertFalse(runs_path.exists() and any(runs_path.iterdir()))
+
+    def test_agent_tool_preference_without_run_uses_local_mode_not_start(self) -> None:
+        for message in (
+            "能不能少用这个MCP，用自带浏览器功能",
+            "不要用这个MCP，你明明有Chrome Skill",
+            "please use browser skill instead of MCP",
+        ):
+            with self.subTest(message=message):
+                response = agent_message(self.repo, message)
+
+                self.assertEqual(response["action"], "local_mode")
+                self.assertTrue(response["local_mode"]["skip_mcp"])
                 self.assertIsNone(response["run_id"])
         runs_path = self.repo / ".ai" / "runs"
         self.assertFalse(runs_path.exists() and any(runs_path.iterdir()))
