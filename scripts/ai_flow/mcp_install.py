@@ -82,9 +82,9 @@ def normalize_mcp_host(host: str | None, *, default: str = "codex", strict: bool
 
 def _server_command(root: Path) -> str:
     """Return the command string that starts the MCP server."""
-    server_path = root / SERVER_SCRIPT
+    server_path = _server_script(root)
     if server_path.exists():
-        return f"python {_quote_command_arg(server_path)} --root {_quote_command_arg(root)}"
+        return f"{_quote_command_arg(sys.executable)} {_quote_command_arg(server_path)} --root {_quote_command_arg(root)}"
     return f"patchbay-mcp --root {_quote_command_arg(root)}"
 
 
@@ -96,10 +96,18 @@ def _quote_command_arg(value: str | Path) -> str:
 
 
 def _server_argv(root: Path) -> list[str]:
-    server_path = root / SERVER_SCRIPT
+    server_path = _server_script(root)
     if server_path.exists():
         return [sys.executable, str(server_path), "--root", str(root)]
     return ["patchbay-mcp", "--root", str(root)]
+
+
+def _server_script(root: Path) -> Path:
+    repo_script = root / SERVER_SCRIPT
+    if repo_script.exists():
+        return repo_script
+    bundled_script = Path(__file__).resolve().parents[1] / "patchbay_mcp_server.py"
+    return bundled_script
 
 
 def _host_install_argv(host: str, root: Path) -> list[str] | None:

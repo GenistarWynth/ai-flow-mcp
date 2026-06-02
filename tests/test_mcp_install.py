@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 import tempfile
 import unittest
 import unittest.mock
@@ -76,7 +77,7 @@ class McpInstallTest(unittest.TestCase):
         self.assertTrue(result["dry_run"])
 
     def test_dry_run_quotes_server_paths_with_spaces(self) -> None:
-        from scripts.ai_flow.mcp_install import install_codex
+        from scripts.ai_flow.mcp_install import _quote_command_arg, install_codex
 
         spaced = self.tmp / "root with space"
         server = spaced / "scripts" / "patchbay_mcp_server.py"
@@ -85,17 +86,22 @@ class McpInstallTest(unittest.TestCase):
 
         result = install_codex(spaced, dry_run=True)
 
-        self.assertIn(f'python "{server}" --root "{spaced}"', result["command"])
+        self.assertIn(
+            f'{_quote_command_arg(sys.executable)} "{server}" --root "{spaced}"',
+            result["command"],
+        )
 
-    def test_installed_command_quotes_root_with_spaces(self) -> None:
+    def test_external_root_uses_bundled_server_and_quotes_root_with_spaces(self) -> None:
         from scripts.ai_flow.mcp_install import install_codex
 
-        spaced = self.tmp / "installed root with space"
+        spaced = self.tmp / "external root with space"
         spaced.mkdir()
 
         result = install_codex(spaced, dry_run=True)
 
-        self.assertIn(f'patchbay-mcp --root "{spaced}"', result["command"])
+        self.assertIn("patchbay_mcp_server.py", result["command"])
+        self.assertIn(f'--root "{spaced}"', result["command"])
+        self.assertNotIn("patchbay-mcp --root", result["command"])
 
     def test_codex_install_executes_command_when_available(self) -> None:
         from scripts.ai_flow import mcp_install
