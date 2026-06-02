@@ -436,6 +436,72 @@ describe("Workbench", () => {
     expect(await screen.findByText("Codex Skill updated.")).toBeVisible();
   });
 
+  it("groups readiness actions by action_groups", async () => {
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      getDoctor: vi.fn().mockResolvedValue({
+        ok: false,
+        root: "C:/repo",
+        checks: {
+          repo: { ok: true },
+          config: { ok: true },
+          skill: { ok: true, ready: false, status: "not_installed" },
+          mcp: { ok: true, skipped: true }
+        },
+        actions: [
+          {
+            id: "apply_economy_profile",
+            label: "Apply economy profile",
+            kind: "local_agent",
+            message: "apply economy profile",
+            safe: true,
+            reason: "Route high-volume write/fix work to the economy provider."
+          },
+          {
+            id: "install_skill",
+            label: "Install Codex Skill",
+            kind: "local_agent",
+            message: "install Codex Skill",
+            host: "codex",
+            command: "patchbay skill install codex",
+            safe: true,
+            reason: "Install the bundled Patchbay Skill without MCP registration."
+          }
+        ],
+        action_groups: [
+          {
+            id: "routing",
+            label: "Economy routing",
+            reason: "Inspect or repair the low-cost write/fix route.",
+            action_ids: ["apply_economy_profile"],
+            count: 1
+          },
+          {
+            id: "setup",
+            label: "Setup and readiness",
+            reason: "Run setup or Skill readiness follow-ups.",
+            action_ids: ["install_skill"],
+            count: 1
+          }
+        ]
+      })
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    const groups = within(details).getByLabelText("Readiness action groups");
+    expect(within(groups).getByText("经济路由")).toBeVisible();
+    expect(within(groups).getByText("Inspect or repair the low-cost write/fix route.")).toBeVisible();
+    expect(within(groups).getByRole("button", { name: "Apply economy profile" })).toBeVisible();
+    expect(within(groups).getByText("就绪设置")).toBeVisible();
+    expect(within(groups).getByText("Run setup or Skill readiness follow-ups.")).toBeVisible();
+    expect(within(groups).getByRole("button", { name: "Install Codex Skill" })).toBeVisible();
+  });
+
   it("runs generic DeepSeek provider readiness actions through the local Agent", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: null,

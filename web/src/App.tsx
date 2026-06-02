@@ -3399,6 +3399,7 @@ function DoctorPanel({
   const economy = profile?.economy;
   const routing = report?.routing;
   const doctorActions = report?.actions ?? [];
+  const doctorActionGroups = groupedHealthActions(doctorActions, report?.action_groups);
   const canCreateEconomyProvider = Boolean(
     onCreateEconomyProvider &&
       doctorActions.some((action) => action.id === "configure_deepseek_provider" || action.message === "configure DeepSeek provider")
@@ -3449,10 +3450,20 @@ function DoctorPanel({
           </span>
         </div>
       </div>
-      {doctorActions.length ? (
+      {doctorActionGroups.length ? (
         <section>
           <h2>Actions</h2>
-          <DoctorActionButtons actions={doctorActions} onAction={onDoctorAction} setupBusy={setupBusy} profileBusy={profileBusy} />
+          <div className="doctor-action-groups" aria-label="Readiness action groups">
+            {doctorActionGroups.map((group) => (
+              <div className="doctor-action-group" key={group.id}>
+                <div className="doctor-action-group-head">
+                  <strong>{group.label}</strong>
+                  {group.reason ? <span>{group.reason}</span> : null}
+                </div>
+                <DoctorActionButtons actions={group.actions} onAction={onDoctorAction} setupBusy={setupBusy} profileBusy={profileBusy} />
+              </div>
+            ))}
+          </div>
         </section>
       ) : null}
       {canCreateEconomyProvider ? (

@@ -821,7 +821,13 @@ button.danger { color: #b42318; border-color: #f0b6b2; background: #fff8f7; }
 .doctor-summary strong, .doctor-summary span { display: block; min-width: 0; overflow-wrap: anywhere; }
 .doctor-summary span { margin-top: 3px; color: #647083; font-size: 12px; }
 .doctor-actions, .doctor-recommendations, .doctor-checks { display: grid; gap: 7px; }
+.doctor-action-groups { display: grid; gap: 8px; }
+.doctor-action-group { display: grid; gap: 6px; border: 1px solid #d9dee6; border-radius: 8px; padding: 8px; background: #fbfcfe; }
+.doctor-action-group-head { display: grid; gap: 2px; }
+.doctor-action-group-head strong { color: #172033; font-size: 12px; }
+.doctor-action-group-head span { color: #647083; font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; }
 .doctor-action-buttons { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 8px; }
+.doctor-action-group .doctor-action-buttons { margin-bottom: 0; }
 .doctor-action-buttons button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #cfd7e3; border-radius: 8px; padding: 6px 9px; color: #172033; background: #ffffff; font-size: 12px; font-weight: 800; }
 .doctor-action-buttons button:hover { border-color: #9fb0c4; background: #f8fafc; }
 .doctor-action-buttons button:disabled { color: #8b96a7; background: #eef2f7; cursor: not-allowed; }
