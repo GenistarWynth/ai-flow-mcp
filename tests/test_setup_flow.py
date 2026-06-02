@@ -61,6 +61,8 @@ class SetupFlowTest(unittest.TestCase):
         self.assertEqual(result["routing"]["profile"], "economy")
         self.assertEqual(result["routing"]["workload_policy"]["economy_phases"], ["write", "fix"])
         self.assertEqual(result["routing"]["workload_policy"]["supervision_phases"], ["plan", "review"])
+        self.assertTrue(any("commands.reasonix" in item for item in result["recommendations"]))
+        self.assertIn("configure reasonix command", result["next_actions"])
         actions = {item["id"]: item for item in result["actions"]}
         doctor_actions = {item["id"]: item for item in result["doctor"]["actions"]}
         self.assertNotIn("probe_mcp", actions)
@@ -85,6 +87,43 @@ class SetupFlowTest(unittest.TestCase):
         self.assertFalse((self.repo / ".ai" / "patchbay.toml").exists())
         self.assertFalse((self.skills / "patchbay").exists())
         self.assertEqual(result["setup_host"], "codex")
+
+    def test_setup_lifts_custom_provider_command_recommendation(self) -> None:
+        from scripts.ai_flow import service
+        from scripts.ai_flow.setup_flow import run_setup
+
+        service.init_project(self.repo)
+        (self.repo / ".ai" / "patchbay.toml").write_text(
+            """
+[providers.cheap_writer]
+roles = ["write", "fix"]
+command = "definitely-missing-cheap-writer"
+prompt_mode = "stdin"
+output_contract = "writer_diff"
+
+[profiles.economy]
+provider = "cheap_writer"
+model = "cheap-model"
+label = "Cheap writer"
+
+[phases.write]
+provider = "cheap_writer"
+model = "cheap-model"
+
+[phases.fix]
+provider = "cheap_writer"
+model = "cheap-model"
+""".lstrip(),
+            encoding="utf-8",
+        )
+
+        result = run_setup(self.repo, skill_path=self.skills, skip_mcp=True)
+
+        self.assertTrue(any("providers.cheap_writer.command" in item for item in result["recommendations"]))
+        self.assertIn("configure economy provider command", result["next_actions"])
+        self.assertNotIn("configure reasonix command", result["next_actions"])
+        actions = {item["id"]: item for item in result["actions"]}
+        self.assertEqual(actions["configure_economy_provider_command"]["kind"], "command")
 
     def test_setup_dry_run_on_ready_repo_reports_preflight_ok_without_applying(self) -> None:
         from scripts.ai_flow.setup_flow import run_setup

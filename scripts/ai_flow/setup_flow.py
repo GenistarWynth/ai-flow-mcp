@@ -57,6 +57,8 @@ def run_setup(
         host=setup_host,
     )
     next_actions = list(doctor.get("next_actions") or [])
+    recommendations = list(doctor.get("recommendations") or [])
+    next_actions.extend(_recommendation_next_actions(recommendations))
     if isinstance(mcp, dict) and mcp.get("command") and not mcp.get("dry_run") and not mcp.get("executed"):
         next_actions.append(f"Register the MCP server with: {mcp['command']}")
     elif isinstance(mcp, dict) and mcp.get("executed"):
@@ -91,6 +93,7 @@ def run_setup(
         "mcp": mcp,
         "doctor": doctor,
         "routing": doctor.get("routing"),
+        "recommendations": recommendations,
         "next_actions": _dedupe(next_actions),
         "actions": _dedupe_actions(actions),
     }
@@ -154,6 +157,17 @@ def _dedupe(items: list[str]) -> list[str]:
         seen.add(item)
         result.append(item)
     return result
+
+
+def _recommendation_next_actions(recommendations: list[str]) -> list[str]:
+    actions: list[str] = []
+    if any("config profile apply economy" in item for item in recommendations):
+        actions.append("apply economy profile")
+    if any("commands.reasonix" in item for item in recommendations):
+        actions.append("configure reasonix command")
+    if any("providers." in item and ".command" in item for item in recommendations):
+        actions.append("configure economy provider command")
+    return actions
 
 
 def _without_mcp_followup_text(items: list[str]) -> list[str]:

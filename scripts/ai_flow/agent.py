@@ -1772,6 +1772,7 @@ def _setup_response(root: Path, message: str) -> dict[str, Any]:
     result = run_setup(root, host=host, **_setup_options_from_message(message))
     next_actions = list(result.get("next_actions") or [])
     actions = list(result.get("actions") or [])
+    recommendations = list(result.get("recommendations") or [])
     reply = "Patchbay setup completed."
     if next_actions:
         reply = "Patchbay setup completed with follow-up steps: " + " ".join(next_actions)
@@ -1785,6 +1786,7 @@ def _setup_response(root: Path, message: str) -> dict[str, Any]:
             "setup": result,
             "setup_host": result.get("setup_host") or host,
             "routing": result.get("routing"),
+            "recommendations": recommendations,
             "actions": actions,
         },
     )
