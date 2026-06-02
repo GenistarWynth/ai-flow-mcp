@@ -1804,6 +1804,14 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     if (action.kind === "diagnostic_tab" && action.tab && diagnosticTabs.has(action.tab as TabName)) {
       setDiagnosticsOpen(true);
       setActiveTab(action.tab as TabName);
+      return;
+    }
+    if (action.id === "refresh_readiness" || action.message === "readiness") {
+      await openReadinessAction(true, setupHostFromAction(action, readinessHost));
+      return;
+    }
+    if (action.kind === "local_agent" && action.message) {
+      await runGenericLocalAgentAction(action.message);
     }
   };
 
@@ -1860,6 +1868,10 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }
     if (action.id === "refresh_readiness" || action.message === "readiness") {
       await openReadinessAction(true, actionHost);
+      return;
+    }
+    if (action.kind === "local_agent" && action.message) {
+      await runGenericLocalAgentAction(action.message);
     }
   };
 

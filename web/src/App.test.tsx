@@ -358,6 +358,52 @@ describe("Workbench", () => {
     expect(client.runAction).not.toHaveBeenCalled();
   });
 
+  it("runs generic DeepSeek provider readiness actions through the local Agent", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "custom_provider_setup",
+      ok: true,
+      reply: "Provide the DeepSeek writer command."
+    });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      agentMessage,
+      getDoctor: vi.fn().mockResolvedValue({
+        ok: false,
+        root: "C:/repo",
+        checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true } },
+        next_actions: ["Configure a low-cost DeepSeek writer provider."],
+        actions: [
+          {
+            id: "configure_deepseek_provider",
+            label: "Configure DeepSeek provider",
+            kind: "local_agent",
+            message: "configure DeepSeek provider",
+            safe: true,
+            reason: "Return a safe command template for a low-cost writer/fixer provider."
+          }
+        ]
+      })
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    await userEvent.click(within(details).getByRole("button", { name: "Configure DeepSeek provider" }));
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith("configure DeepSeek provider", {
+        include: { plan: true },
+        background: true
+      })
+    );
+    expect(await screen.findByText("Provide the DeepSeek writer command.")).toBeVisible();
+    expect(client.runAction).not.toHaveBeenCalled();
+  });
+
   it("copies custom economy provider command fixes from readiness", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
@@ -616,6 +662,46 @@ describe("Workbench", () => {
     const metricsSection = screen.getByRole("heading", { name: "效率" }).closest("section")!;
     await userEvent.click(within(metricsSection).getByRole("button", { name: "Inspect routing events" }));
     expect(screen.getByRole("tab", { name: "活动" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("opens readiness from generic health card local Agent actions", async () => {
+    const getDoctor = vi.fn().mockResolvedValue({
+      ok: false,
+      root: "C:/repo",
+      checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true } },
+      next_actions: ["Inspect provider command readiness."],
+      actions: []
+    });
+    const client = createClient({
+      getDoctor,
+      getContext: vi.fn().mockResolvedValue({
+        ...readyContext,
+        agent_activity: {
+          ...readyContext.agent_activity,
+          health_cards: [
+            {
+              key: "provider_command",
+              label: "Provider command",
+              status: "command_not_ready",
+              tone: "blocked",
+              detail: "The economy provider command needs inspection.",
+              next_action: "inspect_economy_provider_command"
+            }
+          ]
+        }
+      })
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    await userEvent.click(within(details).getByRole("button", { name: "Inspect provider command" }));
+
+    await waitFor(() => expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "codex" }));
+    expect(screen.getByRole("tab", { name: "就绪" })).toHaveAttribute("aria-selected", "true");
+    expect(client.agentMessage).not.toHaveBeenCalledWith("readiness", expect.anything());
   });
 
   it("runs structured health-card actions without advancing run gates", async () => {
