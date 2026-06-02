@@ -136,15 +136,21 @@ python scripts/patchbay agent message continue --run-id <run_id> --background --
 
 后台 Agent 会写入 `JOB.json` 并追加 `agent` 事件，同时保留计划批准和 apply 确认门禁。`apply` 仍然只支持前台确认，必须在测试和审查通过后显式执行。若客户端在已有后台 Agent job 活跃时再次发送后台 `approve`/`continue`，Patchbay 会返回原 job、`already_running: true` 和同一组安全轮询动作，而不会重复启动 worker。已经选中具体 `run_id` 时，`don't ask me`、`assume yes`、`you have all permissions`、`不要问我`、`所有权限都给你` 这类无人值守授权会被视为该 run 的计划批准，并可直接启动后台 write/test/review 自动推进；没有 `run_id` 时同样的话只会返回 `missing_run` 指引，不会自动选择最近 run，最终 `apply` 仍然需要单独确认。`patchbay setup`、`patchbay setup for Claude Desktop`、`install patchbay for Gemini CLI`、`install Codex Skill`、`register MCP for Claude Desktop`、`安装 Codex Skill`、`注册 MCP 到 Gemini 命令行`、`帮我配置 Patchbay`、`帮助我配置 Patchbay 到 Claude 桌面`、`help`、`Patchbay 怎么用`、`使用说明`、`status`、`runs`、`查看最近运行`、`任务列表`、`what should I do next`、`下一步是什么`、`why can't I apply`、`what is blocking apply`、`门禁状态`、`为什么不能应用`、`readiness`、`readiness for Claude Desktop`、`diagnose`、`patchbay doctor`、`检查环境`、`环境自检`、`检查 Gemini 命令行环境`、`show economy profile`、`apply economy profile`、`configure DeepSeek provider`、`configure DeepSeek provider to <command>`、`configure economy provider command to <path>`、`configure reasonix command`、`configure reasonix command to <path>`、`配置 Reasonix 命令` 或 `把 Reasonix 命令设为 <path>` 这类本地查询和配置消息会直接返回 setup 结果、使用提示、最近运行、统一 doctor 报告、路由调整结果、门禁诊断、provider 模板或本地命令配置，不会创建模型 run。带 host 的 readiness 提问会返回 `setup_host` 和 `doctor.host`，桌面端可以直接切换“就绪”页的 host，并展示具体 MCP 探测/setup 命令，不需要解析自然语言。询问下一步会返回 `action: "next_step"`、最近 run 交接、`next_action` / `run_reference.next_action`、确认要求和安全 `actions[]`；它不会直接执行 `continue`、`approve` 或 `apply`，除非已经打开具体 run 且提供了所需确认。询问 apply 为什么被阻塞会返回 `action: "gate_status"`、`gate_diagnosis`、`gate_diagnosis.next_action`、未通过的检查项和安全诊断/打开 run 动作；如果用户直接对未就绪 run 发送 `apply`，也会返回同样的 `gate_diagnosis.next_action` 和安全诊断动作，而不是索要 apply 确认。它不会批准计划、跑测试、审查或应用补丁。“让大量简单写手工作用便宜模型/DeepSeek 去干”这类自然语言性价比路由请求也会直接应用经济路由，而不是误开新的任务 run。help/setup/readiness/status/profile/next_step/gate_status 结果里的 `actions[]` 条目包含 `id`、`label`、`kind`、`safe`、`reason`，以及 `message`、`command`、`host`、`run_id` 或 `tab`；本地运行交接还可能使用 `next_action`、`open_run` 和 `focus_composer`。`continue`、`approve`、`apply`、`diff`、`artifact` 或 `查看失败原因` 这类依赖现有 run 的消息在没有 `run_id` 时也只会给出本地提示，不会误开新 run；`diff`、`events`、`logs`、`artifact` 或 `查看失败原因` 这类视图请求会携带 `requested_view`，在已有 `run_id` 时还会返回安全的 `diagnostic_tab` 动作，方便桌面端直接打开日志、差异或产物诊断。
 
+`简单 writer/fix 用 DeepSeek 省钱` 这类中英混合提示也会被识别为经济路由意图：它会应用 write/fix 的 economy profile，而不是创建新的任务 run。
+
 `context`、`handoff context`、`events`、`poll context` 和 `poll events` 是只读 Agent 消息：带 `run_id` 时直接返回当前运行的 Overview/Trace 诊断动作；不带 `run_id` 且存在最近运行时返回最新运行的 handoff 视图，不会推进阶段或绕过门禁。
 
 带结构化动作的 Agent、setup、doctor、profile、metrics 和后台 job 响应还会提供 `action_groups[]`：每组包含 `id`、`label`、`reason`、`action_ids` 和 `count`，用于把按钮稳定分成后台轮询、经济路由、就绪设置、诊断、门禁、新任务或可复制命令，桌面端/MCP host/Skill 不需要再从 action id 或自然语言里猜 UI 分组。
 
 setup 会根据提示词自动收窄范围：`install Codex Skill` 只安装 Skill、不尝试 MCP 注册；`register MCP for Claude Desktop` 会跳过 Skill 安装；显式 `patchbay setup without MCP`、`--skip-mcp`、`--no-mcp` 或 `--local-only` 只做项目文件和 Skill 的本地 setup。`please don't use MCP`、`no MCP`、`use Chrome Skill instead of MCP`、`少用这个MCP`、`不要用这个MCP` 这类单独的对话式避让表达会返回 `local_mode`，给出安全的本地 CLI / Skill / readiness 动作，而不是误开一个模型 run。同样的避让语义也适用于 `readiness` / `doctor`，因此 `readiness without MCP`、`patchbay doctor --local-only` 和 `patchbay_doctor(skip_mcp=true)` 会在顶层响应和嵌套 doctor payload 中都隐藏 MCP 探测/注册后续动作。
 
+`不走 MCP`、`走本地模式`、`只用本地工具` 这类中文本地-only 表达也走同一条路径：Agent 只返回本地 CLI/Skill/readiness 动作，并避免 MCP probe/register 后续操作。
+
 `what model will write/fix use`、`is writer using cheap model`、`现在写手是不是走便宜模型` 这类路由问题是只读的 `profile_show`，只报告当前写/修复模型与 provider；如果调用时带了 run id，还会附带该运行的 `metrics.efficiency_summary`，区分“已配置便宜模型”和“本次运行实际观察到的 provider/token/cost 证据”。setup、doctor/readiness 与 profile/routing 响应都会返回同一份 `routing.workload_policy`，明确 `write`/`fix` 是适合大量简单实现和修复的 economy 阶段，`plan`/`review` 是 supervision 阶段，方便桌面端、MCP host 和 Skill 直接解释性价比分工；setup/install JSON 还会把 doctor 的 `recommendations` 提升到顶层，并把可执行建议映射成 `apply economy profile`、`configure reasonix command` 或 `configure economy provider command` 这类短 `next_actions`；当自定义 economy provider 的命令未就绪时，客户端应优先渲染 `configure_economy_provider_command` 复制命令，再显示 inspect 动作，让用户直接修复 `providers.<id>.command`。就绪页可以直接渲染 `doctor.routing`，setup 回复可以直接渲染顶层 `routing`，不用等用户额外询问路由。显式 `command_key` 缺失或不一致都会被视为路由漂移，不会被当作已验证的经济路由证据。`apply economy profile` 或“让大量简单写手工作用便宜模型/DeepSeek 去干”这类明确配置意图才会修改本地路由。
 
 Web workbench 使用同一套对话式流程，并在诊断抽屉里提供“就绪”页。该页面调用统一 doctor 检查但默认不做 MCP stdio 探测，因此可以在桌面 UI 中看到安装与配置缺口，同时避免打开页面时额外启动子进程。就绪页的 MCP host 选择器会把目标 host 传给 doctor/setup，`Claude Desktop`、`claude desktop`、`claude-desktop` 这类常见写法会统一规范化为具体注册命令。该页面还会显示当前 write/fix 路由画像，并渲染结构化 `actions[]` 来执行安全的 setup、Skill、MCP 探测、刷新、经济路由和 Reasonix 命令配置后续操作。Overview 会展示 `efficiency_summary`、`routing_evidence.economy_health` 与 `agent_activity.health_cards`，包括 `economy_efficiency` 和 `economy_load` 卡片，让桌面端直接看到经济路由是健康、待观测、`command_not_ready`、漂移，还是未配置，并看到简单 write/fix 工作的实际 token/cost/time 占比。
+
+当 doctor 返回结构化 `configure_deepseek_provider` 动作时，就绪页可以渲染受保护的 economy provider 表单，用于创建自定义 DeepSeek CLI writer/fix provider 并激活经济路由。健康就绪状态下不应展示这个可变更配置的表单，避免用户没有 setup 缺口时意外修改 provider 配置。
 
 启动 `patchbay web --port 8765` 后，打开 `http://127.0.0.1:8765`。
 
@@ -332,6 +338,8 @@ python -m unittest discover -s tests -v
 ## 自定义 Provider 支持
 
 当前运行时已支持通过 `[providers.<id>]` 和 `patchbay config provider add-cli ...` 注册 CLI provider。Web API 的 `POST /api/providers` 也支持同一能力，可传 `activate_economy`、`economy_model`、`economy_label`，让桌面端一次添加低成本 provider 并把 write/fix 切到 economy 路由。对话式 Agent 也能用 `configure DeepSeek provider` 添加 DeepSeek CLI provider 模板，或用 `configure DeepSeek provider to <command>` 一步写入本机命令。若当前 economy writer/fix provider 缺少命令，doctor/readiness/setup 会返回 `configure_economy_provider_command` 动作，并可用 `configure economy provider command to <path>` 直接修复 `providers.<id>.command`。详见 [docs/custom-providers-plan.md](docs/custom-providers-plan.md) — 文档包含已实现的 CLI 基线，以及 HTTP/ACP 模式和更细安全约束的后续路线图。
+
+桌面端和 Web 客户端应只在结构化 `configure_deepseek_provider` 就绪动作存在时展示 economy provider 配置入口。这样缺配置时能引导用户接入低成本 writer，环境健康时则不会暴露意外写配置的按钮。
 
 ## License
 
