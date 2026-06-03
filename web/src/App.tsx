@@ -276,7 +276,9 @@ function localReplyActionGroups(response: AgentResponse | null, actions: LocalRe
   }
   const bySource = new Map<string, LocalReplyAction>();
   for (const action of actions) {
-    bySource.set(action.sourceId ?? action.id, action);
+    for (const key of localReplyActionKeys(action)) {
+      bySource.set(key, action);
+    }
   }
   const used = new Set<string>();
   const result: { id: string; label: string; reason?: string; actions: LocalReplyAction[] }[] = [];
@@ -294,6 +296,10 @@ function localReplyActionGroups(response: AgentResponse | null, actions: LocalRe
   const remaining = actions.filter((action) => !used.has(action.id));
   if (remaining.length) result.push({ id: "suggested", label: "建议动作", actions: remaining });
   return result;
+}
+
+function localReplyActionKeys(action: LocalReplyAction) {
+  return dedupeStrings([action.sourceId, action.id, action.message, action.label]);
 }
 
 function localReplyActionGroupLabel(group: ActionGroup) {

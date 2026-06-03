@@ -1722,6 +1722,22 @@ describe("Workbench", () => {
             reason: "Focus the composer."
           }
         ],
+        action_groups: [
+          {
+            id: "setup",
+            label: "Setup and readiness",
+            reason: "Message-keyed readiness action.",
+            action_ids: ["readiness"],
+            count: 1
+          },
+          {
+            id: "routing",
+            label: "Economy routing",
+            reason: "Label-keyed economy action.",
+            action_ids: ["Apply economy profile"],
+            count: 1
+          }
+        ],
         runs: { count: 0, runs: [] }
       })
     });
@@ -1734,6 +1750,10 @@ describe("Workbench", () => {
 
     await waitFor(() => expect(client.agentMessage).toHaveBeenCalledWith("status", { include: { plan: true }, background: true }));
     expect(await screen.findByText("No Patchbay runs found. Send a task to start with a plan.")).toBeVisible();
+    const localActions = await screen.findByLabelText("Agent 建议动作");
+    expect(within(localActions).getByText("就绪设置")).toHaveAttribute("title", "Message-keyed readiness action.");
+    expect(within(localActions).getByText("经济路由")).toHaveAttribute("title", "Label-keyed economy action.");
+    expect(within(localActions).getByText("建议动作")).toBeVisible();
     expect(screen.getByRole("button", { name: /Open readiness/ })).toBeVisible();
     expect(screen.getByRole("button", { name: /Apply economy profile/ })).toBeVisible();
     expect(screen.getByRole("button", { name: /Start new task/ })).toBeVisible();
