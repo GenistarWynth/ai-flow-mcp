@@ -208,6 +208,30 @@ function createClient(overrides: Partial<PatchbayClient> = {}): PatchbayClient {
           current_phase: "apply",
           next_commands: ["apply"],
           gate_state: { approved: true, tests_passed: true, review_result: "PASS", ready_to_apply: true },
+          run_metrics: {
+            ...readyContext.run_metrics!,
+            routing_evidence: {
+              economy_health: {
+                status: "healthy",
+                severity: "ok",
+                summary: "Economy route is configured and observed for write/fix.",
+                target: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix", label: "Reasonix/DeepSeek" }
+              },
+              coverage: { required_total: 2, observed_economy_total: 2, observed_economy_percent: 100 },
+              phases: {
+                write: { configured_economy: true, observed_economy: true },
+                fix: { configured_economy: true, observed_economy: true }
+              }
+            },
+            efficiency_summary: {
+              status: "verified_economy",
+              routing_status: "healthy",
+              usage_known: { duration: true },
+              economy_share: { duration_percent: 65, duration_ms: 8000 },
+              summary: "Economy write/fix route verified by provider events."
+            }
+          },
+          provider_trail: [{ phase: "review", provider: "codex_cli", model: "gpt-5", status: "PASS", timestamp: "2026-05-24T10:02:00Z" }],
           inbox: {
             key: "ready_to_apply",
             label: "Ready to apply",
@@ -1811,6 +1835,15 @@ describe("Workbench", () => {
     const readyRun = within(runList).getByRole("button", { name: /Ship dashboard/ });
     expect(within(readyRun).getByText("Ready to apply")).toBeVisible();
     expect(within(readyRun).getByText("Apply reviewed diff · needs confirmation")).toBeVisible();
+    const readySignals = within(readyRun).getByLabelText("Run quick signals");
+    expect(within(readySignals).getByText("阶段")).toBeVisible();
+    expect(within(readySignals).getByText("应用")).toBeVisible();
+    expect(within(readySignals).getByText("门禁")).toBeVisible();
+    expect(within(readySignals).getByText("4/4 gates")).toBeVisible();
+    expect(within(readySignals).getByText("经济")).toBeVisible();
+    expect(within(readySignals).getByText("健康")).toBeVisible();
+    expect(within(readySignals).getByText("提供方")).toBeVisible();
+    expect(within(readySignals).getByText("审查 · codex_cli / gpt-5")).toBeVisible();
 
     const fixRun = within(runList).getByRole("button", { name: /Needs fix/ });
     expect(within(fixRun).getByText("Ready to continue")).toBeVisible();

@@ -1541,7 +1541,7 @@ function ProvidersPanel({ status, context }: { status: RunStatus | null; context
   );
 }
 
-function gateSnapshot(context: HandoffContext | null, status: RunStatus | null) {
+function gateSnapshot(context: HandoffContext | null, status: RunStatus | RunSummary | null) {
   const gate = context?.gate_state ?? status?.gate_state ?? {};
   const reviewResult = gate.review_result ?? status?.review_result;
   const checks = [
@@ -1559,7 +1559,7 @@ function gateSnapshot(context: HandoffContext | null, status: RunStatus | null) 
   };
 }
 
-function latestProviderSnapshot(context: HandoffContext | null, metrics?: RunMetrics | null) {
+function latestProviderSnapshot(context: { provider_trail?: ProviderTrailEntry[] } | null, metrics?: RunMetrics | null) {
   const trail = context?.provider_trail ?? [];
   const latest = trail[trail.length - 1];
   if (latest) {
@@ -1594,6 +1594,32 @@ function economySnapshot(routing?: RoutingEvidence | null, efficiency?: Efficien
         ? "blocked"
         : "idle";
   return { label: health, detail, tone };
+}
+
+function runPhaseSignal(run: RunSummary) {
+  const phase = run.current_phase ? phaseLabel(run.current_phase) : statusLabel(run.status);
+  return {
+    label: phase,
+    detail: statusLabel(run.status),
+    tone: run.background_job?.active ? "running" : inboxTone(run.inbox?.key)
+  };
+}
+
+function runGateSignal(run: RunSummary) {
+  return gateSnapshot(null, run);
+}
+
+function runEconomySignal(run: RunSummary) {
+  const metrics = run.run_metrics;
+  return economySnapshot(run.routing_evidence ?? metrics?.routing_evidence, run.efficiency_summary ?? metrics?.efficiency_summary);
+}
+
+function runProviderSignal(run: RunSummary) {
+  return latestProviderSnapshot(run.provider_trail ? { provider_trail: run.provider_trail } : null, run.run_metrics);
+}
+
+function shouldShowRunSignals(run: RunSummary) {
+  return Boolean(run.current_phase || run.gate_state || run.routing_evidence || run.run_metrics?.routing_evidence || run.efficiency_summary || run.provider_trail?.length);
 }
 
 function RunSnapshotCard({
@@ -3408,6 +3434,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                 </span>
                 <RunInboxBadge run={run} />
                 <BackgroundJobBadge job={run.background_job} />
+                <RunSignalStrip run={run} />
               </button>
               <RunInboxActionButton
                 run={run}
@@ -3750,6 +3777,26 @@ function RunInboxBadge({ run }: { run: RunSummary }) {
     <span className={`run-inbox-badge tone-${inboxTone(run.inbox.key)}`} aria-label="Run inbox state" title={run.inbox.summary}>
       <span>{inboxLabel(run)}</span>
       {detail ? <small>{detail}</small> : null}
+    </span>
+  );
+}
+
+function RunSignalStrip({ run }: { run: RunSummary }) {
+  if (!shouldShowRunSignals(run)) return null;
+  const signals = [
+    { key: "phase", title: "阶段", ...runPhaseSignal(run) },
+    { key: "gate", title: "门禁", ...runGateSignal(run) },
+    { key: "economy", title: "经济", ...runEconomySignal(run) },
+    { key: "provider", title: "提供方", ...runProviderSignal(run) }
+  ];
+  return (
+    <span className="run-signal-strip" aria-label="Run quick signals">
+      {signals.map((signal) => (
+        <span className={`run-signal tone-${signal.tone}`} title={`${signal.title}: ${signal.label} · ${signal.detail}`} key={signal.key}>
+          <span>{signal.title}</span>
+          <strong>{signal.label}</strong>
+        </span>
+      ))}
     </span>
   );
 }

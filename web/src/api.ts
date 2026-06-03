@@ -301,8 +301,15 @@ export type RunSummary = {
   updated_at?: string;
   run_dir?: string;
   current_phase?: string;
+  tests_passed?: boolean;
+  review_result?: string | null;
   next_commands?: string[];
   gate_state?: GateState;
+  effective_phase_providers?: Record<string, PhaseProvider>;
+  routing_evidence?: RoutingEvidence;
+  run_metrics?: RunMetrics;
+  efficiency_summary?: EfficiencySummary;
+  provider_trail?: ProviderTrailEntry[];
   background_job?: BackgroundJob | null;
   inbox?: RunInboxState;
   actions?: AgentHealthAction[];

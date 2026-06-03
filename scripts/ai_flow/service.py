@@ -1844,14 +1844,7 @@ def status(cwd: Path, run_id: str) -> dict[str, Any]:
     if data.get("status") == FAILED:
         data["failure_recovery"] = _failure_recovery(data)
     cfg = load_config(root)
-    effective: dict[str, Any] = {}
-    for phase in ("plan", "write", "review", "fix"):
-        resolved = resolve_phase(cfg, phase)
-        effective[phase] = {
-            "provider": resolved.get("provider", ""),
-            "model": resolved.get("model", ""),
-            "command_key": resolved.get("command_key", ""),
-        }
+    effective = _effective_phase_provider_summary(cfg)
     data["effective_phase_providers"] = effective
     data["routing_evidence"] = _run_routing_evidence(run_metrics, effective, cfg)
     data["efficiency_summary"] = _run_efficiency_summary(run_metrics, data["routing_evidence"])
@@ -3081,6 +3074,35 @@ def metrics(cwd: Path, run_id: str) -> dict[str, Any]:
     }
 
 
+def _effective_phase_provider_summary(cfg: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    effective: dict[str, dict[str, Any]] = {}
+    for phase in ("plan", "write", "review", "fix"):
+        resolved = resolve_phase(cfg, phase)
+        effective[phase] = {
+            "provider": resolved.get("provider", ""),
+            "model": resolved.get("model", ""),
+            "command_key": resolved.get("command_key", ""),
+        }
+    return effective
+
+
+def _run_provider_trail(run_path: Path) -> list[dict[str, Any]]:
+    trail: list[dict[str, Any]] = []
+    for item in list_events(run_path):
+        if not (item.get("provider") or item.get("model")):
+            continue
+        trail.append(
+            {
+                "phase": item.get("phase", ""),
+                "provider": item.get("provider", ""),
+                "model": item.get("model", ""),
+                "status": item.get("status", ""),
+                "timestamp": item.get("timestamp", ""),
+            }
+        )
+    return trail
+
+
 def events(cwd: Path, run_id: str, *, since: int = 0, phase: str | None = None) -> dict[str, Any]:
     """Return event log entries for a run (used by CLI ``events`` and MCP ``patchbay_events``)."""
     root = resolve_root(cwd)
@@ -3112,6 +3134,8 @@ def trace(cwd: Path, run_id: str, *, since: int = 0, phase: str | None = None) -
 def runs(cwd: Path, *, limit: int = 20) -> dict[str, Any]:
     root = resolve_root(cwd)
     ensure_layout(root)
+    cfg = load_config(root)
+    effective = _effective_phase_provider_summary(cfg)
     items: list[dict[str, Any]] = []
     for candidate in sorted(runs_dir(root).iterdir(), key=lambda item: item.stat().st_mtime, reverse=True):
         if not candidate.is_dir():
@@ -3140,6 +3164,11 @@ def runs(cwd: Path, *, limit: int = 20) -> dict[str, Any]:
             data["gate_state"] = _gate_state(data)
         if "next_commands" not in data:
             data["next_commands"] = _next_commands(data)
+        run_metrics = _run_metrics(candidate)
+        routing_evidence = _run_routing_evidence(run_metrics, effective, cfg)
+        efficiency_summary = _run_efficiency_summary(run_metrics, routing_evidence)
+        run_metrics["routing_evidence"] = routing_evidence
+        run_metrics["efficiency_summary"] = efficiency_summary
         summary = {
             "run_id": data.get("run_id", candidate.name),
             "status": data.get("status"),
@@ -3147,8 +3176,15 @@ def runs(cwd: Path, *, limit: int = 20) -> dict[str, Any]:
             "updated_at": data.get("updated_at"),
             "run_dir": str(candidate),
             "current_phase": data.get("current_phase"),
+            "tests_passed": data.get("tests_passed"),
+            "review_result": data.get("review_result"),
             "next_commands": data.get("next_commands"),
             "gate_state": data.get("gate_state"),
+            "effective_phase_providers": deepcopy(effective),
+            "routing_evidence": routing_evidence,
+            "efficiency_summary": efficiency_summary,
+            "run_metrics": run_metrics,
+            "provider_trail": _run_provider_trail(candidate),
             "background_job": data.get("background_job"),
         }
         summary["inbox"] = _run_queue_state({**data, **summary})

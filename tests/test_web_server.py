@@ -74,6 +74,14 @@ class WebServerTest(unittest.TestCase):
         _, runs = self._request("GET", "/api/runs")
         self.assertEqual(runs["count"], 1)
         self.assertEqual(runs["runs"][0]["run_id"], self.run_id)
+        listed_run = runs["runs"][0]
+        self.assertIn("effective_phase_providers", listed_run)
+        self.assertIn("run_metrics", listed_run)
+        self.assertIn("routing_evidence", listed_run)
+        self.assertIn("efficiency_summary", listed_run)
+        self.assertIn("provider_trail", listed_run)
+        self.assertEqual(listed_run["run_metrics"]["routing_evidence"], listed_run["routing_evidence"])
+        self.assertEqual(listed_run["run_metrics"]["efficiency_summary"], listed_run["efficiency_summary"])
 
         _, run_status = self._request("GET", f"/api/runs/{self.run_id}/status")
         self.assertEqual(run_status["run_id"], self.run_id)
