@@ -1608,6 +1608,10 @@ def _help_response(root: Path) -> dict[str, Any]:
             "summary": "Send `metrics`, `cost`, or `tokens` to inspect the latest run, or include a run_id to inspect a specific run's efficiency evidence.",
         },
         {
+            "name": "unattended-approval",
+            "summary": "When a concrete run_id is selected, phrases such as `don't ask me`, `full access`, `无需向我确认`, or `完全访问权限` can approve the plan and start write/test/review autopilot; without a run_id they return missing_run guidance, and final apply still needs apply_approved confirmation.",
+        },
+        {
             "name": "continue",
             "summary": "Send `continue` with a run_id to advance the next safe phase.",
         },

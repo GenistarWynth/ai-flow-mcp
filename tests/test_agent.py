@@ -706,6 +706,11 @@ test = []
         self.assertIn("configure economy provider command to <path>", custom_capability["summary"])
         self.assertIn("简单 writer/fix 用 DeepSeek 省钱", custom_capability["summary"])
         self.assertIn("configure_economy_provider_command", custom_capability["summary"])
+        unattended_capability = next(item for item in response["capabilities"] if item["name"] == "unattended-approval")
+        self.assertIn("run_id", unattended_capability["summary"])
+        self.assertIn("full access", unattended_capability["summary"])
+        self.assertIn("无需向我确认", unattended_capability["summary"])
+        self.assertIn("apply_approved", unattended_capability["summary"])
         actions = {item["id"]: item for item in response["actions"]}
         self.assertEqual(actions["run_setup"]["kind"], "local_agent")
         self.assertEqual(actions["run_setup"]["message"], "patchbay setup")
