@@ -46,7 +46,7 @@ timeout = 900
 - 应用补丁前会做路径与安全检查；默认情况下“没有测试命令”不算测试通过，除非显式设置 `workflow.allow_apply_without_tests = true`。
 - reviewer 默认只读，并检查审查阶段没有修改 worktree。
 - `doctor`、`setup` 和对话式 `readiness` 响应会返回顶层 `routing`、`recommendations`、由推荐项派生的 `next_actions` 和结构化 `actions[]`，桌面端/MCP host 可以直接渲染安全的一键后续操作，而不需要解析自然语言；带结构化动作的响应还会返回 `action_groups[]`，用 `action_ids` 把按钮分成 `background_polling`、`routing`、`setup`、`diagnostics`、`gate`、`new_task`、`commands` 等稳定分组；`help` 还会暴露本地-only setup 以及 Codex、Claude Code、Claude Desktop、Gemini CLI 的 host-specific setup/readiness 快捷动作；`patchbay doctor --host <host>` 会让 MCP 注册、setup、refresh 动作都携带具体 host。
-- `patchbay agent message "help" --json` 和 `patchbay_agent` 的 help 提示会返回 `capabilities[]` 摘要，并同时保留安全的 `actions[]` / `action_groups[]`，桌面端/MCP/Skill 客户端可以直接渲染 Agent 能力面板而不解析说明文本。
+- `patchbay agent message "help" --json` 和 `patchbay_agent` 的 help 提示会返回 `capabilities[]` 摘要，并同时保留安全的 `actions[]` / `action_groups[]`，桌面端/MCP/Skill 客户端可以直接渲染 Agent 能力面板而不解析说明文本；如果传入具体 `run_id`，help 还会返回该 run 的 `gate_diagnosis.next_action`、`next_action`、status/context 和安全诊断/setup 动作，但不会推进门禁。
 
 ## 快速开始
 

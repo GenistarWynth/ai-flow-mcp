@@ -143,7 +143,7 @@ def agent_message(
     if intent == "doctor":
         return _doctor_response(root, text)
     if intent == "help":
-        return _help_response(root)
+        return _help_response(root, run_id=run_id, include=include)
     if intent == "runs":
         return _runs_response(root)
     if intent == "reasonix_command_configure":
@@ -1040,6 +1040,8 @@ def _config_profile_intent(text: str) -> str | None:
         return "profile_apply"
     if _has_any(text, ("查看经济路由", "查看路由配置", "路由状态", "经济路由状态")):
         return "profile_show"
+    if _is_task_message_that_mentions_routing_tool(text, words):
+        return None
     chinese_profile_intent = _chinese_economy_profile_intent(text)
     if chinese_profile_intent:
         return chinese_profile_intent
@@ -1059,6 +1061,30 @@ def _config_profile_intent(text: str) -> str | None:
     if bool(words & {"cheap", "cost", "lower", "low", "economy"}) and bool(words & {"model", "models", "routing", "route", "profile"}):
         return "profile_apply" if bool(words & (apply_words | write_fix_words | {"optimize"})) else "profile_show"
     return None
+
+
+def _is_task_message_that_mentions_routing_tool(text: str, words: set[str]) -> bool:
+    if not _has_task_intent(text, words):
+        return False
+    if _has_any(
+        text,
+        (
+            "便宜",
+            "低成本",
+            "经济",
+            "省钱",
+            "性价比",
+            "大量",
+            "简单",
+            "低难度",
+            "路由",
+            "交给",
+            "切到",
+            "换成",
+        ),
+    ):
+        return False
+    return _has_any(text, ("流程", "功能", "模块", "页面", "系统", "代码", "bug", "问题", "任务"))
 
 
 def _is_routing_show_query(text: str, words: set[str]) -> bool:
@@ -1571,7 +1597,7 @@ def _safe_economy_target(root: Path) -> dict[str, Any]:
         return {"provider": service.ECONOMY_PROVIDER, "model": service.ECONOMY_MODEL, "label": "Reasonix/DeepSeek"}
 
 
-def _help_response(root: Path) -> dict[str, Any]:
+def _help_response(root: Path, *, run_id: str | None = None, include: dict[str, Any] | None = None) -> dict[str, Any]:
     target = _safe_economy_target(root)
     target_label = str(target.get("label") or _route_label(target))
     capabilities = [
@@ -1622,11 +1648,33 @@ def _help_response(root: Path) -> dict[str, Any]:
     ]
     if target.get("provider") != "reasonix_cli":
         capabilities = [item for item in capabilities if item["name"] != "reasonix-command"]
+    actions = _help_actions(target)
+    next_actions = _help_next_actions(target)
+    reply = "Patchbay Agent can run setup, start a gated run, report readiness, apply economy routing, list recent runs, continue a run, show artifacts/diff, and apply only after explicit approval."
+    if run_id:
+        current = service.status(root, run_id)
+        diagnosis = _gate_diagnosis(current)
+        run_actions = _next_step_actions(run_id, current, include_open_run=False)
+        return _agent_response(
+            root,
+            run_id,
+            action="help",
+            reply=reply + f" Current run {run_id} is {current.get('status') or 'unknown'}; see gate_diagnosis.next_action for the selected-run next step.",
+            include=include,
+            status_data=current,
+            extra={
+                "capabilities": capabilities,
+                "gate_diagnosis": diagnosis,
+                "next_action": _next_step_primary_action(current),
+                "next_actions": _dedupe_strings([*_next_actions_for_status(current), *next_actions]),
+                "actions": _dedupe_actions([*run_actions, *actions]),
+            },
+        )
     return _stateless_response(
         action="help",
-        reply="Patchbay Agent can run setup, start a gated run, report readiness, apply economy routing, list recent runs, continue a run, show artifacts/diff, and apply only after explicit approval.",
-        next_actions=_help_next_actions(target),
-        extra={"capabilities": capabilities, "actions": _help_actions(target)},
+        reply=reply,
+        next_actions=next_actions,
+        extra={"capabilities": capabilities, "actions": actions},
     )
 
 
@@ -2990,6 +3038,19 @@ def _dedupe_strings(items: list[str]) -> list[str]:
     return result
 
 
+def _dedupe_actions(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    result: list[dict[str, Any]] = []
+    for action in actions:
+        key = str(action.get("id") or action.get("message") or action.get("command") or action.get("label") or "").strip()
+        if key and key in seen:
+            continue
+        if key:
+            seen.add(key)
+        result.append(action)
+    return result
+
+
 def _is_unattended_plan_approval(text: str) -> bool:
     if not text:
         return False
@@ -3044,8 +3105,9 @@ def _agent_response(
     requires_confirmation: dict[str, Any] | None = None,
     include: dict[str, Any] | None = None,
     extra: dict[str, Any] | None = None,
+    status_data: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    current = service.status(root, run_id)
+    current = status_data if status_data is not None else service.status(root, run_id)
     effective_include = _merge_include(include, _auto_include_for_status(current))
     since = int(effective_include.get("events_since", 0) or 0)
     include_trace = bool(effective_include.get("include_trace", False))

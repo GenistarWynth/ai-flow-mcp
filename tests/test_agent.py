@@ -752,6 +752,35 @@ test = []
         self.assertTrue(all(item["safe"] for item in actions.values()))
         self.assertFalse((self.repo / ".ai" / "runs").exists())
 
+    def test_agent_help_with_selected_run_returns_gate_context_without_advancing(self) -> None:
+        planned = agent_message(self.repo, "build selected run help context")
+        run_id = planned["run_id"]
+
+        response = agent_message(self.repo, "help", run_id=run_id)
+
+        self.assertEqual(response["action"], "help")
+        self.assertEqual(response["run_id"], run_id)
+        self.assertEqual(response["status"]["status"], "PLANNED")
+        self.assertEqual(response["requires_confirmation"]["confirmation"], PLAN_CONFIRMATION)
+        self.assertIn("capabilities", response)
+        self.assertEqual(response["gate_diagnosis"]["status"], "PLANNED")
+        self.assertEqual(response["gate_diagnosis"]["next_action"]["id"], "approve_and_run")
+        self.assertFalse(response["gate_diagnosis"]["next_action"]["safe"])
+        self.assertEqual(response["next_action"]["id"], "approve_and_run")
+        self.assertFalse(response["next_action"]["safe"])
+        self.assertIn("approve_and_run", response["next_actions"])
+        self.assertIn("setup without MCP", response["next_actions"])
+        actions = {item["id"]: item for item in response["actions"]}
+        self.assertEqual(actions["open_plan"]["tab"], "Artifacts")
+        self.assertEqual(actions["open_trace"]["tab"], "Trace")
+        self.assertEqual(actions["run_local_setup"]["message"], "patchbay setup without MCP")
+        self.assertEqual(actions["apply_economy_profile"]["message"], "apply economy profile")
+        action_groups = {item["id"]: item for item in response["action_groups"]}
+        self.assertIn("open_plan", action_groups["diagnostics"]["action_ids"])
+        self.assertIn("run_local_setup", action_groups["setup"]["action_ids"])
+        self.assertIn("apply_economy_profile", action_groups["routing"]["action_ids"])
+        self.assertFalse((self.repo / ".ai" / "runs" / run_id / "APPROVAL.json").exists())
+
     def test_agent_failure_recovery_fallback_groups_actions(self) -> None:
         from scripts.ai_flow import agent
 

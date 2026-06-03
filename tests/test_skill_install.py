@@ -61,6 +61,8 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("read-only `profile`, `routing`, safe `actions[]`, and `action_groups[]` preview", result["files"]["SKILL.md"])
         self.assertIn("capabilities[]", result["files"]["SKILL.md"])
         self.assertIn("Agent help surface", result["files"]["SKILL.md"])
+        self.assertIn("selected `run_id`", result["files"]["SKILL.md"])
+        self.assertIn("gate_diagnosis.next_action", result["files"]["SKILL.md"])
         self.assertIn("When `action_groups[]` is present", result["files"]["SKILL.md"])
         self.assertIn("background_polling", result["files"]["SKILL.md"])
         self.assertIn("full access", result["files"]["SKILL.md"])

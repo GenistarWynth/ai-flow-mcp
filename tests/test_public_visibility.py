@@ -120,6 +120,7 @@ class PublicVisibilityTest(unittest.TestCase):
         self.assertIn("providers.<id>.command", text)
         self.assertIn("capabilities[]", text)
         self.assertIn("Agent 能力面板", text)
+        self.assertIn("gate_diagnosis.next_action", text)
         self.assertIn("无需向我确认", text)
         self.assertIn("完全访问权限", text)
 
@@ -131,6 +132,7 @@ class PublicVisibilityTest(unittest.TestCase):
         self.assertIn('patchbay agent message "configure economy provider command to <path>" --json', text)
         self.assertIn("Agent help surface", text)
         self.assertIn("capabilities[]", text)
+        self.assertIn("selected-run `gate_diagnosis.next_action`", text)
         self.assertIn("full access", text)
         self.assertIn("approve yourself", text)
 
