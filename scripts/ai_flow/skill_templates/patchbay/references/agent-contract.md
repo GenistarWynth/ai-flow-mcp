@@ -84,6 +84,8 @@ Desktop/Web Trace views should present selected-message, run-timeline, and provi
 
 Desktop/Web Log and Artifacts views should use `failure_recovery`, status errors, priority artifacts, and the loaded artifact preview to present a failure summary, suggested next step, highlighted error lines, and an artifact index before the raw preview.
 
+Desktop/Web Diff views should summarize changed files, additions, deletions, and hunks before raw patch text. Keep the raw diff available behind an explicit debug/detail affordance.
+
 Desktop/Web Config views should summarize resolved phase routes, provider commands, test allowlists, custom providers, and workflow safeguards before raw config JSON. Keep the raw JSON available behind an explicit debug/detail affordance.
 
 ## Setup And Skill Actions

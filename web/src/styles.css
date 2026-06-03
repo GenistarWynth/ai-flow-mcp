@@ -1043,6 +1043,116 @@ button.danger { color: #b42318; border-color: #f0b6b2; background: #fff8f7; }
 .config-raw-json pre {
   max-height: 320px;
 }
+.diff-panel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 12px;
+}
+.diff-summary,
+.diff-section,
+.diff-raw-text {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #d9dee6;
+  border-radius: 8px;
+  padding: 10px;
+  background: #ffffff;
+}
+.diff-summary h2,
+.diff-section h2 {
+  margin: 0;
+  color: #344255;
+  font-size: 13px;
+}
+.diff-summary p {
+  margin: 4px 0 0;
+  color: #647083;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.diff-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.diff-stat-grid span {
+  border: 1px solid #cfd7e3;
+  border-radius: 8px;
+  padding: 6px 7px;
+  color: #344255;
+  background: #fbfcfe;
+  font-size: 12px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+.diff-file-list {
+  display: grid;
+  gap: 7px;
+}
+.diff-file-card {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  border: 1px solid #d9dee6;
+  border-radius: 8px;
+  padding: 8px;
+  background: #ffffff;
+}
+.diff-file-card strong,
+.diff-file-card small {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.diff-file-card strong {
+  color: #172033;
+  font-size: 12px;
+}
+.diff-file-card small {
+  color: #647083;
+  font-size: 11px;
+  font-weight: 700;
+}
+.diff-file-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+.diff-file-stats span {
+  border: 1px solid #d9dee6;
+  border-radius: 8px;
+  padding: 3px 6px;
+  color: #344255;
+  background: #fbfcfe;
+  font-size: 11px;
+  font-weight: 800;
+}
+.diff-file-stats .added {
+  border-color: #b7e4c7;
+  color: #16794f;
+  background: #f1fbf6;
+}
+.diff-file-stats .deleted {
+  border-color: #f0b6b2;
+  color: #b42318;
+  background: #fff8f7;
+}
+.diff-raw-text {
+  padding: 0;
+  overflow: hidden;
+}
+.diff-raw-text summary {
+  cursor: pointer;
+  padding: 9px 10px;
+  color: #344255;
+  font-size: 12px;
+  font-weight: 800;
+}
+.diff-raw-text pre {
+  max-height: 360px;
+}
 .provider-list { display: grid; align-content: start; gap: 8px; padding: 12px; }
 .provider-item { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 4px 10px; padding: 10px; border: 1px solid #d9dee6; border-radius: 8px; background: #ffffff; }
 .provider-item.trail { background: #fbfcfe; }

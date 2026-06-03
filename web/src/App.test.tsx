@@ -2338,7 +2338,12 @@ describe("Workbench", () => {
     expect(await screen.findByRole("heading", { name: "Approve a plan" })).toBeInTheDocument();
     await waitFor(() => expect(client.getContext).toHaveBeenCalledWith("run-ready"));
     expect(screen.getByRole("tab", { name: "差异" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText("diff --git a/web b/web")).toBeVisible();
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    expect(within(details).getByRole("heading", { name: "差异摘要" })).toBeVisible();
+    expect(within(details).getByText("1 file")).toBeVisible();
+    expect(within(details).getByText("web")).toBeVisible();
+    expect(within(details).getByText("Raw diff")).toBeVisible();
+    expect(within(details).getByText("diff --git a/web b/web")).not.toBeVisible();
     expect(agentMessage).toHaveBeenCalledTimes(1);
     expect(agentMessage).toHaveBeenCalledWith("diff", { include: { plan: true }, background: true });
     expect(agentMessage).not.toHaveBeenCalledWith("continue", expect.objectContaining({ runId: "run-ready" }));
@@ -2402,7 +2407,12 @@ describe("Workbench", () => {
 
     expect(await screen.findByRole("heading", { name: "Approve a plan" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "差异" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText("diff --git a/web b/web")).toBeVisible();
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    expect(within(details).getByRole("heading", { name: "差异摘要" })).toBeVisible();
+    expect(within(details).getByText("1 file")).toBeVisible();
+    expect(within(details).getByText("web")).toBeVisible();
+    expect(within(details).getByText("Raw diff")).toBeVisible();
+    expect(within(details).getByText("diff --git a/web b/web")).not.toBeVisible();
     expect(screen.getByText("Latest run run-ready diff view.")).toBeVisible();
     expect(screen.queryByRole("button", { name: /open latest run/i })).not.toBeInTheDocument();
     expect(agentMessage).toHaveBeenCalledWith("diff", { include: { plan: true }, background: true });
@@ -3384,7 +3394,12 @@ describe("Workbench", () => {
 
     expect(await screen.findByRole("heading", { name: "Approve a plan" })).toBeInTheDocument();
     await waitFor(() => expect(client.getContext).toHaveBeenCalledWith("run-ready"));
-    expect(screen.getByText("diff --git a/web b/web")).toBeVisible();
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    expect(within(details).getByRole("heading", { name: "差异摘要" })).toBeVisible();
+    expect(within(details).getByText("1 file")).toBeVisible();
+    expect(within(details).getByText("web")).toBeVisible();
+    expect(within(details).getByText("Raw diff")).toBeVisible();
+    expect(within(details).getByText("diff --git a/web b/web")).not.toBeVisible();
     expect(client.runAction).not.toHaveBeenCalled();
     expect(client.apply).not.toHaveBeenCalled();
   });

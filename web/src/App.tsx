@@ -1081,6 +1081,13 @@ type DiagnosticArtifact = {
   path?: string;
   priority?: boolean;
 };
+type DiffFileSummary = {
+  path: string;
+  oldPath?: string;
+  additions: number;
+  deletions: number;
+  hunks: number;
+};
 type ConfigRecord = Record<string, unknown>;
 
 function diagnosticRecovery(context: HandoffContext | null, status: RunStatus | null) {
@@ -1244,6 +1251,108 @@ function ArtifactsPanel({
         </div>
         {artifactText ? <pre>{artifactText}</pre> : <div className="trace-empty">未加载产物预览。</div>}
       </section>
+    </div>
+  );
+}
+
+function normalizeDiffPath(path: string) {
+  return path.replace(/^a\//, "").replace(/^b\//, "");
+}
+
+function diffFileSummaries(diff: string): DiffFileSummary[] {
+  const files: DiffFileSummary[] = [];
+  let current: DiffFileSummary | null = null;
+  const ensureCurrent = (path = "working tree") => {
+    if (!current) {
+      current = { path, additions: 0, deletions: 0, hunks: 0 };
+      files.push(current);
+    }
+    return current;
+  };
+  for (const line of diff.split(/\r?\n/)) {
+    const header = line.match(/^diff --git\s+(?:"([^"]+)"|(\S+))\s+(?:"([^"]+)"|(\S+))/);
+    if (header) {
+      const oldPath = normalizeDiffPath(header[1] || header[2] || "changed file");
+      const path = normalizeDiffPath(header[3] || header[4] || oldPath);
+      current = { path, oldPath, additions: 0, deletions: 0, hunks: 0 };
+      files.push(current);
+      continue;
+    }
+    if (line.startsWith("+++ ")) {
+      const nextPath = normalizeDiffPath(line.slice(4).trim().replace(/^"|"$/g, ""));
+      if (nextPath && nextPath !== "/dev/null") ensureCurrent(nextPath).path = nextPath;
+      continue;
+    }
+    if (line.startsWith("--- ")) {
+      const oldPath = normalizeDiffPath(line.slice(4).trim().replace(/^"|"$/g, ""));
+      if (oldPath && oldPath !== "/dev/null") ensureCurrent(oldPath).oldPath = oldPath;
+      continue;
+    }
+    if (line.startsWith("@@")) {
+      ensureCurrent().hunks += 1;
+      continue;
+    }
+    if (line.startsWith("+") && !line.startsWith("+++")) {
+      ensureCurrent().additions += 1;
+      continue;
+    }
+    if (line.startsWith("-") && !line.startsWith("---")) {
+      ensureCurrent().deletions += 1;
+    }
+  }
+  return files;
+}
+
+function DiffPanel({ diff }: { diff: string }) {
+  const files = diffFileSummaries(diff);
+  const additions = files.reduce((total, file) => total + file.additions, 0);
+  const deletions = files.reduce((total, file) => total + file.deletions, 0);
+  const hunks = files.reduce((total, file) => total + file.hunks, 0);
+  const fileLabel = `${files.length} ${files.length === 1 ? "file" : "files"}`;
+  return (
+    <div className="diagnostic-body diff-panel">
+      <section className="diff-summary" aria-label="Diff summary">
+        <div>
+          <h2>差异摘要</h2>
+          <p>{diff ? "Reviewed diff is summarized by file. Raw patch text remains available below." : "当前运行还没有加载 diff。"}</p>
+        </div>
+        <div className="diff-stat-grid">
+          <span>{fileLabel}</span>
+          <span>+{additions}</span>
+          <span>-{deletions}</span>
+          <span>{hunks} hunks</span>
+        </div>
+      </section>
+      <section className="diff-section" aria-label="Changed files">
+        <div className="trace-section-head">
+          <h2>文件变更</h2>
+          <span>{files.length}</span>
+        </div>
+        {files.length ? (
+          <div className="diff-file-list">
+            {files.map((file) => (
+              <article className="diff-file-card" key={`${file.oldPath ?? file.path}-${file.path}`}>
+                <FileText size={15} />
+                <div>
+                  <strong>{file.path}</strong>
+                  {file.oldPath && file.oldPath !== file.path ? <small>{file.oldPath} → {file.path}</small> : null}
+                  <div className="diff-file-stats">
+                    <span className="added">+{file.additions}</span>
+                    <span className="deleted">-{file.deletions}</span>
+                    <span>{file.hunks} hunks</span>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="trace-empty">No diff loaded.</div>
+        )}
+      </section>
+      <details className="diff-raw-text">
+        <summary>Raw diff</summary>
+        {diff ? <pre>{diff}</pre> : <div className="trace-empty">No raw diff available.</div>}
+      </details>
     </div>
   );
 }
@@ -4709,7 +4818,7 @@ function DetailPanel({
   }
   const recovery = diagnosticRecovery(context, status);
   const artifacts = diagnosticArtifacts(context, status, activity, recovery);
-  if (tab === "Diff") return <pre>{diff}</pre>;
+  if (tab === "Diff") return <DiffPanel diff={diff} />;
   if (tab === "Log") return <LogPanel artifactText={artifactText} recovery={recovery} status={status} artifacts={artifacts} />;
   if (tab === "Artifacts") return <ArtifactsPanel artifactText={artifactText} artifacts={artifacts} recovery={recovery} status={status} />;
   if (tab === "Providers") {
