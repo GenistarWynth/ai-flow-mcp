@@ -100,6 +100,7 @@ class PublicVisibilityTest(unittest.TestCase):
         self.assertIn("patchbay_setup", tools)
         self.assertIn("patchbay_runs", tools)
         self.assertIn("patchbay_artifact", tools)
+        self.assertIn("patchbay_cancel", tools)
         self.assertIn("patchbay_config_show", tools)
         self.assertIn("patchbay_config_phase_set", tools)
         self.assertIn("patchbay_config_command_set", tools)
@@ -263,6 +264,82 @@ class PublicVisibilityTest(unittest.TestCase):
         listed = next(item for item in runs["runs"] if item["run_id"] == run_id)
         self.assertEqual(listed["status"], "FAILED")
         self.assertEqual(listed["background_job"]["duration_ms"], 1000)
+
+    def test_cancel_background_job_without_status_marks_canceled_and_releases_locks(self) -> None:
+        from scripts.ai_flow import service
+
+        run_id = "20260603-cancel-background"
+        run_path = self.repo / ".ai" / "runs" / run_id
+        run_path.mkdir(parents=True)
+        service._acquire_lock(run_path, "plan", token="cancel-token")
+        (run_path / "AGENT.lock").write_text("agent\ncancel-token\n", encoding="utf-8")
+        service._record_job(
+            run_path,
+            {
+                "background": True,
+                "phase": "plan",
+                "pid": 4321,
+                "run_id": run_id,
+                "task": "cancel background task",
+                "started_at": "2026-06-03T00:00:00+00:00",
+                "started_at_epoch": 0,
+                "root": str(self.repo),
+                "run_dir": str(run_path),
+                "events_path": str(run_path / "events.jsonl"),
+                "trace_path": str(run_path / "trace.jsonl"),
+                "actions": service.background_followup_actions(run_id),
+            },
+        )
+
+        with mock.patch.object(service, "_terminate_background_process", return_value={"attempted": True, "terminated": True}) as terminate:
+            result = service.cancel_background_job(self.repo, run_id)
+
+        terminate.assert_called_once_with(4321)
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["canceled"])
+        self.assertEqual(result["background_job"]["status"], "canceled")
+        self.assertFalse(result["background_job"]["active"])
+        self.assertFalse((run_path / "RUN.lock").exists())
+        self.assertFalse((run_path / "AGENT.lock").exists())
+        job = json.loads((run_path / "JOB.json").read_text(encoding="utf-8"))
+        self.assertTrue(job["canceled"])
+        self.assertIn("canceled_at", job)
+        self.assertEqual(job["cancel_result"]["terminated"], True)
+        status = service.status(self.repo, run_id)
+        self.assertEqual(status["status"], "FAILED")
+        self.assertEqual(status["background_job"]["status"], "canceled")
+        self.assertIn("canceled", status["error"])
+        events = service.events(self.repo, run_id)
+        self.assertEqual(events["events"][-1]["action"], "cancel")
+
+    def test_windows_background_termination_uses_pid_probe_for_exited_process(self) -> None:
+        from scripts.ai_flow import service
+
+        completed = subprocess.CompletedProcess(
+            ["taskkill"],
+            128,
+            stdout="",
+            stderr="localized operating system message",
+        )
+        with (
+            mock.patch.object(service.os, "name", "nt"),
+            mock.patch.object(service.subprocess, "run", return_value=completed) as taskkill,
+            mock.patch.object(service, "_windows_process_is_active", return_value=False) as probe,
+        ):
+            result = service._terminate_background_process(4321)
+
+        taskkill.assert_called_once_with(
+            ["taskkill", "/PID", "4321", "/T", "/F"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        probe.assert_called_once_with(4321)
+        self.assertTrue(result["attempted"])
+        self.assertFalse(result["terminated"])
+        self.assertTrue(result["already_exited"])
+        self.assertFalse(result["active_after_taskkill"])
+        self.assertNotIn("error", result)
 
     def test_background_plan_cli_respects_explicit_run_id_collision(self) -> None:
         run_id = "20260524-background-explicit"

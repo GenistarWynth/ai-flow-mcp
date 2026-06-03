@@ -2357,10 +2357,12 @@ model = "cheap-model"
         self.assertEqual(actions["poll_status"]["message"], "status")
         self.assertEqual(actions["poll_context"]["message"], "context")
         self.assertEqual(actions["poll_events"]["message"], "events")
+        self.assertEqual(actions["cancel_background_job"]["message"], "cancel background job")
         self.assertEqual(actions["apply_economy_profile"]["message"], "apply economy profile")
         self.assertTrue(all(item["safe"] for item in response["actions"]))
         action_groups = {item["id"]: item for item in response["action_groups"]}
         self.assertEqual(action_groups["background_polling"]["action_ids"], ["poll_status", "poll_context", "poll_events"])
+        self.assertEqual(action_groups["background_control"]["action_ids"], ["cancel_background_job"])
         self.assertIn("open_background_run", action_groups["diagnostics"]["action_ids"])
         self.assertIn("apply_economy_profile", action_groups["routing"]["action_ids"])
         background_actions = {item["id"]: item for item in response["background_job"]["actions"]}
@@ -2369,24 +2371,66 @@ model = "cheap-model"
         self.assertEqual(background_actions["poll_status"]["message"], "status")
         self.assertEqual(background_actions["poll_context"]["message"], "context")
         self.assertEqual(background_actions["poll_events"]["message"], "events")
+        self.assertEqual(background_actions["cancel_background_job"]["message"], "cancel background job")
         self.assertNotIn("apply_economy_profile", background_actions)
         background_groups = {item["id"]: item for item in response["background_job"]["action_groups"]}
         self.assertEqual(background_groups["background_polling"]["action_ids"], ["poll_status", "poll_context", "poll_events"])
+        self.assertEqual(background_groups["background_control"]["action_ids"], ["cancel_background_job"])
         self.assertNotIn("routing", background_groups)
         status_actions = {item["id"]: item for item in service.status(self.repo, run_id)["background_job"]["actions"]}
         self.assertEqual(status_actions["open_background_run"]["run_id"], run_id)
         self.assertEqual(status_actions["open_trace"]["tab"], "Trace")
+        self.assertEqual(status_actions["cancel_background_job"]["run_id"], run_id)
         status_groups = {item["id"]: item for item in service.status(self.repo, run_id)["background_job"]["action_groups"]}
         self.assertIn("poll_context", status_groups["background_polling"]["action_ids"])
+        self.assertEqual(status_groups["background_control"]["action_ids"], ["cancel_background_job"])
         job_actions = {item["id"]: item for item in json.loads((run_path / "JOB.json").read_text(encoding="utf-8"))["actions"]}
         self.assertEqual(job_actions["poll_status"]["message"], "status")
         self.assertEqual(job_actions["poll_context"]["message"], "context")
         self.assertEqual(job_actions["poll_events"]["message"], "events")
+        self.assertEqual(job_actions["cancel_background_job"]["message"], "cancel background job")
         self.assertNotIn("approve", {item.get("message") for item in response["actions"]})
         self.assertNotIn("apply", {item.get("message") for item in response["actions"]})
         self.assertNotIn("continue", {item.get("message") for item in response["actions"]})
         self.assertTrue((run_path / "JOB.json").exists())
         self.assertTrue((run_path / "events.jsonl").exists())
+
+    def test_agent_can_cancel_active_background_job(self) -> None:
+        from scripts.ai_flow import service
+
+        planned = agent_message(self.repo, "prepare active background control workflow")
+        run_id = planned["run_id"]
+        run_path = self.repo / ".ai" / "runs" / run_id
+        (run_path / "AGENT.lock").write_text("agent\ncancel-token\n", encoding="utf-8")
+        service._record_job(
+            run_path,
+            {
+                "background": True,
+                "kind": "agent",
+                "phase": "agent",
+                "action": "continue",
+                "pid": 12345,
+                "run_id": run_id,
+                "started_at": "2026-06-03T00:00:00+00:00",
+                "started_at_epoch": 0,
+                "actions": service.background_followup_actions(run_id),
+            },
+        )
+
+        with mock.patch.object(service, "_terminate_background_process", return_value={"attempted": True, "terminated": True}) as terminate:
+            response = agent_message(self.repo, "stop background job", run_id=run_id)
+
+        terminate.assert_called_once_with(12345)
+        self.assertEqual(response["action"], "background_cancel")
+        self.assertTrue(response["ok"])
+        self.assertTrue(response["canceled"])
+        self.assertEqual(response["background_job"]["status"], "canceled")
+        self.assertFalse(response["background_job"]["active"])
+        self.assertFalse((run_path / "AGENT.lock").exists())
+        status = service.status(self.repo, run_id)
+        self.assertEqual(status["status"], "FAILED")
+        self.assertEqual(status["background_job"]["status"], "canceled")
+        self.assertIn("Background job canceled", status["error"])
 
     def test_agent_background_approval_requires_confirmation(self) -> None:
         planned = agent_message(self.repo, "background approval still gated")
@@ -2546,9 +2590,11 @@ model = "cheap-model"
         self.assertEqual(actions["open_trace"]["tab"], "Trace")
         self.assertEqual(actions["poll_status"]["message"], "status")
         self.assertEqual(actions["poll_context"]["message"], "context")
+        self.assertEqual(actions["cancel_background_job"]["message"], "cancel background job")
         self.assertTrue(all(item["safe"] for item in response["actions"]))
         action_groups = {item["id"]: item for item in response["action_groups"]}
         self.assertEqual(action_groups["background_polling"]["action_ids"], ["poll_status", "poll_context", "poll_events"])
+        self.assertEqual(action_groups["background_control"]["action_ids"], ["cancel_background_job"])
         self.assertIn("open_background_run", action_groups["diagnostics"]["action_ids"])
         background_actions = {item["id"]: item for item in response["background_job"]["actions"]}
         self.assertEqual(background_actions["open_background_run"]["run_id"], run_id)
@@ -2556,14 +2602,17 @@ model = "cheap-model"
         self.assertEqual(background_actions["poll_status"]["message"], "status")
         self.assertEqual(background_actions["poll_context"]["message"], "context")
         self.assertEqual(background_actions["poll_events"]["message"], "events")
+        self.assertEqual(background_actions["cancel_background_job"]["message"], "cancel background job")
         status_actions = {item["id"]: item for item in service.status(self.repo, run_id)["background_job"]["actions"]}
         self.assertEqual(status_actions["open_background_run"]["run_id"], run_id)
         self.assertEqual(status_actions["poll_context"]["message"], "context")
         self.assertEqual(status_actions["poll_events"]["message"], "events")
+        self.assertEqual(status_actions["cancel_background_job"]["run_id"], run_id)
         job_actions = {item["id"]: item for item in json.loads((run_path / "JOB.json").read_text(encoding="utf-8"))["actions"]}
         self.assertEqual(job_actions["open_trace"]["tab"], "Trace")
         self.assertEqual(job_actions["poll_status"]["message"], "status")
         self.assertEqual(job_actions["poll_context"]["message"], "context")
+        self.assertEqual(job_actions["cancel_background_job"]["message"], "cancel background job")
         self.assertNotIn("approve", {item.get("message") for item in response["actions"]})
         self.assertNotIn("apply", {item.get("message") for item in response["actions"]})
         self.assertNotIn("continue", {item.get("message") for item in response["actions"]})

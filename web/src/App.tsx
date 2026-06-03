@@ -16,7 +16,8 @@ import {
   Send,
   Settings,
   ShieldCheck,
-  User
+  User,
+  XCircle
 } from "lucide-react";
 import {
   ActionGroup,
@@ -305,6 +306,7 @@ function localReplyActionKeys(action: LocalReplyAction) {
 function localReplyActionGroupLabel(group: ActionGroup) {
   const labels: Record<string, string> = {
     background_polling: "后台轮询",
+    background_control: "后台控制",
     routing: "经济路由",
     setup: "就绪设置",
     diagnostics: "诊断",
@@ -561,6 +563,11 @@ function isProviderCommandConfigureAction(action: Pick<AgentHealthAction, "id" |
   return action.id === "configure_economy_provider_command" || Boolean(providerCommandSource(action));
 }
 
+function isCancelBackgroundAction(action: Pick<AgentHealthAction, "id" | "message">) {
+  const text = `${action.id ?? ""} ${action.message ?? ""}`.toLowerCase();
+  return text.includes("cancel_background_job") || text.includes("cancel background") || text.includes("stop background");
+}
+
 function reasonixCommandMessage(path: string) {
   const trimmed = path.trim();
   if (!trimmed) return "configure reasonix command";
@@ -736,6 +743,7 @@ function compactDuration(ms?: number | null) {
 
 function backgroundJobTone(job?: BackgroundJob | null) {
   if (!job) return "idle";
+  if (job.status === "canceled") return "failed";
   if (job.status === "failed" || (typeof job.exit_code === "number" && job.exit_code !== 0)) return "failed";
   if (job.active || job.status === "running") return "running";
   if (job.status === "finished") return "success";
@@ -747,6 +755,7 @@ function isBackgroundJobActive(job?: BackgroundJob | null) {
 }
 
 function backgroundJobStatusLabel(job?: BackgroundJob | null) {
+  if (job?.status === "canceled") return "后台已取消";
   const tone = backgroundJobTone(job);
   if (tone === "failed") return "后台失败";
   if (tone === "running") return "后台运行中";
@@ -1178,6 +1187,7 @@ function healthActionFromSuggestion(suggestion: SuggestedAction): AgentHealthAct
 function canRunSuggestionWhileBusy(suggestion: SuggestedAction) {
   if (suggestion.safe === false) return false;
   const message = suggestion.message ?? (suggestion.action === "poll_context" ? "context" : suggestion.action === "poll_status" ? "status" : suggestion.action === "poll_events" ? "events" : "");
+  if (isCancelBackgroundAction({ id: suggestion.id || suggestion.action, message })) return true;
   if (suggestion.kind === "diagnostic_tab" || suggestion.kind === "open_run") return true;
   if (suggestion.kind === "local_agent" && ["context", "status", "events"].includes(message)) return true;
   return ["poll_context", "poll_status", "poll_events"].includes(suggestion.action);
@@ -2088,6 +2098,20 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       await refreshRun(targetRun);
       return;
     }
+    if (action.kind === "local_agent" && isCancelBackgroundAction(action) && targetRun) {
+      setError("");
+      setProfileInFlight(true);
+      try {
+        const response = await client.agentMessage(action.message || "cancel background job", { runId: targetRun });
+        appendLocalAgentReply(response, targetRun);
+        await refreshRun(targetRun, response);
+      } catch (err) {
+        setError(String(err));
+      } finally {
+        setProfileInFlight(false);
+      }
+      return;
+    }
     if (isConfigureReasonixAction(action)) {
       await configureReasonixCommandAction(action.message || "configure reasonix command");
       return;
@@ -2710,7 +2734,7 @@ function BackgroundJobCard({
           <div className="background-job-actions">
             {actions.map((action) => (
               <button type="button" onClick={() => onAction?.(action)} aria-label={action.label} disabled={!onAction} key={action.id || action.label}>
-                {action.kind === "diagnostic_tab" || action.kind === "open_run" ? <Search size={13} /> : action.message === "context" ? <FileText size={13} /> : <RefreshCw size={13} />}
+                {isCancelBackgroundAction(action) ? <XCircle size={13} /> : action.kind === "diagnostic_tab" || action.kind === "open_run" ? <Search size={13} /> : action.message === "context" ? <FileText size={13} /> : <RefreshCw size={13} />}
                 {action.label}
               </button>
             ))}
@@ -2754,9 +2778,9 @@ function NextActionCard({
         </div>
         {refreshActions.length ? (
           <div className="next-card-actions">
-            {refreshActions.slice(0, 3).map((item) => (
+            {refreshActions.slice(0, 4).map((item) => (
               <button type="button" key={item.id} onClick={() => onAction(item)}>
-                {item.message === "context" || item.action === "poll_context" ? <FileText size={13} /> : <RefreshCw size={13} />}
+                {isCancelBackgroundAction({ id: item.id || item.action, message: item.message }) ? <XCircle size={13} /> : item.message === "context" || item.action === "poll_context" ? <FileText size={13} /> : <RefreshCw size={13} />}
                 {item.label}
               </button>
             ))}

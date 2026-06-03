@@ -9,6 +9,7 @@ Read this reference when a host, desktop UI, or Skill-only workflow needs to han
 - `routing` / `routing_evidence` / `efficiency_summary`: cost-routing state and observed write/fix economy evidence.
 - `gate_diagnosis`: apply blockers and the next safe diagnostic or gated action.
 - `failure_recovery`: failed stage, suggested next action, priority artifacts, safe diagnostic/replacement actions, and grouped recovery controls.
+- `background_job`: active or completed background worker state, including safe polling/cancel actions and cancel metadata when present.
 - `requested_view`: read-only prompts such as diff, events, logs, artifact, or 查看失败原因 may request a diagnostic tab.
 
 ## Action Kinds
@@ -27,6 +28,7 @@ Use `action_groups[]` as section hints for the already returned `actions[]`; do 
 
 - `gate`: confirmation-sensitive run actions.
 - `background_polling`: safe polling actions for active background jobs.
+- `background_control`: safe stop/manage actions such as `cancel_background_job` for active background jobs.
 - `routing`: economy routing inspection or repair.
 - `setup`: setup, readiness, Skill, or MCP follow-ups.
 - `diagnostics`: read-only run views and diagnostic tabs.
@@ -42,6 +44,7 @@ The group does not override the action kind. A `kind: "command"` action should s
 
 - Setup/help: `patchbay setup`, `patchbay setup for Claude Desktop`, `install patchbay for Gemini CLI`, `install Codex Skill`, `register MCP for Claude Desktop`, `安装 Codex Skill`, `注册 MCP 到 Gemini 命令行`, `帮我配置 Patchbay`, `Patchbay 怎么用`, `使用说明`.
 - Run visibility: `status`, `runs`, `查看最近运行`, `任务列表`, `context`, `handoff context`, `events`, `poll context`, `poll events`.
+- Background control: `cancel background job`, `stop background job`, `取消后台任务`, `停止后台任务`.
 - Next-step and gates: `what should I do next`, `下一步是什么`, `why can't I apply`, `what is blocking apply`, `门禁状态`, `为什么不能应用`.
 - Readiness: `readiness`, `readiness for Claude Desktop`, `diagnose`, `patchbay doctor`, `检查环境`, `环境自检`, `检查 Gemini 命令行环境`.
 - Economy routing: `show economy profile`, `apply economy profile`, `configure DeepSeek provider`, `configure DeepSeek provider to <command>`, `configure economy provider command to <path>`, `configure reasonix command`, `configure reasonix command to <path>`, `配置 Reasonix 命令`, `把 Reasonix 命令设为 <path>`, `what model will write/fix use`, `is writer using cheap model`, `现在写手是不是走便宜模型`.
@@ -89,11 +92,14 @@ For long model work, prefer:
 scripts/patchbay agent message "<user task>" --background --json
 scripts/patchbay agent message approve --run-id <run_id> --confirmation plan_approved --background --json
 scripts/patchbay agent message continue --run-id <run_id> --background --json
+scripts/patchbay cancel <run_id>
 scripts/patchbay context <run_id>
 scripts/patchbay events <run_id>
 ```
 
-Background responses write `JOB.json`, append agent events, and return safe polling actions: `poll_context`, `poll_status`, and `poll_events`. These are grouped under `background_polling`. If a job is already active, Patchbay returns `already_running: true` with the same polling actions instead of starting another worker.
+Background responses write `JOB.json`, append agent events, and return safe polling actions: `poll_context`, `poll_status`, and `poll_events`, plus `cancel_background_job` when there is an active worker. Polling actions are grouped under `background_polling`; cancellation is grouped under `background_control`. If a job is already active, Patchbay returns `already_running: true` with the same polling/cancel actions instead of starting another worker.
+
+Use `scripts/patchbay cancel <run_id>`, `patchbay_cancel`, or selected-run Agent prompts such as `cancel background job` / `停止后台任务` only to stop the active worker. Cancellation marks `JOB.json` as canceled, releases background locks, appends a cancel event, and leaves plan/apply gates untouched. Do not treat cancellation as approval, retry, or apply.
 
 If a concrete `run_id` is already selected, explicit unattended phrases such as `don't ask me`, `assume yes`, `you have all permissions`, `full access`, `approve yourself`, `不要问我`, `所有权限都给你`, `无需向我确认`, or `完全访问权限` count as plan approval for that run and may start background write/test/review autopilot. Without a `run_id`, they must return `missing_run` guidance. They never authorize final apply.
 

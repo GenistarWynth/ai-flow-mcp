@@ -5181,6 +5181,15 @@ describe("Workbench", () => {
           message: "events",
           safe: true,
           reason: "Read the background run event stream without advancing any phase."
+        },
+        {
+          id: "cancel_background_job",
+          label: "Cancel background job",
+          kind: "local_agent",
+          run_id: "run-ready",
+          message: "cancel background job",
+          safe: true,
+          reason: "Stop the active background worker for this run without approving, applying, or advancing gates."
         }
       ]
     };
@@ -5226,6 +5235,18 @@ describe("Workbench", () => {
           message: "events",
           requires_human_confirmation: false,
           reason: "Read the background run event stream without advancing any phase."
+        },
+        {
+          name: "cancel_background_job",
+          id: "cancel_background_job",
+          label: "Cancel background job",
+          safe: true,
+          tool: "patchbay_agent",
+          kind: "local_agent",
+          run_id: "run-ready",
+          message: "cancel background job",
+          requires_human_confirmation: false,
+          reason: "Stop the active background worker for this run without approving, applying, or advancing gates."
         }
       ],
       action_groups: [
@@ -5234,6 +5255,12 @@ describe("Workbench", () => {
           label: "Background polling",
           action_ids: ["poll_context", "poll_status", "poll_events"],
           count: 3
+        },
+        {
+          id: "background_control",
+          label: "Background control",
+          action_ids: ["cancel_background_job"],
+          count: 1
         }
       ],
       timeline: [
@@ -5307,6 +5334,17 @@ describe("Workbench", () => {
               run_id: "run-ready",
               message: "events",
               reason: "Read the background run event stream without advancing any phase."
+            },
+            {
+              id: "cancel_background_job",
+              label: "Cancel background job",
+              action: "cancel_background_job",
+              safe: true,
+              tool: "patchbay_agent",
+              kind: "local_agent",
+              run_id: "run-ready",
+              message: "cancel background job",
+              reason: "Stop the active background worker for this run without approving, applying, or advancing gates."
             }
           ]
         },
@@ -5340,7 +5378,15 @@ describe("Workbench", () => {
         artifacts: [],
         effective_phase_providers: {}
       }),
-      getContext: vi.fn().mockResolvedValue(runningContext)
+      getContext: vi.fn().mockResolvedValue(runningContext),
+      agentMessage: vi.fn().mockResolvedValue({
+        run_id: "run-ready",
+        action: "background_cancel",
+        ok: true,
+        canceled: true,
+        reply: "Canceled background job for run run-ready.",
+        background_job: { ...backgroundJob, active: false, status: "canceled" }
+      })
     });
 
     render(<Workbench client={client} />);
@@ -5352,9 +5398,11 @@ describe("Workbench", () => {
     expect(screen.getByRole("button", { name: "Open background run" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open activity" })).toBeInTheDocument();
     expect(screen.getByText("后台轮询")).toBeInTheDocument();
+    expect(screen.getByText("后台控制")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Poll status" }).length).toBeGreaterThan(1);
     expect(screen.getAllByRole("button", { name: "Poll context" }).length).toBeGreaterThan(1);
     expect(screen.getAllByRole("button", { name: "Poll events" }).length).toBeGreaterThan(1);
+    expect(screen.getAllByRole("button", { name: "Cancel background job" }).length).toBeGreaterThan(1);
     await userEvent.click(screen.getByRole("button", { name: "Open activity" }));
     expect(screen.getByRole("tab", { selected: true })).toBeInTheDocument();
     const statusCalls = vi.mocked(client.getStatus).mock.calls.length;
@@ -5363,6 +5411,8 @@ describe("Workbench", () => {
     const contextCalls = vi.mocked(client.getContext).mock.calls.length;
     await userEvent.click(screen.getAllByRole("button", { name: "Poll context" }).at(-1)!);
     await waitFor(() => expect(client.getContext).toHaveBeenCalledTimes(contextCalls + 1));
+    await userEvent.click(screen.getAllByRole("button", { name: "Cancel background job" }).at(-1)!);
+    await waitFor(() => expect(client.agentMessage).toHaveBeenCalledWith("cancel background job", { runId: "run-ready" }));
     expect(screen.getByRole("heading", { name: "Background implementation" })).toBeInTheDocument();
     expect(screen.getAllByText(/1.5s/).length).toBeGreaterThan(0);
     expect(screen.getByText("后台任务运行中")).toBeInTheDocument();
@@ -5370,6 +5420,8 @@ describe("Workbench", () => {
     expect(screen.getByLabelText("给 Patchbay Agent 输入消息")).toBeDisabled();
     expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
     expect(client.runAction).not.toHaveBeenCalledWith("run-ready", "poll_context");
+    expect(client.runAction).not.toHaveBeenCalledWith("run-ready", "cancel_background_job");
+    expect(client.apply).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: /开始实现/ })).not.toBeInTheDocument();
   });
 

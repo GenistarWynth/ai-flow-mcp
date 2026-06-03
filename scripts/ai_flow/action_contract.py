@@ -8,6 +8,10 @@ ACTION_GROUPS: dict[str, dict[str, str]] = {
         "label": "Background polling",
         "reason": "Read progress from an active background job without advancing any gate.",
     },
+    "background_control": {
+        "label": "Background control",
+        "reason": "Stop or manage an active background job without applying changes.",
+    },
     "routing": {
         "label": "Economy routing",
         "reason": "Inspect or repair the low-cost write/fix route.",
@@ -41,6 +45,7 @@ ACTION_GROUPS: dict[str, dict[str, str]] = {
 ACTION_GROUP_ORDER = [
     "gate",
     "background_polling",
+    "background_control",
     "routing",
     "setup",
     "diagnostics",
@@ -92,6 +97,8 @@ def _action_group_id(action: dict[str, Any]) -> str:
 
     if action_id.startswith("poll_"):
         return "background_polling"
+    if _has_any(haystack, ("cancel background", "stop background", "cancel_background", "cancel job", "stop job")):
+        return "background_control"
     if _is_copyable_provider_command(action_id, kind, command):
         return "commands"
     if _has_any(haystack, ("economy", "routing", "route", "reasonix", "deepseek", "cheap_writer", "provider command")):

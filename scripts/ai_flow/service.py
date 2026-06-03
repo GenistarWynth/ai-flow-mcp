@@ -4,6 +4,7 @@ from copy import deepcopy
 from datetime import datetime
 import json
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -123,7 +124,15 @@ def _job_path(run_path: Path) -> Path:
 
 
 def _job_has_finished(job: dict[str, Any]) -> bool:
-    return "exit_code" in job or bool(job.get("finished_at")) or bool(job.get("reaper_error"))
+    return (
+        "exit_code" in job
+        or bool(job.get("finished_at"))
+        or bool(job.get("reaper_error"))
+        or bool(job.get("canceled_at"))
+        or bool(job.get("cancelled_at"))
+        or bool(job.get("canceled"))
+        or bool(job.get("cancelled"))
+    )
 
 
 def _job_duration_ms(job: dict[str, Any]) -> int | None:
@@ -141,14 +150,15 @@ def _job_duration_ms(job: dict[str, Any]) -> int | None:
 def _background_job_summary(job: dict[str, Any]) -> dict[str, Any]:
     finished = _job_has_finished(job)
     exit_code = job.get("exit_code")
-    failed = bool(job.get("reaper_error")) or (isinstance(exit_code, int) and exit_code != 0)
+    canceled = bool(job.get("canceled_at") or job.get("cancelled_at") or job.get("canceled") or job.get("cancelled"))
+    failed = not canceled and (bool(job.get("reaper_error")) or (isinstance(exit_code, int) and exit_code != 0))
     run_id = str(job.get("run_id") or "")
     actions = list(job.get("actions") or [])
     if not actions and run_id and run_id != "pending":
         actions = background_followup_actions(run_id)
     return {
         "active": not finished,
-        "status": "failed" if failed else "finished" if finished else "running",
+        "status": "canceled" if canceled else "failed" if failed else "finished" if finished else "running",
         "kind": job.get("kind") or "phase",
         "phase": job.get("phase") or "background",
         "action": job.get("action") or job.get("phase") or "background",
@@ -156,10 +166,13 @@ def _background_job_summary(job: dict[str, Any]) -> dict[str, Any]:
         "exit_code": exit_code,
         "started_at": job.get("started_at"),
         "finished_at": job.get("finished_at"),
+        "cancel_requested_at": job.get("cancel_requested_at"),
+        "canceled_at": job.get("canceled_at") or job.get("cancelled_at"),
         "duration_ms": _job_duration_ms(job),
         "events_path": job.get("events_path"),
         "trace_path": job.get("trace_path"),
         "error": job.get("reaper_error"),
+        "cancel_result": job.get("cancel_result"),
         "actions": actions,
         "action_groups": group_actions(actions),
     }
@@ -212,6 +225,15 @@ def background_followup_actions(run_id: str) -> list[dict[str, Any]]:
             "safe": True,
             "reason": "Read the background run event stream without advancing any phase.",
         },
+        {
+            "id": "cancel_background_job",
+            "label": "Cancel background job",
+            "kind": "local_agent",
+            "run_id": run_id,
+            "message": "cancel background job",
+            "safe": True,
+            "reason": "Stop the active background worker for this run without approving, applying, or advancing gates.",
+        },
     ]
 
 
@@ -219,7 +241,10 @@ def _job_status_without_status(root: Path, run_id: str, job: dict[str, Any]) -> 
     stage = str(job.get("phase") or "background")
     finished = _job_has_finished(job)
     exit_code = job.get("exit_code")
-    if finished:
+    canceled = bool(job.get("canceled_at") or job.get("cancelled_at") or job.get("canceled") or job.get("cancelled"))
+    if canceled:
+        detail = "Background job was canceled before writing STATUS.json."
+    elif finished:
         detail = f"Background {stage} exited before writing STATUS.json"
         if exit_code is not None:
             detail += f" (exit code {exit_code})"
@@ -243,7 +268,9 @@ def _job_status_without_status(root: Path, run_id: str, job: dict[str, Any]) -> 
         "stage": stage,
         "background_job": _background_job_summary(job),
         "suggested_next_action": (
-            "Inspect events/trace and retry the phase; the background job did not produce durable status."
+            "Inspect events or start a replacement run."
+            if canceled
+            else "Inspect events/trace and retry the phase; the background job did not produce durable status."
             if finished
             else detail
         ),
@@ -256,6 +283,195 @@ def _record_job(run_path: Path, data: dict[str, Any]) -> None:
 
 def summarize_background_job(job: dict[str, Any]) -> dict[str, Any]:
     return _background_job_summary(job)
+
+
+def cancel_background_job(cwd: Path, run_id: str, *, reason: str = "Canceled by user request.") -> dict[str, Any]:
+    root = resolve_root(cwd)
+    run_path = _run_path_for_read(root, run_id)
+    job_path = _job_path(run_path)
+    if not job_path.exists():
+        return {
+            "ok": False,
+            "action": "background_cancel",
+            "run_id": run_id,
+            "canceled": False,
+            "reply": f"Run {run_id} has no background job to cancel.",
+            "error": "background job not found",
+        }
+
+    job = read_json(job_path)
+    summary = _background_job_summary(job)
+    if not summary.get("active"):
+        return {
+            "ok": True,
+            "action": "background_cancel",
+            "run_id": run_id,
+            "canceled": False,
+            "reply": f"Background job for run {run_id} is already {summary.get('status')}.",
+            "background_job": summary,
+            "status": status(root, run_id),
+        }
+
+    termination = _terminate_background_process(job.get("pid"))
+    if termination.get("error") or (
+        termination.get("attempted")
+        and not termination.get("terminated")
+        and not termination.get("already_exited")
+    ):
+        return {
+            "ok": False,
+            "action": "background_cancel",
+            "run_id": run_id,
+            "canceled": False,
+            "reply": f"Could not cancel background job for run {run_id}: {termination.get('error') or 'process did not terminate'}.",
+            "background_job": summary,
+            "cancel_result": termination,
+            "error": termination.get("error") or "process did not terminate",
+        }
+
+    canceled_at = now_iso()
+    canceled_epoch = time.time()
+    job.update(
+        {
+            "canceled": True,
+            "cancel_requested_at": canceled_at,
+            "canceled_at": canceled_at,
+            "canceled_at_epoch": canceled_epoch,
+            "finished_at": canceled_at,
+            "finished_at_epoch": canceled_epoch,
+            "cancel_reason": reason,
+            "cancel_result": termination,
+        }
+    )
+    _record_job(run_path, job)
+    _release_background_locks(run_path)
+    stage = str(job.get("phase") or job.get("action") or "background")
+    append_event(
+        run_path,
+        phase=stage,
+        action="cancel",
+        status="CANCELED",
+        detail=reason,
+        run_id=run_id,
+        next_action="inspect",
+    )
+    try:
+        mark_failed(
+            run_path,
+            error=f"Background job canceled. {reason}",
+            stage=stage,
+            suggested_next_action="Inspect events or start a replacement run.",
+        )
+    except Exception:
+        pass
+    final_status = status(root, run_id)
+    return {
+        "ok": True,
+        "action": "background_cancel",
+        "run_id": run_id,
+        "canceled": True,
+        "reply": f"Canceled background job for run {run_id}.",
+        "background_job": final_status.get("background_job") or _background_job_summary(job),
+        "status": final_status,
+        "cancel_result": termination,
+    }
+
+
+def _terminate_background_process(pid: Any) -> dict[str, Any]:
+    if pid in (None, "", 0):
+        return {"attempted": False, "terminated": False, "reason": "pid missing"}
+    try:
+        pid_int = int(pid)
+    except (TypeError, ValueError):
+        return {"attempted": False, "terminated": False, "error": f"invalid pid: {pid!r}"}
+    if pid_int <= 0:
+        return {"attempted": False, "terminated": False, "error": f"invalid pid: {pid_int}"}
+
+    if os.name == "nt":
+        completed = subprocess.run(
+            ["taskkill", "/PID", str(pid_int), "/T", "/F"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        active_after_taskkill = _windows_process_is_active(pid_int)
+        output = f"{completed.stdout}\n{completed.stderr}".lower()
+        text_says_exited = any(
+            fragment in output for fragment in ("not found", "not running", "no instance", "could not find")
+        )
+        already_exited = active_after_taskkill is False or (active_after_taskkill is None and text_says_exited)
+        result: dict[str, Any] = {
+            "attempted": True,
+            "terminated": completed.returncode == 0,
+            "already_exited": already_exited,
+            "returncode": completed.returncode,
+        }
+        if active_after_taskkill is not None:
+            result["active_after_taskkill"] = active_after_taskkill
+        if completed.returncode != 0 and not already_exited:
+            result["error"] = (completed.stderr or completed.stdout or "taskkill failed").strip()
+        return result
+
+    try:
+        os.kill(pid_int, signal.SIGTERM)
+    except ProcessLookupError:
+        return {"attempted": True, "terminated": False, "already_exited": True}
+    except PermissionError as exc:
+        return {"attempted": True, "terminated": False, "error": str(exc)}
+    except OSError as exc:
+        return {"attempted": True, "terminated": False, "error": str(exc)}
+    return {"attempted": True, "terminated": True}
+
+
+def _windows_process_is_active(pid_int: int) -> bool | None:
+    try:
+        import ctypes
+        from ctypes import wintypes
+    except Exception:
+        return None
+
+    try:
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    except Exception:
+        return None
+
+    error_invalid_parameter = 87
+    error_access_denied = 5
+    process_query_limited_information = 0x1000
+    still_active = 259
+
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+    kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+
+    handle = kernel32.OpenProcess(process_query_limited_information, False, pid_int)
+    if not handle:
+        error = ctypes.get_last_error()
+        if error == error_invalid_parameter:
+            return False
+        if error == error_access_denied:
+            return True
+        return None
+
+    try:
+        exit_code = wintypes.DWORD()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+            return None
+        return exit_code.value == still_active
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def _release_background_locks(run_path: Path) -> None:
+    _release_lock(run_path)
+    for name in ("AGENT.lock",):
+        try:
+            (run_path / name).unlink()
+        except FileNotFoundError:
+            pass
 
 
 def _mark_background_job_finished(

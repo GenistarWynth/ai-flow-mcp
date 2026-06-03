@@ -172,6 +172,7 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertIn("patchbay_events", tool_names)
         self.assertIn("patchbay_metrics", tool_names)
         self.assertIn("patchbay_doctor", tool_names)
+        self.assertIn("patchbay_cancel", tool_names)
         self.assertIn("patchbay_skill_install", tool_names)
         self.assertIn("patchbay_skill_print", tool_names)
         self.assertIn("patchbay_skill_doctor", tool_names)
@@ -183,6 +184,7 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertIn("ai_flow_events", tool_names)
         self.assertIn("ai_flow_metrics", tool_names)
         self.assertIn("ai_flow_doctor", tool_names)
+        self.assertIn("ai_flow_cancel", tool_names)
         self.assertIn("ai_flow_skill_install", tool_names)
         self.assertIn("ai_flow_skill_print", tool_names)
         self.assertIn("ai_flow_skill_doctor", tool_names)
@@ -205,6 +207,10 @@ class CliEntrypointTest(unittest.TestCase):
         self.assertTrue(local_doctor.skip_mcp)
         no_mcp_doctor = parser.parse_args(["doctor", "--no-mcp", "--json"])
         self.assertTrue(no_mcp_doctor.skip_mcp)
+
+        cancel = parser.parse_args(["cancel", "run-1", "--json"])
+        self.assertEqual(cancel.command, "cancel")
+        self.assertEqual(cancel.run_id, "run-1")
 
         setup = parser.parse_args(["setup", "--host", "codex", "--skill-path", "C:/tmp/skills", "--skip-mcp", "--json"])
         self.assertEqual(setup.command, "setup")

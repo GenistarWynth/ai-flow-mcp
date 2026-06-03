@@ -250,7 +250,7 @@ export type RunMetrics = {
 
 export type BackgroundJob = {
   active?: boolean;
-  status?: "running" | "finished" | "failed" | string;
+  status?: "running" | "finished" | "failed" | "canceled" | string;
   kind?: string;
   phase?: string;
   action?: string;
@@ -258,10 +258,13 @@ export type BackgroundJob = {
   exit_code?: number | null;
   started_at?: string | null;
   finished_at?: string | null;
+  cancel_requested_at?: string | null;
+  canceled_at?: string | null;
   duration_ms?: number | null;
   events_path?: string | null;
   trace_path?: string | null;
   error?: string | null;
+  cancel_result?: Record<string, unknown> | null;
   actions?: AgentHealthAction[];
   action_groups?: ActionGroup[];
 };

@@ -26,7 +26,7 @@ scripts/patchbay events <run_id>
 
 For MCP, the equivalent is `patchbay_agent` followed by `patchbay_context` or `patchbay_events`.
 
-Render structured `actions[]`, `action_groups[]`, `routing`, `routing_evidence`, `efficiency_summary`, `gate_diagnosis`, and `failure_recovery` when they are present. Prefer these fields over parsing prose. For simple high-volume implementation and repair work, confirm whether write/fix are using the cheaper economy route before approving long work.
+Render structured `actions[]`, `action_groups[]`, `routing`, `routing_evidence`, `efficiency_summary`, `gate_diagnosis`, `failure_recovery`, and `background_job` when they are present. Prefer these fields over parsing prose. For simple high-volume implementation and repair work, confirm whether write/fix are using the cheaper economy route before approving long work.
 
 ## Required Gates
 
@@ -81,4 +81,4 @@ Inspect `routing_evidence` and `efficiency_summary` before claiming economy rout
 
 ## Background And Permission Phrases
 
-Use `--background` for long planning or implementation turns and poll context/events. If a concrete `run_id` is already selected, unattended phrases such as `don't ask me`, `full access`, `不要问我`, `所有权限都给你`, `无需向我确认`, or `完全访问权限` may count as plan approval for that run and start background write/test/review autopilot. These phrases never authorize final apply; apply still requires explicit confirmation after tests and review pass.
+Use `--background` for long planning or implementation turns and poll context/events. Active background replies may include `cancel_background_job` under `background_control`; run it through `scripts/patchbay cancel <run_id>` or `scripts/patchbay agent message "cancel background job" --run-id <run_id> --json` only to stop the worker, release locks, and leave all approval/apply gates untouched. If a concrete `run_id` is already selected, unattended phrases such as `don't ask me`, `full access`, `不要问我`, `所有权限都给你`, `无需向我确认`, or `完全访问权限` may count as plan approval for that run and start background write/test/review autopilot. These phrases never authorize final apply; apply still requires explicit confirmation after tests and review pass.

@@ -225,6 +225,10 @@ def build_parser() -> argparse.ArgumentParser:
     fix.add_argument("--background", action="store_true", help="Run this phase in the background.")
     _add_json(fix)
 
+    cancel = sub.add_parser("cancel", help="Cancel an active background job for a run.")
+    cancel.add_argument("run_id")
+    _add_json(cancel)
+
     status = sub.add_parser("status", help="Show run status.")
     status.add_argument("run_id")
     status.add_argument("--watch", action="store_true", help="Poll status until terminal.")
@@ -496,6 +500,7 @@ def dispatch(args: argparse.Namespace, cwd: Path) -> Any:
         "test": lambda a, c: service.start_background_phase(c, "test", run_id=a.run_id) if a.background else service.test(c, a.run_id),
         "review": lambda a, c: service.start_background_phase(c, "review", run_id=a.run_id, mock=a.mock) if a.background else service.review(c, a.run_id, mock=a.mock),
         "fix": lambda a, c: service.start_background_phase(c, "fix", run_id=a.run_id, mock=a.mock) if a.background else service.fix(c, a.run_id, mock=a.mock),
+        "cancel": lambda a, c: service.cancel_background_job(c, a.run_id),
         "status": lambda a, c: service.status(c, a.run_id),
         "context": lambda a, c: service.context(
             c,

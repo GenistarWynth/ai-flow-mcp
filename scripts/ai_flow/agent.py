@@ -218,6 +218,23 @@ def agent_message(
     if not run_id:
         return _error_response("Continuing a Patchbay run requires run_id.", action=intent)
 
+    if intent == "background_cancel":
+        result = service.cancel_background_job(root, run_id)
+        return _agent_response(
+            root,
+            run_id,
+            action="background_cancel",
+            reply=str(result.get("reply") or "Background cancellation requested."),
+            include=include,
+            extra={
+                "ok": bool(result.get("ok")),
+                "canceled": bool(result.get("canceled")),
+                "background_job": result.get("background_job"),
+                "cancel_result": result.get("cancel_result"),
+                "error": result.get("error"),
+            },
+        )
+
     if intent == "approve_and_run":
         message_confirms_plan = _is_unattended_plan_approval(text)
         if confirmation != PLAN_CONFIRMATION and not message_confirms_plan:
@@ -850,6 +867,8 @@ def _classify_intent(message: str, *, has_run: bool, confirmation: str) -> str:
         return "setup"
     if _is_local_mode_intent(text):
         return "local_mode"
+    if _is_background_cancel_intent(text):
+        return "background_cancel" if has_run else "missing_run"
     if _is_next_step_query(text):
         return "next_step"
     if _is_gate_status_query(text):
@@ -1487,6 +1506,9 @@ def _is_run_bound_intent(text: str) -> bool:
         "approved",
         "artifact",
         "artifacts",
+        "cancel",
+        "cancel background job",
+        "cancel job",
         "confirm",
         "continue",
         "context",
@@ -1506,6 +1528,8 @@ def _is_run_bound_intent(text: str) -> bool:
         "resume",
         "run context",
         "run handoff",
+        "stop background job",
+        "stop job",
         "tokens",
         "trace",
         "应用",
@@ -1525,6 +1549,8 @@ def _is_run_bound_intent(text: str) -> bool:
     words = _words(text)
     if _has_task_intent(text, words):
         return False
+    if _is_background_cancel_intent(text):
+        return True
     if _is_chinese_run_bound_request(text):
         return True
     if _has_any(text, ("补丁", "变更", "差异", "改动", "事件", "跟踪", "轨迹", "日志", "产物", "计划", "审查", "评审")) and _has_any(
@@ -1551,6 +1577,8 @@ def _is_run_bound_intent(text: str) -> bool:
 
 
 def _is_chinese_run_bound_request(text: str) -> bool:
+    if _has_any(text, ("取消后台", "停止后台", "中止后台", "取消任务", "停止任务", "中止任务")):
+        return True
     if _has_any(text, ("继续", "推进", "下一步", "接着", "恢复")):
         return True
     if _has_any(text, ("确认", "批准", "同意")) and _has_any(text, ("计划", "方案", "plan")):
@@ -1558,6 +1586,19 @@ def _is_chinese_run_bound_request(text: str) -> bool:
     if _has_any(text, ("应用补丁", "应用变更", "应用改动", "应用修改", "套用补丁", "套用变更", "套用改动", "合并补丁")):
         return True
     return False
+
+
+def _is_background_cancel_intent(text: str) -> bool:
+    if not text:
+        return False
+    if text in {"cancel", "cancel job", "cancel background job", "stop job", "stop background job"}:
+        return True
+    words = _words(text)
+    if _has_task_intent(text, words):
+        return False
+    if bool(words & {"abort", "cancel", "stop", "terminate"}) and bool(words & {"background", "job", "run", "worker"}):
+        return True
+    return _has_any(text, ("取消后台", "停止后台", "中止后台", "取消任务", "停止任务", "中止任务"))
 
 
 def _is_gate_changing_run_request(text: str) -> bool:
