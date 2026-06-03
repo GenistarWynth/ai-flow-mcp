@@ -48,7 +48,7 @@ scripts/patchbay write <run_id>
 scripts/patchbay test <run_id>
 scripts/patchbay review <run_id>
 scripts/patchbay fix <run_id>
-scripts/patchbay apply <run_id>
+scripts/patchbay apply <run_id> --confirmation apply_approved
 ```
 
 ## Local-Only And Skill-Only Mode

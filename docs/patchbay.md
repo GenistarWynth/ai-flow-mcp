@@ -150,7 +150,7 @@ scripts/patchbay status <run_id>
 scripts/patchbay metrics <run_id>
 scripts/patchbay events <run_id>
 scripts/patchbay diff <run_id>
-scripts/patchbay apply <run_id>
+scripts/patchbay apply <run_id> --confirmation apply_approved
 scripts/patchbay cleanup <run_id>
 ```
 

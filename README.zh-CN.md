@@ -124,7 +124,7 @@ python scripts/patchbay approve <run_id>
 python scripts/patchbay write <run_id>
 python scripts/patchbay test <run_id>
 python scripts/patchbay review <run_id>
-python scripts/patchbay apply <run_id>
+python scripts/patchbay apply <run_id> --confirmation apply_approved
 ```
 
 耗时较长的对话式推进可以加 `--background`，调用方立即返回，然后轮询 status/context/events：
@@ -189,7 +189,7 @@ python scripts/patchbay approve <run_id>
 python scripts/patchbay write <run_id> --mock
 python scripts/patchbay test <run_id>
 python scripts/patchbay review <run_id> --mock
-python scripts/patchbay apply <run_id>
+python scripts/patchbay apply <run_id> --confirmation apply_approved
 ```
 
 Mock 模式适合检查 CLI、状态流转、worktree、补丁应用和 MCP 封装是否正常。
