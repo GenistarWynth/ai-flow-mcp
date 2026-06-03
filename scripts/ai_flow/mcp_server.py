@@ -464,6 +464,13 @@ def _tool_schema(name: str) -> dict[str, Any]:
             properties["background"] = {"type": "boolean", "description": "Start phase in the background and poll events."}
         required = ["run_id"]
 
+    if name.endswith("_agent"):
+        properties["message"]["description"] += (
+            " Selected-run unattended approval phrases such as `don't ask me`, `full access`, `无需向我确认`, or `完全访问权限` can approve "
+            "the plan only when run_id is supplied; without run_id they return missing_run guidance, and final apply still needs "
+            "apply_approved confirmation."
+        )
+
     descriptions: dict[str, str] = {
         "patchbay_agent": (
             "Primary conversational Patchbay Agent tool. Starts, resumes, advances, applies runs, and returns metrics/cost/token "
@@ -489,8 +496,10 @@ def _tool_schema(name: str) -> dict[str, Any]:
             "returns gate_diagnosis.next_action plus safe diagnostic actions, routing questions return read-only action profile_show and include "
             "metrics.efficiency_summary when a run_id is supplied, host-targeted readiness replies include setup_host/doctor.host, setup prompts "
             "can target hosts like Claude Desktop, Claude 桌面, Gemini CLI, Gemini 命令行, install Codex Skill, register MCP for Claude Desktop, "
-            "安装 Codex Skill, 注册 MCP 到 Gemini 命令行, or 帮我配置 Patchbay 到 Claude 桌面, and gate-changing prompts such as approve/continue/apply "
-            "without run_id return local guidance instead of choosing a run automatically."
+            "安装 Codex Skill, 注册 MCP 到 Gemini 命令行, or 帮我配置 Patchbay 到 Claude 桌面, while gate-changing prompts such as approve/continue/apply "
+            "without run_id return local guidance instead of choosing a run automatically, and selected-run unattended phrases such as "
+            "`don't ask me`, `full access`, `无需向我确认`, or `完全访问权限` can approve the plan only when run_id is supplied; final apply still needs "
+            "apply_approved confirmation."
         ),
         "patchbay_plan": "Run the planning phase (host-agnostic — provider configurable via [phases.plan] in .ai/patchbay.toml).",
         "patchbay_approve": "Approve the plan so the writer phase can proceed.",
