@@ -623,6 +623,33 @@ class McpServerTests(unittest.TestCase):
             mcp_server.TOOLS.clear()
             mcp_server.TOOLS.update(original)
 
+    def test_patchbay_plan_returns_routing_actions_contract(self) -> None:
+        with mock.patch.object(
+            mcp_server.service,
+            "plan_with_context",
+            return_value={
+                "run_id": "run-mcp",
+                "routing": {"economy_configured": False},
+                "actions": [{"id": "apply_economy_profile", "kind": "local_agent", "message": "apply economy profile"}],
+                "action_groups": [{"id": "routing", "action_ids": ["apply_economy_profile"]}],
+            },
+        ) as plan:
+            response = mcp_server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 7,
+                    "method": "tools/call",
+                    "params": {"name": "patchbay_plan", "arguments": {"task": "direct task"}},
+                }
+            )
+
+        payload = json.loads(response["result"]["content"][0]["text"])
+        self.assertEqual(payload["run_id"], "run-mcp")
+        self.assertFalse(payload["routing"]["economy_configured"])
+        self.assertEqual(payload["actions"][0]["id"], "apply_economy_profile")
+        self.assertEqual(payload["action_groups"][0]["id"], "routing")
+        plan.assert_called_once_with(mcp_server.ROOT, task="direct task")
+
     def test_legacy_tool_alias_still_calls_canonical_handler(self) -> None:
         original = dict(mcp_server.TOOLS)
         try:
@@ -675,6 +702,19 @@ class McpServerTests(unittest.TestCase):
 
 
 class WorkflowTests(AiFlowTestCase):
+    def test_cli_plan_returns_routing_actions_contract(self) -> None:
+        planned = self.cli_json("plan", "--task", "direct plan context", "--mock")
+
+        self.assertIn("profile", planned)
+        self.assertIn("routing", planned)
+        self.assertIn("actions", planned)
+        self.assertIn("action_groups", planned)
+        self.assertFalse(planned["routing"]["economy_command_ready"])
+        actions = {item["id"]: item for item in planned["actions"]}
+        self.assertEqual(actions["configure_reasonix_command"]["message"], "configure reasonix command")
+        action_groups = {item["id"]: item for item in planned["action_groups"]}
+        self.assertIn("configure_reasonix_command", action_groups["routing"]["action_ids"])
+
     def test_legacy_config_name_is_still_loaded(self) -> None:
         legacy = self.repo / ".ai" / "ai-flow.toml"
         legacy.parent.mkdir(parents=True, exist_ok=True)

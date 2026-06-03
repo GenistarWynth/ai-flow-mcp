@@ -48,6 +48,7 @@ scripts/patchbay agent message "走本地模式，不走 MCP" --json
 ## Setup And Skill Actions
 
 - `patchbay_setup` / `patchbay_install` initialize project files, local config, bundled Codex Skill installation, optional MCP registration, doctor summary, top-level `routing`, `recommendations`, `next_actions`, `actions[]`, and `action_groups[]`.
+- `patchbay_plan`, `scripts/patchbay plan --json`, and Web `POST /api/runs` foreground planning responses include the same read-only `profile`, `routing`, safe `actions[]`, and `action_groups[]` start preview as `patchbay_agent`, so clients can show economy-route state before plan approval.
 - Setup scope is prompt-aware: `install Codex Skill` installs only the Skill, `register MCP for Claude Desktop` skips Skill installation, and `patchbay setup without MCP` keeps setup local.
 - `patchbay_doctor` is read-only and skips stdio MCP probing unless `include_mcp: true` is explicitly passed. Use `skip_mcp: true` for local-only readiness.
 - `patchbay_skill_install`, `patchbay_skill_doctor`, and `patchbay_skill_print` support standalone Codex Skill installation, validation, and inspection. Codex aliases such as `Codex Desktop`, `Codex CLI`, and `Codex 桌面` normalize to `codex`.

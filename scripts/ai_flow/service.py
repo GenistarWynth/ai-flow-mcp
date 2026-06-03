@@ -1051,6 +1051,53 @@ def plan(cwd: Path, *, task: str, mock: bool = False, run_id: str | None = None)
             _release_lock(run_path)
 
 
+def plan_with_context(cwd: Path, *, task: str, mock: bool = False, run_id: str | None = None) -> dict[str, Any]:
+    root = resolve_root(cwd)
+    result = plan(root, task=task, mock=mock, run_id=run_id)
+    return _with_plan_context(root, result)
+
+
+def _with_plan_context(root: Path, result: dict[str, Any]) -> dict[str, Any]:
+    preview = routing_preview(root)
+    actions = _dedupe_actions(list(result.get("actions") or []) + list(preview.get("actions") or []))
+    enriched = {
+        **result,
+        "profile": preview["profile"],
+        "routing": preview["routing"],
+        "actions": actions,
+    }
+    groups = group_actions(actions)
+    if groups:
+        enriched["action_groups"] = groups
+    return enriched
+
+
+def routing_preview(root: Path) -> dict[str, Any]:
+    from .config_wizard import run_config_wizard
+    from .routing import profile_routing_digest
+
+    profile = run_config_wizard(root, show_profile=True)
+    routing = profile_routing_digest(profile)
+    return {
+        "profile": profile,
+        "routing": routing,
+        "actions": list(profile.get("actions") or []),
+    }
+
+
+def _dedupe_actions(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    result: list[dict[str, Any]] = []
+    for action in actions:
+        key = str(action.get("id") or action.get("message") or action.get("command") or action.get("label") or "").strip()
+        if key and key in seen:
+            continue
+        if key:
+            seen.add(key)
+        result.append(action)
+    return result
+
+
 def approve(cwd: Path, run_id: str) -> dict[str, Any]:
     root = resolve_root(cwd)
     run_path, status = _load_run(root, run_id)

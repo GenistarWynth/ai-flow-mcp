@@ -302,7 +302,7 @@ def _create_run(root: Path, payload: dict[str, Any]) -> dict[str, Any]:
     background = bool(payload.get("background", False))
     if background:
         return service.start_background_phase(root, "plan", task=task)
-    return service.plan(root, task=task)
+    return service.plan_with_context(root, task=task)
 
 
 def _add_provider(root: Path, payload: dict[str, Any]) -> dict[str, Any]:

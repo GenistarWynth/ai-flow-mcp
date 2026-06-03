@@ -3016,8 +3016,9 @@ def _profile_show_response(root: Path, run_id: str | None = None) -> dict[str, A
 
 
 def _routing_preview(root: Path) -> dict[str, Any]:
-    result = run_config_wizard(root, show_profile=True)
-    routing = _profile_routing_digest(result)
+    preview = service.routing_preview(root)
+    result = preview["profile"]
+    routing = preview["routing"]
     reply = str(routing["summary"])
     if not routing.get("economy_configured"):
         reply += " " + str(result.get("recommendation") or "Run `patchbay config profile apply economy`.")
@@ -3027,7 +3028,7 @@ def _routing_preview(root: Path) -> dict[str, Any]:
     return {
         "profile": result,
         "routing": routing,
-        "actions": list(result.get("actions") or []),
+        "actions": list(preview.get("actions") or []),
         "reply_suffix": reply,
     }
 

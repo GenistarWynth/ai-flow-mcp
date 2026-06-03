@@ -32,7 +32,7 @@ SKILL_HOST_DESCRIPTION = "Codex Skill host or alias: codex, Codex CLI, Codex Des
 def patchbay_plan(task: str, background: bool = False) -> dict[str, Any]:
     if background:
         return service.start_background_phase(ROOT, "plan", task=task)
-    return service.plan(ROOT, task=task)
+    return service.plan_with_context(ROOT, task=task)
 
 
 def patchbay_approve(run_id: str) -> dict[str, Any]:
@@ -502,7 +502,11 @@ def _tool_schema(name: str) -> dict[str, Any]:
             "`don't ask me`, `full access`, `无需向我确认`, or `完全访问权限` can approve the plan only when run_id is supplied; final apply still needs "
             "apply_approved confirmation."
         ),
-        "patchbay_plan": "Run the planning phase (host-agnostic — provider configurable via [phases.plan] in .ai/patchbay.toml).",
+        "patchbay_plan": (
+            "Run the planning phase (host-agnostic — provider configurable via [phases.plan] in .ai/patchbay.toml) and return "
+            "the same profile/routing/actions[]/action_groups[] start context that conversational Agent clients use for safe "
+            "economy-routing follow-ups."
+        ),
         "patchbay_approve": "Approve the plan so the writer phase can proceed.",
         "patchbay_write": "Run the implementation phase (provider configurable via [phases.write] / [writer].provider).",
         "patchbay_test": "Run test commands from the plan or allowlist inside the isolated worktree.",

@@ -114,11 +114,24 @@ class WebServerTest(unittest.TestCase):
     def test_post_runs_creates_plan_run(self) -> None:
         from scripts.ai_flow import web_server
 
-        with patch.object(web_server.service, "plan", return_value={"run_id": "run-new", "status": "PLANNED"}) as plan:
+        with patch.object(
+            web_server.service,
+            "plan_with_context",
+            return_value={
+                "run_id": "run-new",
+                "status": "PLANNED",
+                "routing": {"economy_configured": True},
+                "actions": [{"id": "show_runs", "kind": "local_agent", "message": "status"}],
+                "action_groups": [{"id": "local", "action_ids": ["show_runs"]}],
+            },
+        ) as plan:
             status, result = self._request("POST", "/api/runs", {"task": "new task"})
 
         self.assertEqual(status, 200)
         self.assertEqual(result["run_id"], "run-new")
+        self.assertTrue(result["routing"]["economy_configured"])
+        self.assertEqual(result["actions"][0]["id"], "show_runs")
+        self.assertEqual(result["action_groups"][0]["id"], "local")
         plan.assert_called_once_with(self.tmp, task="new task")
 
     def test_post_runs_can_start_background_plan(self) -> None:
