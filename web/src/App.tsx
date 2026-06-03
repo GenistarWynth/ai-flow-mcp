@@ -371,6 +371,35 @@ function localReplyCommandActions(response: AgentResponse | null): AgentHealthAc
   return result;
 }
 
+function localReplyCommandActionGroups(response: AgentResponse | null, commands: AgentHealthAction[]) {
+  if (!commands.length) return [];
+  const groups = response?.action_groups ?? [];
+  if (!groups.length) {
+    return [{ id: "commands", label: "命令", reason: undefined, actions: commands }];
+  }
+  const byKey = new Map<string, AgentHealthAction>();
+  for (const action of commands) {
+    for (const key of healthActionKeys(action)) {
+      byKey.set(key, action);
+    }
+  }
+  const used = new Set<string>();
+  const result: { id: string; label: string; reason?: string; actions: AgentHealthAction[] }[] = [];
+  for (const group of groups) {
+    const grouped = (group.action_ids ?? []).map((id) => byKey.get(id)).filter(Boolean) as AgentHealthAction[];
+    const unique = grouped.filter((action) => {
+      const key = healthActionKey(action);
+      if (used.has(key)) return false;
+      used.add(key);
+      return true;
+    });
+    if (unique.length) result.push({ id: group.id, label: localReplyActionGroupLabel(group), reason: group.reason, actions: unique });
+  }
+  const remaining = commands.filter((action) => !used.has(healthActionKey(action)));
+  if (remaining.length) result.push({ id: "commands", label: "命令", actions: remaining });
+  return result;
+}
+
 function dedupeStrings(items: Array<string | null | undefined>) {
   const seen = new Set<string>();
   const result: string[] = [];
@@ -3057,6 +3086,7 @@ function LocalAgentResponseDetails({
 }) {
   if (!response) return null;
   const commands = localReplyCommandActions(response);
+  const commandGroups = localReplyCommandActionGroups(response, commands);
   const suggestions = localReplyActions(response).filter((action) => !(response.run_id && action.id === "open-latest-run" && action.runId === response.run_id));
   const suggestionGroups = localReplyActionGroups(response, suggestions);
   const capabilities = localReplyCapabilities(response);
@@ -3069,7 +3099,7 @@ function LocalAgentResponseDetails({
       efficiency ||
       response.recovery ||
       capabilities.length ||
-      commands.length ||
+      commandGroups.length ||
       suggestionGroups.length
   );
   if (!hasPanels) return null;
@@ -3081,14 +3111,21 @@ function LocalAgentResponseDetails({
       <EfficiencySummaryCard summary={efficiency} />
       <LocalRecoveryCard recovery={response.recovery} onAction={onCommandAction} actionBusy={actionBusy} />
       <AgentCapabilitiesList capabilities={capabilities} />
-      {commands.length ? (
+      {commandGroups.length ? (
         <div className="local-agent-command-actions" aria-label="Agent command actions">
-          {commands.map((action) => (
-            isProviderCommandConfigureAction(action) ? (
-              <ProviderCommandAction key={action.id || action.command} action={action} onAction={onCommandAction} disabled={actionBusy} />
-            ) : (
-              <CommandActionRow key={action.id || action.command} command={action.command ?? ""} label={action.label} />
-            )
+          {commandGroups.map((group) => (
+            <div className="local-agent-command-group" key={group.id}>
+              <span title={group.reason}>{group.label}</span>
+              <div className="local-agent-command-rows">
+                {group.actions.map((action) => (
+                  isProviderCommandConfigureAction(action) ? (
+                    <ProviderCommandAction key={action.id || action.command} action={action} onAction={onCommandAction} disabled={actionBusy} />
+                  ) : (
+                    <CommandActionRow key={action.id || action.command} command={action.command ?? ""} label={action.label} />
+                  )
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       ) : null}

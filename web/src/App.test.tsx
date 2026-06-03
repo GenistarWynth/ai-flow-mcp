@@ -668,6 +668,82 @@ describe("Workbench", () => {
     expect(client.agentMessage).not.toHaveBeenCalled();
   });
 
+  it("groups local reply command actions by action_groups", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    const command =
+      "patchbay config provider add-cli cheap_writer --roles write fix --command <deepseek-writer-command> --output-contract writer_diff --activate-economy";
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "custom_provider_setup",
+      ok: true,
+      reply: "Use the command action to register a low-cost CLI writer.",
+      actions: [
+        {
+          id: "configure_custom_economy_provider",
+          label: "Configure cheap writer provider",
+          kind: "command",
+          command,
+          safe: true,
+          reason: "Register a low-cost CLI writer and route write/fix through it."
+        },
+        {
+          id: "open_readiness",
+          label: "Open readiness",
+          kind: "local_agent",
+          message: "readiness",
+          safe: true,
+          reason: "Inspect setup and economy route command readiness after registering the provider."
+        }
+      ],
+      action_groups: [
+        {
+          id: "routing",
+          label: "Economy routing",
+          reason: "Copy the economy provider registration command.",
+          action_ids: ["configure_custom_economy_provider"],
+          count: 1
+        },
+        {
+          id: "setup",
+          label: "Setup and readiness",
+          reason: "Inspect the configured provider from readiness.",
+          action_ids: ["open_readiness"],
+          count: 1
+        }
+      ]
+    });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      agentMessage
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.type(screen.getByLabelText("给 Patchbay Agent 输入消息"), "configure DeepSeek provider");
+    await userEvent.click(screen.getByRole("button", { name: "创建任务" }));
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith("configure DeepSeek provider", {
+        include: { plan: true },
+        background: true
+      })
+    );
+    const commandActions = await screen.findByLabelText("Agent command actions");
+    expect(within(commandActions).getByText("经济路由")).toHaveAttribute("title", "Copy the economy provider registration command.");
+    await userEvent.click(within(commandActions).getByRole("button", { name: "Copy command Configure cheap writer provider" }));
+    expect(writeText).toHaveBeenCalledWith(command);
+
+    const localActions = await screen.findByLabelText("Agent 建议动作");
+    expect(within(localActions).getByText("就绪设置")).toHaveAttribute("title", "Inspect the configured provider from readiness.");
+    expect(within(localActions).getByRole("button", { name: "Open readiness" })).toBeVisible();
+    expect(client.runAction).not.toHaveBeenCalled();
+  });
+
   it("does not expose the economy provider form when readiness has no provider action", async () => {
     const client = createClient({
       listRuns: vi.fn().mockResolvedValue({ runs: [] }),

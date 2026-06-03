@@ -167,6 +167,19 @@ textarea { resize: none; }
   width: min(780px, calc(100% - 42px));
   margin-left: 42px;
 }
+.local-agent-command-group {
+  display: grid;
+  gap: 5px;
+}
+.local-agent-command-group > span {
+  color: #647083;
+  font-size: 12px;
+  font-weight: 800;
+}
+.local-agent-command-rows {
+  display: grid;
+  gap: 7px;
+}
 .agent-capabilities {
   display: grid;
   gap: 7px;
