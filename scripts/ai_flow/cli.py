@@ -385,6 +385,115 @@ def _print_profile_result(data: dict[str, Any]) -> None:
         _print_grouped_actions(actions, groups if isinstance(groups, list) else [])
 
 
+def _duration_label(value: Any) -> str:
+    if value is None:
+        return "-"
+    try:
+        ms = int(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if ms >= 1000:
+        return f"{ms / 1000:.1f}s"
+    return f"{ms}ms"
+
+
+def _percent_suffix(value: Any) -> str:
+    return f" ({value}%)" if value is not None else ""
+
+
+def _tier_summary(name: str, bucket: Any) -> str:
+    if not isinstance(bucket, dict):
+        return f"{name}: -"
+    label = str(bucket.get("label") or name)
+    phases = bucket.get("phases") if isinstance(bucket.get("phases"), list) else []
+    phase_text = "/".join(str(phase) for phase in phases) if phases else "-"
+    parts: list[str] = []
+    if bucket.get("duration_known"):
+        parts.append(f"{_duration_label(bucket.get('duration_ms'))}{_percent_suffix(bucket.get('duration_percent'))}")
+    tokens = bucket.get("token_usage") if isinstance(bucket.get("token_usage"), dict) else {}
+    if tokens.get("known"):
+        parts.append(f"{tokens.get('total_tokens')} tokens{_percent_suffix(tokens.get('token_percent'))}")
+    cost = bucket.get("cost") if isinstance(bucket.get("cost"), dict) else {}
+    if cost.get("known"):
+        parts.append(f"{cost.get('currency') or 'USD'} {cost.get('estimated_total')}{_percent_suffix(cost.get('cost_percent'))}")
+    usage = ", ".join(parts) if parts else "usage not reported"
+    return f"{label}: {phase_text}; {usage}"
+
+
+def _provider_summary(item: Any) -> str:
+    if not isinstance(item, dict):
+        return "-"
+    phase = item.get("phase") or "-"
+    provider = item.get("provider") or "-"
+    model = item.get("model") or "-"
+    parts = [f"{phase}: {provider} / {model}"]
+    command_key = item.get("command_key")
+    if command_key:
+        parts.append(f"command={command_key}")
+    if item.get("duration_ms"):
+        parts.append(f"duration={_duration_label(item.get('duration_ms'))}")
+    token_usage = item.get("token_usage") if isinstance(item.get("token_usage"), dict) else {}
+    if token_usage.get("known"):
+        parts.append(f"tokens={token_usage.get('total_tokens')}")
+    cost = item.get("cost") if isinstance(item.get("cost"), dict) else {}
+    if cost.get("known"):
+        parts.append(f"cost={cost.get('currency') or 'USD'} {cost.get('estimated_total')}")
+    return " | ".join(parts)
+
+
+def _print_metrics_result(data: dict[str, Any]) -> None:
+    reply = str(data.get("reply") or "").strip()
+    if reply:
+        print(reply)
+        print("")
+
+    payload = data.get("metrics") if isinstance(data.get("metrics"), dict) else data
+    run_id = payload.get("run_id") or data.get("run_id") or "-"
+    print(f"Patchbay metrics: {run_id}")
+    status = payload.get("status")
+    phase = payload.get("current_phase")
+    if status or phase:
+        print(f"status: {status or '-'} | phase: {phase or '-'}")
+
+    efficiency = payload.get("efficiency_summary") if isinstance(payload.get("efficiency_summary"), dict) else {}
+    summary = efficiency.get("summary")
+    if summary:
+        print(f"Efficiency: {summary}")
+    recommendation = efficiency.get("recommendation")
+    if recommendation:
+        print(f"recommendation: {recommendation}")
+
+    routing = payload.get("routing_evidence") if isinstance(payload.get("routing_evidence"), dict) else {}
+    health = routing.get("economy_health") if isinstance(routing.get("economy_health"), dict) else {}
+    if routing.get("summary"):
+        print(f"Routing: {routing.get('summary')}")
+    if health:
+        print(f"economy health: {health.get('status') or '-'} ({health.get('severity') or '-'})")
+
+    run_metrics = payload.get("run_metrics") if isinstance(payload.get("run_metrics"), dict) else {}
+    tiers = run_metrics.get("tier_usage") if isinstance(run_metrics.get("tier_usage"), dict) else {}
+    if tiers:
+        print("Tier usage:")
+        for tier in ("economy", "supervision", "execution"):
+            if tier in tiers:
+                print(f"- {_tier_summary(tier, tiers[tier])}")
+
+    providers = run_metrics.get("provider_usage") if isinstance(run_metrics.get("provider_usage"), list) else []
+    if providers:
+        print("Provider usage:")
+        for item in providers[:8]:
+            print(f"- {_provider_summary(item)}")
+        if len(providers) > 8:
+            print(f"- ... {len(providers) - 8} more")
+
+    actions = payload.get("actions") if isinstance(payload.get("actions"), list) else data.get("actions")
+    groups = payload.get("action_groups") if isinstance(payload.get("action_groups"), list) else data.get("action_groups")
+    if isinstance(actions, list):
+        if actions:
+            print("")
+        _print_grouped_actions(actions, groups if isinstance(groups, list) else [])
+
+
 def _run_title(run: dict[str, Any]) -> str:
     task = str(run.get("task") or "").strip()
     run_id = str(run.get("run_id") or "").strip()
@@ -821,6 +930,8 @@ def main(argv: list[str] | None = None) -> int:
         _print_readiness_result(result)
     elif args.command in {"setup", "install"} and not as_json and isinstance(result, dict):
         _print_setup_result(result)
+    elif args.command == "metrics" and not as_json and isinstance(result, dict):
+        _print_metrics_result(result)
     elif (
         args.command == "config"
         and getattr(args, "config_command", "") == "profile"
@@ -863,6 +974,15 @@ def main(argv: list[str] | None = None) -> int:
         and result.get("action") in {"profile_show", "profile_apply"}
     ):
         _print_profile_result(result)
+    elif (
+        args.command == "agent"
+        and getattr(args, "agent_command", "") == "message"
+        and not as_json
+        and isinstance(result, dict)
+        and result.get("action") == "metrics"
+        and isinstance(result.get("metrics"), dict)
+    ):
+        _print_metrics_result(result)
     else:
         _print_result(result, as_json=as_json)
     return 0

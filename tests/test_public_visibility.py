@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -195,6 +196,71 @@ class PublicVisibilityTest(unittest.TestCase):
 
         self.assertIn("phase_strategy", structured)
         self.assertIn("economy", structured)
+
+    def test_metrics_text_views_summarize_efficiency_and_routing(self) -> None:
+        from scripts.ai_flow.events import append_event
+
+        run(["python", str(self.script), "config", "--set-key", "commands.reasonix", "--set-value", sys.executable], self.repo)
+        planned = self.cli_json("plan", "--task", "metrics text view", "--mock")
+        run_id = planned["run_id"]
+        run_dir = self.repo / ".ai" / "runs" / run_id
+        append_event(
+            run_dir,
+            phase="write",
+            provider="reasonix_cli",
+            model="deepseek-v4-pro",
+            command_key="reasonix",
+            action="success",
+            status="IMPLEMENTED",
+            run_id=run_id,
+            duration_ms=2000,
+            token_usage={"input_tokens": 450, "output_tokens": 150, "cached_tokens": 0, "total_tokens": 600},
+            cost={"currency": "USD", "estimated_total": 0.03},
+        )
+        append_event(
+            run_dir,
+            phase="fix",
+            provider="reasonix_cli",
+            model="deepseek-v4-pro",
+            command_key="reasonix",
+            action="success",
+            status="IMPLEMENTED",
+            run_id=run_id,
+            duration_ms=1000,
+            token_usage={"input_tokens": 300, "output_tokens": 100, "cached_tokens": 0, "total_tokens": 400},
+            cost={"currency": "USD", "estimated_total": 0.02},
+        )
+        append_event(
+            run_dir,
+            phase="review",
+            provider="codex_cli",
+            model="gpt-5",
+            action="success",
+            status="REVIEWED_PASS",
+            run_id=run_id,
+            duration_ms=1200,
+            token_usage={"input_tokens": 800, "output_tokens": 200, "cached_tokens": 0, "total_tokens": 1000},
+            cost={"currency": "USD", "estimated_total": 0.20},
+        )
+
+        direct = run(["python", str(self.script), "metrics", run_id], self.repo)
+        agent = run(["python", str(self.script), "agent", "message", "metrics", "--run-id", run_id], self.repo)
+        structured = self.cli_json("metrics", run_id)
+
+        for completed in (direct, agent):
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("Patchbay metrics:", completed.stdout)
+            self.assertIn(run_id, completed.stdout)
+            self.assertIn("Efficiency:", completed.stdout)
+            self.assertIn("Tier usage:", completed.stdout)
+            self.assertIn("Economy write/fix", completed.stdout)
+            self.assertIn("Provider usage:", completed.stdout)
+            self.assertIn("write: reasonix_cli / deepseek-v4-pro", completed.stdout)
+            self.assertNotIn("run_metrics: {", completed.stdout)
+            self.assertNotIn("routing_evidence: {", completed.stdout)
+
+        self.assertIn("run_metrics", structured)
+        self.assertIn("efficiency_summary", structured)
 
     def test_artifact_reads_and_tails_run_file(self) -> None:
         planned = self.cli_json("plan", "--task", "artifact read", "--mock")
