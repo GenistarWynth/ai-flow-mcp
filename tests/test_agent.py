@@ -483,7 +483,14 @@ test = []
     def test_agent_applies_economy_profile_from_cost_effective_writer_instruction(self) -> None:
         from scripts.ai_flow.config import load_config, resolve_phase
 
-        for message in ("DeepSeek for simple writer work", "像写手这样的大量简单工作让便宜的模型比如 DeepSeek 去干"):
+        for message in (
+            "DeepSeek for simple writer work",
+            "像写手这样的大量简单工作让便宜的模型比如 DeepSeek 去干",
+            "优化成本，让写手工作走低价模型",
+            "降本：把简单实现和修复切到低价模型",
+            "把写手工作切到成本更低的模型",
+            "写手工作走便宜模型，规划和审查用强模型",
+        ):
             with self.subTest(message=message):
                 response = agent_message(self.repo, message)
 
@@ -708,6 +715,10 @@ test = []
         self.assertEqual(cost_dashboard_task["action"], "start")
         self.assertEqual(cost_dashboard_task["status"]["status"], "PLANNED")
 
+        chinese_cost_dashboard_task = agent_message(self.repo, "优化成本仪表盘")
+        self.assertEqual(chinese_cost_dashboard_task["action"], "start")
+        self.assertEqual(chinese_cost_dashboard_task["status"]["status"], "PLANNED")
+
     def test_agent_reasonix_command_words_in_chinese_task_still_start_plan(self) -> None:
         response = agent_message(self.repo, "使用 Reasonix 命令修复 writer 流程")
 
@@ -753,6 +764,7 @@ test = []
         self.assertIn("configure DeepSeek provider to <command>", custom_capability["summary"])
         self.assertIn("configure economy provider command to <path>", custom_capability["summary"])
         self.assertIn("简单 writer/fix 用 DeepSeek 省钱", custom_capability["summary"])
+        self.assertIn("降本，让简单 writer/fix 走低价模型", custom_capability["summary"])
         self.assertIn("configure_economy_provider_command", custom_capability["summary"])
         unattended_capability = next(item for item in response["capabilities"] if item["name"] == "unattended-approval")
         self.assertIn("run_id", unattended_capability["summary"])
@@ -2204,6 +2216,7 @@ model = "cheap-model"
             "简单 writer/fix 用 DeepSeek 省钱",
             "让 DeepSeek 处理简单 writer/fix",
             "simple writer fix use DeepSeek",
+            "降本，让简单 writer/fix 走低价模型",
         ):
             with self.subTest(message=message):
                 response = self.cli_json("agent", "message", message)

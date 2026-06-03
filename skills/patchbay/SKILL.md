@@ -74,6 +74,7 @@ scripts/patchbay agent message "apply economy profile" --json
 scripts/patchbay agent message "configure reasonix command" --json
 scripts/patchbay agent message "configure DeepSeek provider" --json
 scripts/patchbay agent message "简单 writer/fix 用 DeepSeek 省钱" --json
+scripts/patchbay agent message "降本，让简单 writer/fix 走低价模型" --json
 ```
 
 Inspect `routing_evidence` and `efficiency_summary` before claiming economy routing is verified by observed usage.

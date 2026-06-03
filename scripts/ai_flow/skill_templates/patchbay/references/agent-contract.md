@@ -115,7 +115,7 @@ Use `patchbay_config_profile_show` / `patchbay_config_profile_apply` with `profi
 
 Routing questions such as `what model will write/fix use`, `is writer using cheap model`, or `现在写手是不是走便宜模型` are read-only `profile_show` prompts. When a run id is available, expect observed `metrics.efficiency_summary`; answer from actual provider/token/cost evidence, not config alone.
 
-Only imperative prompts such as `apply economy profile`, `configure DeepSeek provider to <command>`, `简单 writer/fix 用 DeepSeek 省钱`, or `让大量简单写手工作用便宜模型/DeepSeek 去干` should mutate routing.
+Only imperative prompts such as `apply economy profile`, `configure DeepSeek provider to <command>`, `简单 writer/fix 用 DeepSeek 省钱`, `降本，让简单 writer/fix 走低价模型`, or `让大量简单写手工作用便宜模型/DeepSeek 去干` should mutate routing.
 
 For the built-in Reasonix route, use `configure reasonix command` or `配置 Reasonix 命令` when readiness reports `economy_health.status = "command_not_ready"` or surfaces `configure_reasonix_command`.
 
