@@ -1597,6 +1597,44 @@ def _safe_economy_target(root: Path) -> dict[str, Any]:
         return {"provider": service.ECONOMY_PROVIDER, "model": service.ECONOMY_MODEL, "label": "Reasonix/DeepSeek"}
 
 
+def _skill_contract_summary() -> dict[str, Any]:
+    return {
+        "kind": "progressive-skill",
+        "entrypoint": "skills/patchbay/SKILL.md",
+        "references": [
+            {
+                "path": "skills/patchbay/references/install.md",
+                "purpose": "Setup, host registration, local-only install, Skill install, and doctor guidance.",
+            },
+            {
+                "path": "skills/patchbay/references/agent-contract.md",
+                "purpose": "Structured actions, action_groups, gate diagnosis, failure recovery, background jobs, and economy evidence.",
+            },
+        ],
+        "commands": [
+            "patchbay skill doctor codex --json",
+            "patchbay skill print codex",
+        ],
+        "structured_fields": [
+            "actions[]",
+            "action_groups[]",
+            "gate_diagnosis",
+            "failure_recovery",
+            "routing_evidence",
+            "efficiency_summary",
+        ],
+        "local_only_supported": True,
+        "no_mcp_prompts": [
+            "no MCP",
+            "use Chrome Skill instead of MCP",
+            "不要用这个MCP",
+            "不走 MCP",
+            "走本地模式",
+            "只用本地工具",
+        ],
+    }
+
+
 def _help_response(root: Path, *, run_id: str | None = None, include: dict[str, Any] | None = None) -> dict[str, Any]:
     target = _safe_economy_target(root)
     target_label = str(target.get("label") or _route_label(target))
@@ -1604,6 +1642,11 @@ def _help_response(root: Path, *, run_id: str | None = None, include: dict[str, 
         {
             "name": "setup",
             "summary": "Send `patchbay setup` for Codex or `patchbay setup for Claude Desktop` / `install patchbay for Gemini CLI` to initialize project files, local config, Skill installation, host MCP guidance, a doctor summary, top-level recommendations, safe actions[], and action_groups[]. Send `patchbay setup without MCP` for local-only setup, standalone `please don't use MCP` / `no MCP` / `use Chrome Skill instead of MCP` / `少用这个MCP` / `不要用这个MCP` / `不走 MCP` / `走本地模式` / `只用本地工具` for local_mode guidance, `install Codex Skill` for Skill-only setup, or `register MCP for Claude Desktop` for MCP-only registration.",
+        },
+        {
+            "name": "agent-skill-contract",
+            "summary": "MCP hosts, desktop UIs, and Skill-only clients should render structured Agent fields instead of parsing prose. The bundled Codex Skill uses a compact SKILL.md entrypoint and loads install / Agent-response references only when needed.",
+            "contract": _skill_contract_summary(),
         },
         {
             "name": "start",
@@ -1684,6 +1727,8 @@ def _help_next_actions(target: dict[str, Any]) -> list[str]:
         "setup without MCP",
         "local mode",
         "install Codex Skill",
+        "skill doctor",
+        "print Skill contract",
         "register MCP for Claude Desktop",
         "start",
         "readiness",
@@ -1734,6 +1779,22 @@ def _help_actions(target: dict[str, Any]) -> list[dict[str, Any]]:
             "host": "codex",
             "safe": True,
             "reason": "Install the Codex Skill without attempting MCP host registration.",
+        },
+        {
+            "id": "check_skill_contract",
+            "label": "Check Skill contract",
+            "kind": "command",
+            "command": "patchbay skill doctor codex --json",
+            "safe": True,
+            "reason": "Validate that the installed Codex Skill and progressive references match the bundled source.",
+        },
+        {
+            "id": "print_skill_contract",
+            "label": "Print Skill contract",
+            "kind": "command",
+            "command": "patchbay skill print codex",
+            "safe": True,
+            "reason": "Inspect the compact SKILL.md plus references/install.md and references/agent-contract.md without using MCP.",
         },
         {
             "id": "setup_claude_code",

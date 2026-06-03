@@ -3081,6 +3081,22 @@ describe("Workbench", () => {
         {
           name: "economy-profile",
           summary: "Route high-volume write/fix work to the economy provider while plan/review stay supervised."
+        },
+        {
+          name: "agent-skill-contract",
+          summary: "Render structured Agent fields instead of parsing prose.",
+          contract: {
+            kind: "progressive-skill",
+            entrypoint: "skills/patchbay/SKILL.md",
+            local_only_supported: true,
+            references: [
+              {
+                path: "skills/patchbay/references/agent-contract.md",
+                purpose: "Structured actions, action_groups, and failure recovery."
+              }
+            ],
+            commands: ["patchbay skill doctor codex --json", "patchbay skill print codex"]
+          }
         }
       ],
       actions: []
@@ -3106,6 +3122,12 @@ describe("Workbench", () => {
     expect(within(capabilities).getByText(/无需向我确认/)).toBeVisible();
     expect(within(capabilities).getByText(/apply_approved/)).toBeVisible();
     expect(within(capabilities).getByText("economy-profile")).toBeVisible();
+    expect(within(capabilities).getByText("agent-skill-contract")).toBeVisible();
+    expect(within(capabilities).getByText("progressive-skill")).toBeVisible();
+    expect(within(capabilities).getByText("local-only supported")).toBeVisible();
+    expect(within(capabilities).getByText("skills/patchbay/SKILL.md")).toBeVisible();
+    expect(within(capabilities).getByText("skills/patchbay/references/agent-contract.md")).toBeVisible();
+    expect(within(capabilities).getByText("patchbay skill doctor codex --json")).toBeVisible();
   });
 
   it("starts a fresh thread from selected-run local Agent replies", async () => {

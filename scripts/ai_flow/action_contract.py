@@ -90,7 +90,7 @@ def _action_group_id(action: dict[str, Any]) -> str:
     tab = str(action.get("tab") or "").lower()
     haystack = " ".join((action_id, kind, message, command, tab))
 
-    if action_id.startswith("poll_") or (kind == "local_agent" and message in {"status", "context", "events"}):
+    if action_id.startswith("poll_"):
         return "background_polling"
     if _has_any(haystack, ("economy", "routing", "route", "reasonix", "deepseek", "cheap_writer", "provider command")):
         return "routing"

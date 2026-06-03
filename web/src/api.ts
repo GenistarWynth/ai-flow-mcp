@@ -542,6 +542,30 @@ export type AgentActivity = {
   artifacts?: HandoffArtifact[];
 };
 
+export type AgentCapabilityReference = {
+  label?: string;
+  path?: string;
+  purpose?: string;
+};
+
+export type AgentCapabilityContract = {
+  kind?: string;
+  entrypoint?: string;
+  references?: AgentCapabilityReference[];
+  commands?: string[];
+  structured_fields?: string[];
+  local_only_supported?: boolean;
+  no_mcp_prompts?: string[];
+};
+
+export type AgentCapability = {
+  name?: string;
+  summary?: string;
+  contract?: AgentCapabilityContract;
+  references?: AgentCapabilityReference[];
+  commands?: string[];
+};
+
 export type AgentResponse = {
   run_id: string | null;
   action?: string;
@@ -583,7 +607,7 @@ export type AgentResponse = {
     action_groups?: ActionGroup[];
     [key: string]: unknown;
   };
-  capabilities?: { name: string; summary: string }[];
+  capabilities?: AgentCapability[];
   actions?: AgentHealthAction[];
   action_groups?: ActionGroup[];
   next_actions?: string[];

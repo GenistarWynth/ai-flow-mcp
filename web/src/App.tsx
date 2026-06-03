@@ -3196,12 +3196,49 @@ function AgentCapabilitiesList({ capabilities }: { capabilities: NonNullable<Age
   if (!capabilities.length) return null;
   return (
     <div className="agent-capabilities" aria-label="Agent capabilities">
-      {capabilities.map((capability) => (
-        <div className="agent-capability" key={capability.name || capability.summary}>
-          <strong>{capability.name || "capability"}</strong>
-          {capability.summary ? <span>{capability.summary}</span> : null}
-        </div>
-      ))}
+      {capabilities.map((capability) => {
+        const name = capability.name || "capability";
+        const contract = capability.contract;
+        const references = [...(capability.references ?? []), ...(contract?.references ?? [])].filter((reference) => reference.path || reference.label);
+        const commands = [...(capability.commands ?? []), ...(contract?.commands ?? [])].filter((command): command is string => Boolean(command));
+        const tags = [contract?.kind ?? "", contract?.local_only_supported ? "local-only supported" : ""].filter((tag): tag is string => Boolean(tag));
+        return (
+          <div className="agent-capability" key={capability.name || capability.summary}>
+            <strong>{name}</strong>
+            {capability.summary ? <span>{capability.summary}</span> : null}
+            {tags.length ? (
+              <div className="agent-capability-tags">
+                {tags.map((tag) => (
+                  <span key={tag}>{tag}</span>
+                ))}
+              </div>
+            ) : null}
+            {contract?.entrypoint ? (
+              <div className="agent-capability-entry">
+                <span>entrypoint</span>
+                <code>{contract.entrypoint}</code>
+              </div>
+            ) : null}
+            {references.length ? (
+              <div className="agent-capability-refs" aria-label={`${name} references`}>
+                {references.map((reference) => (
+                  <div key={reference.path || reference.label}>
+                    <code>{reference.path || reference.label}</code>
+                    {reference.purpose ? <span>{reference.purpose}</span> : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {commands.length ? (
+              <div className="agent-capability-commands" aria-label={`${name} commands`}>
+                {commands.map((command) => (
+                  <code key={command}>{command}</code>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 }
