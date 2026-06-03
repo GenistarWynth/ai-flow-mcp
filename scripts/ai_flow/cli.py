@@ -8,10 +8,10 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import service
-from .agent import agent_message
+from .agent import APPLY_CONFIRMATION, agent_message
 from .config_wizard import run_config_wizard
 from .doctor import run_doctor
-from .errors import AiFlowError
+from .errors import AiFlowError, StateError
 from .mcp_install import run_mcp_install, run_mcp_doctor
 from .setup_flow import run_setup
 from .skill_install import run_skill_doctor, run_skill_install, run_skill_print
@@ -361,6 +361,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     apply = sub.add_parser("apply", help="Apply reviewed diff to current workspace.")
     apply.add_argument("run_id")
+    apply.add_argument(
+        "--confirmation",
+        default="none",
+        choices=["none", APPLY_CONFIRMATION],
+        help="Explicit final-apply confirmation token. Required value: apply_approved.",
+    )
     _add_json(apply)
 
     cleanup = sub.add_parser("cleanup", help="Remove the run worktree.")
@@ -507,7 +513,17 @@ def dispatch(args: argparse.Namespace, cwd: Path) -> Any:
         "mcp": lambda a, c: mcp_dispatch(c, a),
         "skill": lambda a, c: skill_dispatch(c, a),
         "diff": lambda a, c: service.diff(c, a.run_id),
-        "apply": lambda a, c: service.apply(c, a.run_id),
+        "apply": lambda a, c: apply_dispatch(c, a),
         "cleanup": lambda a, c: service.cleanup(c, a.run_id),
     }
     return handlers[command](args, cwd)
+
+
+def apply_dispatch(cwd: Path, args: argparse.Namespace) -> Any:
+    if getattr(args, "confirmation", "none") != APPLY_CONFIRMATION:
+        raise StateError(
+            "Applying changes requires explicit approval after reviewing the final diff.",
+            stage="apply",
+            suggested_next_action=f"Re-run with `--confirmation {APPLY_CONFIRMATION}` after reviewing FINAL.diff.",
+        )
+    return service.apply(cwd, args.run_id)

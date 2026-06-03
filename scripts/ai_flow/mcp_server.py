@@ -8,17 +8,19 @@ from typing import Any, Callable
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ai_flow.agent import agent_message
+    from ai_flow.agent import APPLY_CONFIRMATION, agent_message
     from ai_flow import service
     from ai_flow.config_wizard import run_config_wizard
     from ai_flow.doctor import run_doctor
+    from ai_flow.errors import StateError
     from ai_flow.setup_flow import run_setup
     from ai_flow.skill_install import run_skill_doctor, run_skill_install, run_skill_print
 else:
-    from .agent import agent_message
+    from .agent import APPLY_CONFIRMATION, agent_message
     from . import service
     from .config_wizard import run_config_wizard
     from .doctor import run_doctor
+    from .errors import StateError
     from .setup_flow import run_setup
     from .skill_install import run_skill_doctor, run_skill_install, run_skill_print
 
@@ -210,7 +212,13 @@ def patchbay_diff(run_id: str) -> dict[str, str]:
     return {"diff": service.diff(ROOT, run_id)}
 
 
-def patchbay_apply(run_id: str) -> dict[str, Any]:
+def patchbay_apply(run_id: str, confirmation: str = "") -> dict[str, Any]:
+    if confirmation != APPLY_CONFIRMATION:
+        raise StateError(
+            "Applying changes requires explicit approval after reviewing the final diff.",
+            stage="apply",
+            suggested_next_action=f"Call patchbay_apply with confirmation={APPLY_CONFIRMATION!r} after reviewing FINAL.diff.",
+        )
     return service.apply(ROOT, run_id)
 
 
@@ -413,6 +421,16 @@ def _tool_schema(name: str) -> dict[str, Any]:
             "phase": {"type": "string", "description": "Optional filter by phase name."},
         }
         required = ["run_id"]
+    elif name.endswith("_apply"):
+        properties = {
+            "run_id": {"type": "string"},
+            "confirmation": {
+                "type": "string",
+                "enum": [APPLY_CONFIRMATION],
+                "description": "Required final-apply confirmation token after reviewing FINAL.diff.",
+            },
+        }
+        required = ["run_id", "confirmation"]
     elif name.endswith("_config_show"):
         properties = {}
         required = []
@@ -533,7 +551,7 @@ def _tool_schema(name: str) -> dict[str, Any]:
         "patchbay_config_profile_show": "Show whether the current write/fix routing matches the economy profile and return structured actions[] plus action_groups[] for safe apply/readiness/start/configure_reasonix_command follow-ups.",
         "patchbay_config_provider_add_cli": "Add a custom CLI provider block under [providers.<id>]; optionally activate it as the economy write/fix route for low-cost DeepSeek-style writer work.",
         "patchbay_diff": "Return the current FINAL.diff for the run.",
-        "patchbay_apply": "Apply the reviewed patch to the original repository (no LLM executor).",
+        "patchbay_apply": "Apply the reviewed patch to the original repository only when tests/review gates pass and confirmation is exactly apply_approved.",
     }
     canonical_name = _canonical_description_name(name)
     description = descriptions.get(canonical_name, name.replace("_", " "))

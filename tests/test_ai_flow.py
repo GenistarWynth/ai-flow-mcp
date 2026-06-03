@@ -604,6 +604,9 @@ class McpServerTests(unittest.TestCase):
             self.assertIn(name, names)
         for name in ("ai_flow_plan", "ai_flow_status", "ai_flow_apply"):
             self.assertIn(name, names)
+        apply_tool = next(tool for tool in tools["result"]["tools"] if tool["name"] == "patchbay_apply")
+        self.assertEqual(apply_tool["inputSchema"]["properties"]["confirmation"]["enum"], ["apply_approved"])
+        self.assertIn("confirmation", apply_tool["inputSchema"]["required"])
 
     def test_tools_call_wraps_result_as_text_content(self) -> None:
         original = dict(mcp_server.TOOLS)
@@ -667,6 +670,39 @@ class McpServerTests(unittest.TestCase):
         finally:
             mcp_server.TOOLS.clear()
             mcp_server.TOOLS.update(original)
+
+    def test_patchbay_apply_requires_explicit_confirmation(self) -> None:
+        with mock.patch.object(mcp_server.service, "apply", return_value={"status": "APPLIED"}) as apply:
+            response = mcp_server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 8,
+                    "method": "tools/call",
+                    "params": {"name": "patchbay_apply", "arguments": {"run_id": "run-mcp"}},
+                }
+            )
+
+        self.assertTrue(response["result"]["isError"])
+        self.assertIn("requires explicit approval", response["result"]["content"][0]["text"])
+        apply.assert_not_called()
+
+    def test_patchbay_apply_accepts_explicit_confirmation(self) -> None:
+        with mock.patch.object(mcp_server.service, "apply", return_value={"status": "APPLIED"}) as apply:
+            response = mcp_server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 9,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "patchbay_apply",
+                        "arguments": {"run_id": "run-mcp", "confirmation": "apply_approved"},
+                    },
+                }
+            )
+
+        payload = json.loads(response["result"]["content"][0]["text"])
+        self.assertEqual(payload["status"], "APPLIED")
+        apply.assert_called_once_with(mcp_server.ROOT, "run-mcp")
 
     def test_unknown_tool_returns_json_rpc_error(self) -> None:
         response = mcp_server.handle(
@@ -782,8 +818,24 @@ default_branch_prefix = "legacy-prefix"
         self.cli_json("write", run_id, "--mock")
         self.cli_json("test", run_id)
         self.cli_json("review", run_id, "--mock")
-        self.cli_json("apply", run_id)
+        self.cli_json("apply", run_id, "--confirmation", "apply_approved")
         self.assertTrue((self.repo / "PATCHBAY_MOCK_OUTPUT.md").exists())
+
+    def test_cli_apply_requires_explicit_confirmation(self) -> None:
+        self.allow_apply_without_tests()
+        run_id = self.create_planned_run()
+        self.cli_json("approve", run_id)
+        self.cli_json("write", run_id, "--mock")
+        self.cli_json("test", run_id)
+        self.cli_json("review", run_id, "--mock")
+
+        result = self.cli("apply", run_id)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("explicit approval", result.stderr)
+        status = self.cli_json("status", run_id)
+        self.assertEqual(status["status"], "REVIEWED_PASS")
+        self.assertFalse((self.repo / "PATCHBAY_MOCK_OUTPUT.md").exists())
 
     def test_no_test_commands_do_not_allow_apply_by_default(self) -> None:
         run_id = self.create_planned_run()
@@ -797,7 +849,7 @@ default_branch_prefix = "legacy-prefix"
         self.assertFalse(status["gate_state"]["ready_to_apply"])
         self.assertEqual(status["gate_state"]["tests_status"], "SKIPPED")
 
-        result = self.cli("apply", run_id)
+        result = self.cli("apply", run_id, "--confirmation", "apply_approved")
 
         self.assertNotEqual(result.returncode, 0)
         failed = self.cli_json("status", run_id)

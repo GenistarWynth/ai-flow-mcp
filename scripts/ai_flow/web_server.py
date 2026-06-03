@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
-from .agent import agent_message
+from .agent import APPLY_CONFIRMATION, agent_message
 from . import service
 from .config import config_path, load_config
 from .config_wizard import run_config_wizard
@@ -190,7 +190,7 @@ class _Handler(SimpleHTTPRequestHandler):
                 action = _action_route(parsed.path)
                 if action:
                     run_id, action_name = action
-                    self._json(_run_action(self.repo_root, run_id, action_name))
+                    self._json(_run_action(self.repo_root, run_id, action_name, payload))
                     return
             self._not_found()
         except Exception as exc:
@@ -274,11 +274,12 @@ class _Handler(SimpleHTTPRequestHandler):
         )
 
 
-def _run_action(root: Path, run_id: str, action_name: str) -> dict[str, Any]:
+def _run_action(root: Path, run_id: str, action_name: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
     if action_name not in ACTION_NAMES:
         raise SafetyError(f"Unsupported action: {action_name}", stage="web")
     handler = getattr(service, action_name)
     if action_name == "apply":
+        payload = payload or {}
         current = service.status(root, run_id)
         gate = current.get("gate_state", {})
         if (
@@ -291,6 +292,12 @@ def _run_action(root: Path, run_id: str, action_name: str) -> dict[str, Any]:
                 "Apply is only available after tests pass and review returns PASS.",
                 stage="apply",
                 suggested_next_action="Run test and review, then refresh run status before applying.",
+            )
+        if str(payload.get("confirmation", "none") or "none") != APPLY_CONFIRMATION:
+            raise StateError(
+                "Applying changes requires explicit approval after reviewing the final diff.",
+                stage="apply",
+                suggested_next_action=f"POST confirmation={APPLY_CONFIRMATION!r} after reviewing FINAL.diff.",
             )
     return handler(root, run_id)
 

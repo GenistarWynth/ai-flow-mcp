@@ -64,6 +64,8 @@ Gate-status prompts return `action: "gate_status"` plus `gate_diagnosis`, `gate_
 
 Stateless `status` or `runs` responses may expose `open_run`, `focus_composer`, or readiness actions. Open the concrete run before taking gated actions.
 
+Direct `patchbay_apply`, `scripts/patchbay apply <run_id>`, and Web `POST /api/runs/<run_id>/actions/apply` also require explicit final confirmation (`confirmation: "apply_approved"` or `--confirmation apply_approved`) after reviewing `FINAL.diff`; missing confirmation must not call `service.apply`.
+
 ## Background Mode
 
 For long model work, prefer:

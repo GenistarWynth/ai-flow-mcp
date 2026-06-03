@@ -206,11 +206,37 @@ class WebServerTest(unittest.TestCase):
             ),
             patch.object(web_server.service, "apply", return_value={"status": "APPLIED"}) as apply,
         ):
-            status, result = self._request("POST", f"/api/runs/{self.run_id}/actions/apply")
+            status, result = self._request(
+                "POST",
+                f"/api/runs/{self.run_id}/actions/apply",
+                {"confirmation": "apply_approved"},
+            )
 
         self.assertEqual(status, 200)
         self.assertEqual(result["status"], "APPLIED")
         apply.assert_called_once_with(self.tmp, self.run_id)
+
+    def test_apply_action_requires_explicit_confirmation_when_gate_ready(self) -> None:
+        from scripts.ai_flow import web_server
+
+        with (
+            patch.object(
+                web_server.service,
+                "status",
+                return_value={
+                    "status": REVIEWED_PASS,
+                    "tests_passed": True,
+                    "review_result": "PASS",
+                    "gate_state": {"ready_to_apply": True},
+                },
+            ),
+            patch.object(web_server.service, "apply", return_value={"status": "APPLIED"}) as apply,
+        ):
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                self._request("POST", f"/api/runs/{self.run_id}/actions/apply")
+
+        self.assertEqual(caught.exception.code, 409)
+        apply.assert_not_called()
 
     def test_config_and_provider_endpoints_reuse_config_wizard_helpers(self) -> None:
         status, config = self._request("GET", "/api/config")
