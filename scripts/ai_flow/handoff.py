@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .action_contract import group_actions
 from .trace import list_trace
 
 
@@ -113,6 +114,7 @@ def build_handoff_context(
     timeline = sorted([*events, *traces], key=_timeline_sort_key)
     provider_trail = _provider_trail(run_path)
     next_actions = annotate_next_actions(status_data)
+    action_groups = group_actions(next_actions)
     artifacts = describe_artifacts(run_path, status_data.get("artifacts", []))
     run_metrics = status_data.get("run_metrics") if isinstance(status_data.get("run_metrics"), dict) else {}
     routing_evidence = (
@@ -137,6 +139,7 @@ def build_handoff_context(
         "routing_evidence": routing_evidence,
         "efficiency_summary": efficiency_summary,
         "next_actions": next_actions,
+        "action_groups": action_groups,
         "provider_trail": provider_trail,
         "artifacts": artifacts,
         "timeline": timeline,
@@ -173,10 +176,70 @@ def annotate_next_actions(status_data: dict[str, Any]) -> list[dict[str, Any]]:
         actions.append(action)
     if actions:
         return actions
+    background_actions = _background_followup_next_actions(status_data)
+    if background_actions:
+        return background_actions
     if str(status_data.get("status") or "") == "FAILED":
         recovery = status_data.get("failure_recovery") if isinstance(status_data.get("failure_recovery"), dict) else {}
         return _failure_recovery_next_actions(recovery)
     return actions
+
+
+def _background_followup_next_actions(status_data: dict[str, Any]) -> list[dict[str, Any]]:
+    background = _active_background_job(status_data)
+    if not background:
+        return []
+    raw_actions = [item for item in background.get("actions") or [] if isinstance(item, dict) and item.get("safe") is not False]
+    if not raw_actions:
+        return []
+    priority = {
+        "poll_context": 0,
+        "poll_status": 1,
+        "poll_events": 2,
+        "open_trace": 3,
+        "open_background_run": 4,
+    }
+    ordered = sorted(
+        enumerate(raw_actions),
+        key=lambda item: (priority.get(str(item[1].get("id") or item[1].get("name") or ""), 50), item[0]),
+    )
+    return [_structured_next_action(item) for _, item in ordered]
+
+
+def _active_background_job(status_data: dict[str, Any]) -> dict[str, Any] | None:
+    background = status_data.get("background_job")
+    if isinstance(background, dict) and background.get("active"):
+        return background
+    return None
+
+
+def _structured_next_action(item: dict[str, Any]) -> dict[str, Any]:
+    name = str(item.get("id") or item.get("name") or item.get("message") or "")
+    result = {
+        "name": name,
+        "id": name,
+        "label": item.get("label") or ACTION_LABELS.get(name, _phase_label(name)),
+        "kind": item.get("kind", "local_agent"),
+        "safe": item.get("safe") is not False,
+        "tool": item.get("tool") or _structured_action_tool(item, name),
+        "requires_human_confirmation": bool(item.get("requires_human_confirmation") or item.get("requires_confirmation")),
+        "reason": item.get("reason", ""),
+    }
+    for key in ("message", "command", "host", "run_id", "tab"):
+        if key in item:
+            result[key] = item[key]
+    return result
+
+
+def _structured_action_tool(item: dict[str, Any], name: str) -> str:
+    if item.get("kind") == "diagnostic_tab":
+        return "diagnostic_tab"
+    if item.get("kind") == "open_run":
+        return "open_run"
+    message = str(item.get("message") or "")
+    if message in {"status", "context", "events"}:
+        return f"patchbay_{message}"
+    return ACTION_TO_TOOL.get(name, f"patchbay_{name}")
 
 
 def _failure_recovery_next_actions(recovery: dict[str, Any]) -> list[dict[str, Any]]:
@@ -348,16 +411,19 @@ def _conversation_state(
 
 
 def _suggested_action(action: dict[str, Any]) -> dict[str, Any]:
-    name = str(action.get("name") or "")
+    name = str(action.get("name") or action.get("id") or action.get("message") or "")
     result = {
         "id": name,
-        "label": ACTION_LABELS.get(name, _phase_label(name)),
+        "label": action.get("label") or ACTION_LABELS.get(name, _phase_label(name)),
         "action": name,
         "safe": bool(action.get("safe")),
         "tool": action.get("tool", ACTION_TO_TOOL.get(name, f"patchbay_{name}")),
         "requires_human_confirmation": bool(action.get("requires_human_confirmation")),
         "reason": action.get("reason", ""),
     }
+    for key in ("kind", "message", "command", "host", "run_id", "tab"):
+        if key in action:
+            result[key] = action[key]
     if isinstance(action.get("alternative_action"), dict):
         result["alternative_action"] = action["alternative_action"]
     return result
@@ -365,6 +431,11 @@ def _suggested_action(action: dict[str, Any]) -> dict[str, Any]:
 
 def _conversation_next_step(status_data: dict[str, Any], next_action: dict[str, Any] | None) -> str:
     status = str(status_data.get("status") or "")
+    background = _active_background_job(status_data)
+    if background and next_action:
+        label = str(next_action.get("label") or next_action.get("name") or "刷新状态")
+        phase = str(background.get("phase") or status_data.get("current_phase") or "background")
+        return f"后台任务正在{_phase_label(phase)}阶段运行。可以安全执行“{label}”刷新进度，不会推进任何门禁。"
     if next_action:
         label = str(next_action.get("label") or next_action.get("name") or "下一步")
         reason = str(next_action.get("reason") or "")
@@ -386,6 +457,11 @@ def _conversation_next_step(status_data: dict[str, Any], next_action: dict[str, 
 
 def _composer_placeholder(status_data: dict[str, Any], next_action: dict[str, Any] | None) -> str:
     status = str(status_data.get("status") or "")
+    if _active_background_job(status_data):
+        if next_action:
+            label = str(next_action.get("label") or next_action.get("name") or "刷新状态")
+            return f"后台运行中，点击“{label}”刷新"
+        return "后台运行中，输入 status/context/events 刷新"
     if status == "FAILED":
         return "输入“修复”或打开诊断查看错误"
     if next_action:
@@ -401,8 +477,8 @@ def _primary_next_action(next_actions: list[dict[str, Any]]) -> dict[str, Any] |
         return None
     selected = next((action for action in next_actions if action.get("safe")), next_actions[0])
     action = dict(selected)
-    name = str(action.get("name") or "")
-    action["label"] = ACTION_LABELS.get(name, _phase_label(name))
+    name = str(action.get("name") or action.get("id") or action.get("message") or "")
+    action["label"] = action.get("label") or ACTION_LABELS.get(name, _phase_label(name))
     return action
 
 
@@ -410,6 +486,10 @@ def _activity_headline(status_data: dict[str, Any], next_action: dict[str, Any] 
     run_id = status_data.get("run_id", "")
     status = str(status_data.get("status") or "")
     phase = str(status_data.get("current_phase") or "")
+    background = _active_background_job(status_data)
+    if background:
+        job_phase = str(background.get("phase") or phase or "background")
+        return f"Patchbay Agent 正在后台执行{_phase_label(job_phase)}阶段。"
     if status == "FAILED":
         return f"Patchbay Agent 在{_phase_label(phase)}阶段遇到错误。"
     if status == "APPLIED":
@@ -426,6 +506,8 @@ def _activity_headline(status_data: dict[str, Any], next_action: dict[str, Any] 
 def _current_step_summary(status_data: dict[str, Any], next_action: dict[str, Any] | None) -> str:
     if status_data.get("error"):
         return str(status_data.get("error"))
+    if _active_background_job(status_data):
+        return "后台任务仍在运行；轮询 context/status/events 可以读取最新进度。"
     if next_action:
         return str(next_action.get("reason") or "")
     status = str(status_data.get("status") or "")

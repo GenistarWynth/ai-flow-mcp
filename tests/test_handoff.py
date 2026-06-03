@@ -130,6 +130,56 @@ class HandoffContextTest(unittest.TestCase):
             "configure_reasonix_command",
         )
 
+    def test_context_promotes_active_background_polling_actions(self) -> None:
+        run_id = "20260603-background-handoff"
+        run_path = self.repo / ".ai" / "runs" / run_id
+        run_path.mkdir(parents=True)
+        (run_path / "JOB.json").write_text(
+            json.dumps(
+                {
+                    "background": True,
+                    "kind": "agent",
+                    "phase": "write",
+                    "action": "approve_and_run",
+                    "pid": 1234,
+                    "run_id": run_id,
+                    "task": "background handoff",
+                    "started_at": "2026-06-03T00:00:00+00:00",
+                    "started_at_epoch": 0,
+                    "root": str(self.repo),
+                    "run_dir": str(run_path),
+                    "events_path": str(run_path / "events.jsonl"),
+                    "trace_path": str(run_path / "trace.jsonl"),
+                }
+            ),
+            encoding="utf-8",
+        )
+        (run_path / "events.jsonl").write_text("", encoding="utf-8")
+
+        context = service.context(self.repo, run_id)
+
+        self.assertEqual(context["status"], "RUNNING")
+        self.assertTrue(context["background_job"]["active"])
+        self.assertEqual([item["name"] for item in context["next_actions"][:3]], ["poll_context", "poll_status", "poll_events"])
+        self.assertNotIn("continue", [item["name"] for item in context["next_actions"]])
+        action_groups = {item["id"]: item for item in context["action_groups"]}
+        self.assertEqual(action_groups["background_polling"]["action_ids"], ["poll_context", "poll_status", "poll_events"])
+        self.assertIn("open_trace", action_groups["diagnostics"]["action_ids"])
+        activity = context["agent_activity"]
+        self.assertEqual(activity["tone"], "running")
+        self.assertEqual(activity["next_action"]["name"], "poll_context")
+        self.assertEqual(activity["next_action"]["tool"], "patchbay_context")
+        self.assertIn("后台执行", activity["headline"])
+        self.assertIn("后台任务", activity["conversation_state"]["next_step"])
+        self.assertIn("不会推进任何门禁", activity["conversation_state"]["next_step"])
+        self.assertIn("后台运行中", activity["conversation_state"]["composer_placeholder"])
+        first_suggestion = activity["conversation_state"]["suggestions"][0]
+        self.assertEqual(first_suggestion["id"], "poll_context")
+        self.assertEqual(first_suggestion["kind"], "local_agent")
+        self.assertEqual(first_suggestion["message"], "context")
+        self.assertEqual(first_suggestion["run_id"], run_id)
+        self.assertEqual(first_suggestion["tool"], "patchbay_context")
+
     def test_context_health_card_prefers_routing_evidence_actions(self) -> None:
         status_data = {
             "run_metrics": {

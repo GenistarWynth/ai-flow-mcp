@@ -141,7 +141,7 @@ python scripts/patchbay agent message continue --run-id <run_id> --background --
 
 `简单 writer/fix 用 DeepSeek 省钱` 这类中英混合提示也会被识别为经济路由意图：它会应用 write/fix 的 economy profile，而不是创建新的任务 run。
 
-`context`、`handoff context`、`events`、`poll context` 和 `poll events` 是只读 Agent 消息：带 `run_id` 时直接返回当前运行的 Overview/Trace 诊断动作；不带 `run_id` 且存在最近运行时返回最新运行的 handoff 视图，不会推进阶段或绕过门禁。
+`context`、`handoff context`、`events`、`poll context` 和 `poll events` 是只读 Agent 消息：带 `run_id` 时直接返回当前运行的 Overview/Trace 诊断动作；不带 `run_id` 且存在最近运行时返回最新运行的 handoff 视图，不会推进阶段或绕过门禁。活跃后台任务会把 `poll_context`、`poll_status` 和 `poll_events` 提升到 `patchbay_context.next_actions`、顶层 `action_groups[]` 和 `agent_activity.conversation_state.suggestions`，桌面端/MCP host/Skill 可以直接用这些安全轮询建议刷新进度，不需要解析 `JOB.json`，也不会把 `continue`、`approve` 或 `apply` 暴露成后台直达动作。
 
 带结构化动作的 Agent、setup、doctor、profile、metrics 和后台 job 响应还会提供 `action_groups[]`：每组包含 `id`、`label`、`reason`、`action_ids` 和 `count`，用于把按钮稳定分成后台轮询、经济路由、就绪设置、诊断、门禁、新任务或可复制命令，桌面端/MCP host/Skill 不需要再从 action id 或自然语言里猜 UI 分组。
 
