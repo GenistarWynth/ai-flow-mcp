@@ -20,6 +20,7 @@ from .events import append_event
 from .mcp_install import HOST_ALIASES, normalize_mcp_host
 from .routing import profile_routing_digest as _profile_routing_digest, route_label as _route_label
 from .setup_flow import run_setup, _without_mcp_followup_actions, _without_mcp_followup_text
+from .skill_contract import skill_contract_summary
 from .state import (
     APPLIED,
     APPROVED,
@@ -1597,44 +1598,6 @@ def _safe_economy_target(root: Path) -> dict[str, Any]:
         return {"provider": service.ECONOMY_PROVIDER, "model": service.ECONOMY_MODEL, "label": "Reasonix/DeepSeek"}
 
 
-def _skill_contract_summary() -> dict[str, Any]:
-    return {
-        "kind": "progressive-skill",
-        "entrypoint": "skills/patchbay/SKILL.md",
-        "references": [
-            {
-                "path": "skills/patchbay/references/install.md",
-                "purpose": "Setup, host registration, local-only install, Skill install, and doctor guidance.",
-            },
-            {
-                "path": "skills/patchbay/references/agent-contract.md",
-                "purpose": "Structured actions, action_groups, gate diagnosis, failure recovery, background jobs, and economy evidence.",
-            },
-        ],
-        "commands": [
-            "patchbay skill doctor codex --json",
-            "patchbay skill print codex",
-        ],
-        "structured_fields": [
-            "actions[]",
-            "action_groups[]",
-            "gate_diagnosis",
-            "failure_recovery",
-            "routing_evidence",
-            "efficiency_summary",
-        ],
-        "local_only_supported": True,
-        "no_mcp_prompts": [
-            "no MCP",
-            "use Chrome Skill instead of MCP",
-            "不要用这个MCP",
-            "不走 MCP",
-            "走本地模式",
-            "只用本地工具",
-        ],
-    }
-
-
 def _help_response(root: Path, *, run_id: str | None = None, include: dict[str, Any] | None = None) -> dict[str, Any]:
     target = _safe_economy_target(root)
     target_label = str(target.get("label") or _route_label(target))
@@ -1646,7 +1609,7 @@ def _help_response(root: Path, *, run_id: str | None = None, include: dict[str, 
         {
             "name": "agent-skill-contract",
             "summary": "MCP hosts, desktop UIs, and Skill-only clients should render structured Agent fields instead of parsing prose. The bundled Codex Skill uses a compact SKILL.md entrypoint and loads install / Agent-response references only when needed.",
-            "contract": _skill_contract_summary(),
+            "contract": skill_contract_summary(),
         },
         {
             "name": "start",

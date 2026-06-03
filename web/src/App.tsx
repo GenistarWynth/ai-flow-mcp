@@ -1188,10 +1188,13 @@ function doctorCheckStatusLabel(check: DoctorCheck) {
 function doctorCheckDetails(check: DoctorCheck): string[] {
   const details: string[] = [];
   const primary = check.error ?? check.note;
+  const contract = check.contract && typeof check.contract === "object" ? check.contract as { kind?: unknown; entrypoint?: unknown } : null;
   if (primary) details.push(String(primary));
   if (typeof check.status === "string" && check.status !== "installed") {
     details.push(`status: ${check.status}`);
   }
+  if (contract?.kind) details.push(`contract: ${String(contract.kind)}`);
+  if (contract?.entrypoint) details.push(`entrypoint: ${String(contract.entrypoint)}`);
   const missing = stringList(check.missing_installed_files);
   if (missing.length) details.push(`missing installed files: ${missing.join(", ")}`);
   const changed = stringList(check.changed_installed_files);

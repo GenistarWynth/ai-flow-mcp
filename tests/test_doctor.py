@@ -75,6 +75,8 @@ class DoctorTest(unittest.TestCase):
         self.assertTrue(result["checks"]["config"]["ok"])
         self.assertTrue(result["checks"]["cli"]["ok"])
         self.assertTrue(result["checks"]["skill"]["source_exists"])
+        self.assertEqual(result["checks"]["skill"]["contract"]["kind"], "progressive-skill")
+        self.assertEqual(result["checks"]["skill"]["contract"]["entrypoint"], "skills/patchbay/SKILL.md")
         self.assertFalse(result["checks"]["skill"]["installed"])
         self.assertFalse(result["ok"])
         self.assertTrue(any("skill install codex" in action for action in result["next_actions"]))

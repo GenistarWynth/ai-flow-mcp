@@ -394,7 +394,11 @@ describe("Workbench", () => {
             installed_matches_source: false,
             changed_installed_files: ["SKILL.md"],
             missing_installed_files: ["references/install.md"],
-            extra_installed_files: ["legacy.md"]
+            extra_installed_files: ["legacy.md"],
+            contract: {
+              kind: "progressive-skill",
+              entrypoint: "skills/patchbay/SKILL.md"
+            }
           },
           mcp: { ok: true, skipped: true, note: "Skipped by web workbench." }
         },
@@ -422,6 +426,8 @@ describe("Workbench", () => {
     const details = screen.getByRole("complementary", { name: "诊断详情" });
     expect(within(details).getByText("需更新")).toBeVisible();
     expect(within(details).getByText("status: outdated")).toBeVisible();
+    expect(within(details).getByText("contract: progressive-skill")).toBeVisible();
+    expect(within(details).getByText("entrypoint: skills/patchbay/SKILL.md")).toBeVisible();
     expect(within(details).getByText("missing installed files: references/install.md")).toBeVisible();
     expect(within(details).getByText("changed installed files: SKILL.md")).toBeVisible();
     expect(within(details).getByText("extra installed files: legacy.md")).toBeVisible();

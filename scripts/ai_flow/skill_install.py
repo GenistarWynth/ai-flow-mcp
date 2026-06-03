@@ -8,6 +8,7 @@ from typing import Any
 from .action_contract import group_actions
 from .errors import AiFlowError
 from .mcp_install import normalize_mcp_host
+from .skill_contract import skill_contract_summary
 
 
 SKILL_NAME = "patchbay"
@@ -36,6 +37,7 @@ def run_skill_install(
             "source": str(source),
             "destination": str(destination),
             "dry_run": True,
+            "contract": skill_contract_summary(),
             "actions": actions,
             "action_groups": group_actions(actions),
         }
@@ -49,6 +51,7 @@ def run_skill_install(
         "source": str(source),
         "destination": str(destination),
         "installed": True,
+        "contract": skill_contract_summary(),
         "note": "Restart or reload Codex so the new Skill metadata is discovered.",
         "actions": actions,
         "action_groups": group_actions(actions),
@@ -62,7 +65,7 @@ def run_skill_print(cwd: Path, host: str = "codex") -> dict[str, Any]:
     for file_path in sorted(source.rglob("*")):
         if file_path.is_file():
             files[str(file_path.relative_to(source)).replace("\\", "/")] = file_path.read_text(encoding="utf-8")
-    return {"host": "codex", "source": str(source), "files": files}
+    return {"host": "codex", "source": str(source), "contract": skill_contract_summary(), "files": files}
 
 
 def run_skill_doctor(cwd: Path, host: str = "codex", *, path: str | Path | None = None) -> dict[str, Any]:
@@ -117,6 +120,7 @@ def run_skill_doctor(cwd: Path, host: str = "codex", *, path: str | Path | None 
         "source": str(source) if source else "",
         "source_exists": bool(source),
         "source_file_count": len(source_files),
+        "contract": skill_contract_summary(),
         "missing_source_files": missing_source_files,
         "skills_root": str(skills_root),
         "destination": str(destination),

@@ -28,6 +28,7 @@ class SkillInstallTest(unittest.TestCase):
         skill = result["files"]["SKILL.md"]
         contract = result["files"]["references/agent-contract.md"]
         install = result["files"]["references/install.md"]
+        contract_summary = result["contract"]
 
         self.assertIn("SKILL.md", result["files"])
         self.assertIn("agents/openai.yaml", result["files"])
@@ -113,6 +114,10 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("configure reasonix command", install)
         self.assertIn("configure reasonix command to <path>", install)
         self.assertIn("configure_reasonix_command", install)
+        self.assertEqual(contract_summary["kind"], "progressive-skill")
+        self.assertEqual(contract_summary["entrypoint"], "skills/patchbay/SKILL.md")
+        self.assertIn("patchbay skill doctor codex --json", contract_summary["commands"])
+        self.assertIn("skills/patchbay/references/agent-contract.md", {item["path"] for item in contract_summary["references"]})
 
     def test_bundled_skill_matches_install_template(self) -> None:
         template_root = PROJECT_ROOT / "scripts" / "ai_flow" / "skill_templates" / "patchbay"
@@ -193,10 +198,12 @@ class SkillInstallTest(unittest.TestCase):
         printed = run_skill_print(self.tmp, host="Codex Desktop")
         self.assertEqual(printed["host"], "codex")
         self.assertIn("SKILL.md", printed["files"])
+        self.assertEqual(printed["contract"]["kind"], "progressive-skill")
 
         doctor = run_skill_doctor(self.tmp, host="Codex CLI", path=target)
         self.assertEqual(doctor["host"], "codex")
         self.assertTrue(doctor["ok"])
+        self.assertEqual(doctor["contract"]["entrypoint"], "skills/patchbay/SKILL.md")
 
     def test_skill_commands_reject_non_codex_hosts(self) -> None:
         from scripts.ai_flow.errors import AiFlowError
@@ -286,6 +293,8 @@ class SkillInstallTest(unittest.TestCase):
         self.assertFalse(before["ready"])
         self.assertEqual(before["status"], "not_installed")
         self.assertTrue(before["source_exists"])
+        self.assertEqual(before["contract"]["kind"], "progressive-skill")
+        self.assertIn("failure_recovery", before["contract"]["structured_fields"])
         self.assertFalse(before["installed"])
         self.assertFalse(before["installed_matches_source"])
         self.assertEqual(before["missing_installed_files"], [])
