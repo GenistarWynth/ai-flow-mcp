@@ -2708,6 +2708,8 @@ function NextActionCard({
   onAction: (action: SuggestedAction | AgentAction | string) => void;
 }) {
   const recoveryGroups = groupedHealthActions(failureRecovery?.actions, failureRecovery?.action_groups);
+  const hasFailureRecovery = Boolean(failureRecovery || failureGuidance);
+  const failureSummary = failureRecovery?.summary || failureGuidance || "运行遇到错误，请打开诊断查看日志。";
   if (busy) {
     const refreshActions = suggestions.filter(canRunSuggestionWhileBusy);
     return (
@@ -2730,13 +2732,13 @@ function NextActionCard({
       </div>
     );
   }
-  if (!action && !suggestions.length && failureGuidance) {
+  if (failureRecovery || (!action && !suggestions.length && hasFailureRecovery)) {
     return (
       <div className="next-card failed" aria-label="失败恢复建议">
         <AlertTriangle size={16} />
         <div>
           <strong>运行失败</strong>
-          <span>{failureRecovery?.summary || failureGuidance}</span>
+          <span>{failureSummary}</span>
           {failureRecovery?.suggested_next_action ? <p>{failureRecovery.suggested_next_action}</p> : null}
           {failureRecovery?.artifacts?.length ? (
             <div className="recovery-artifacts" aria-label="建议检查的失败产物">

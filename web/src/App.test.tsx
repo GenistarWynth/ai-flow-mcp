@@ -5259,8 +5259,75 @@ describe("Workbench", () => {
       run_id: "run-failed",
       status: "FAILED",
       current_phase: "plan",
-      next_actions: [],
+      next_actions: [
+        {
+          name: "inspect_events",
+          id: "inspect_events",
+          label: "Inspect events",
+          kind: "diagnostic_tab",
+          tool: "diagnostic_tab",
+          tab: "Trace",
+          safe: true,
+          requires_human_confirmation: false,
+          reason: "Open event timeline."
+        }
+      ],
       timeline: [],
+      failure_recovery: {
+        stage: "plan",
+        error: "Planner JSON could not be parsed: Expecting value",
+        suggested_next_action: guidance,
+        safe_actions: ["status", "events", "artifact", "diff", "new_run"],
+        actions: [
+          {
+            id: "inspect_events",
+            label: "Inspect events",
+            kind: "diagnostic_tab",
+            tab: "Trace",
+            safe: true,
+            reason: "Open event timeline."
+          },
+          {
+            id: "inspect_artifacts",
+            label: "Inspect artifacts",
+            kind: "diagnostic_tab",
+            tab: "Artifacts",
+            safe: true,
+            reason: "Open failed artifacts."
+          },
+          {
+            id: "start_new_task",
+            label: "Start replacement task",
+            kind: "focus_composer",
+            safe: true,
+            reason: "Start over with a narrower task."
+          }
+        ],
+        action_groups: [
+          {
+            id: "diagnostics",
+            label: "Diagnostics",
+            action_ids: ["inspect_events", "inspect_artifacts"],
+            count: 2
+          },
+          {
+            id: "new_task",
+            label: "New task",
+            action_ids: ["start_new_task"],
+            count: 1
+          }
+        ],
+        artifacts: ["PLAN.md", "plan.json", "events.jsonl"],
+        summary: "Run failed in plan; inspect PLAN.md, plan.json, events.jsonl before taking another action."
+      },
+      action_groups: [
+        {
+          id: "diagnostics",
+          label: "Diagnostics",
+          action_ids: ["inspect_events"],
+          count: 1
+        }
+      ],
       agent_activity: {
         ...plannedContext.agent_activity!,
         headline: "Patchbay Agent 在规划阶段遇到错误。",
@@ -5282,7 +5349,18 @@ describe("Workbench", () => {
           tone: "failed",
           next_step: guidance,
           composer_placeholder: "输入“修复”或打开诊断查看错误",
-          suggestions: []
+          suggestions: [
+            {
+              id: "inspect_events",
+              label: "Inspect events",
+              action: "inspect_events",
+              kind: "diagnostic_tab",
+              tab: "Trace",
+              safe: true,
+              requires_human_confirmation: false,
+              reason: "Open event timeline."
+            }
+          ]
         },
         messages: []
       }
