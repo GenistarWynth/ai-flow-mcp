@@ -1714,6 +1714,25 @@ describe("Workbench", () => {
     expect(within(fixRun).getByText("Continue run")).toBeVisible();
   });
 
+  it("filters runs by inbox group chips", async () => {
+    const client = createClient();
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    const summary = screen.getByLabelText("Agent inbox summary");
+    await userEvent.click(within(summary).getByRole("button", { name: /Ready to continue/ }));
+
+    const runList = screen.getByLabelText("运行线程");
+    expect(within(runList).queryByRole("button", { name: /Ship dashboard/ })).not.toBeInTheDocument();
+    expect(within(runList).getByRole("button", { name: /Needs fix/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Needs fix" })).toBeInTheDocument();
+
+    await userEvent.click(within(summary).getByRole("button", { name: /Ready to continue/ }));
+    expect(within(runList).getByRole("button", { name: /Ship dashboard/ })).toBeInTheDocument();
+    expect(within(runList).getByRole("button", { name: /Needs fix/ })).toBeInTheDocument();
+  });
+
   it("auto-selects the inbox focus run instead of the first recent run", async () => {
     const getContext = vi.fn().mockResolvedValue(readyContext);
     const client = createClient({

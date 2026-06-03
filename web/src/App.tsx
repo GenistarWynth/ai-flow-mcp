@@ -1592,6 +1592,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const [activeTab, setActiveTab] = useState<TabName>("Overview");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [inboxFilter, setInboxFilter] = useState("");
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmState>(null);
   const [error, setError] = useState("");
@@ -1736,10 +1737,11 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     const needle = search.trim().toLowerCase();
     return runs.filter((run) => {
       const matchesStatus = !statusFilter || run.status === statusFilter;
+      const matchesInbox = !inboxFilter || run.inbox?.key === inboxFilter;
       const text = `${run.run_id} ${run.task ?? ""}`.toLowerCase();
-      return matchesStatus && (!needle || text.includes(needle));
+      return matchesStatus && matchesInbox && (!needle || text.includes(needle));
     });
-  }, [runs, search, statusFilter]);
+  }, [runs, search, statusFilter, inboxFilter]);
 
   useEffect(() => {
     if (newTaskMode) return;
@@ -2399,6 +2401,11 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     setNewTaskReply(null);
   };
 
+  const selectInboxGroup = (key: string) => {
+    setStatusFilter("");
+    setInboxFilter((current) => (current === key ? "" : key));
+  };
+
   return (
     <main className={`workbench ${diagnosticsOpen ? "diagnostics-open" : ""}`}>
       <aside className="sidebar">
@@ -2427,7 +2434,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
             <option value="FAILED">失败</option>
           </select>
         </label>
-        <RunInboxSummary inbox={runsInbox} />
+        <RunInboxSummary inbox={runsInbox} selectedKey={inboxFilter} onSelectGroup={selectInboxGroup} />
         <div className="run-list" aria-label="运行线程">
           {visibleRuns.map((run) => (
             <button
@@ -2735,7 +2742,15 @@ function AgentEventBubble({ message, selected, onSelect }: { message: AgentMessa
   );
 }
 
-function RunInboxSummary({ inbox }: { inbox?: RunsInbox | null }) {
+function RunInboxSummary({
+  inbox,
+  selectedKey,
+  onSelectGroup
+}: {
+  inbox?: RunsInbox | null;
+  selectedKey?: string;
+  onSelectGroup?: (key: string) => void;
+}) {
   if (!inbox || !inbox.total) return null;
   const groups = inbox.groups ?? [];
   return (
@@ -2747,10 +2762,16 @@ function RunInboxSummary({ inbox }: { inbox?: RunsInbox | null }) {
       {groups.length ? (
         <div className="run-inbox-groups">
           {groups.slice(0, 3).map((group) => (
-            <span className={`run-inbox-group tone-${inboxTone(group.key)}`} key={group.key ?? group.label}>
+            <button
+              className={`run-inbox-group tone-${inboxTone(group.key)} ${selectedKey === group.key ? "selected" : ""}`}
+              key={group.key ?? group.label}
+              onClick={() => group.key && onSelectGroup?.(group.key)}
+              type="button"
+              aria-pressed={selectedKey === group.key}
+            >
               {group.label ?? group.key}
               <strong>{group.count ?? 0}</strong>
-            </span>
+            </button>
           ))}
         </div>
       ) : null}

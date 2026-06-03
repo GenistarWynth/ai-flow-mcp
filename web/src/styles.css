@@ -63,6 +63,8 @@ textarea { resize: none; }
   font-size: 11px;
   font-weight: 750;
 }
+.run-inbox-group:hover { filter: brightness(0.98); }
+.run-inbox-group.selected { box-shadow: inset 0 0 0 1px currentColor; }
 .run-inbox-group strong { font-size: 11px; }
 .run-inbox-group.tone-running { border-color: #ddd6fe; color: #5b21b6; background: #f5f3ff; }
 .run-inbox-group.tone-blocked { border-color: #fed7aa; color: #9a3412; background: #fff7ed; }
