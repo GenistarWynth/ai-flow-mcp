@@ -1712,6 +1712,100 @@ describe("Workbench", () => {
     const fixRun = within(runList).getByRole("button", { name: /Needs fix/ });
     expect(within(fixRun).getByText("Ready to continue")).toBeVisible();
     expect(within(fixRun).getByText("Continue run")).toBeVisible();
+    expect(within(runList).getByRole("button", { name: "Run inbox action: Apply reviewed diff" })).toBeVisible();
+    expect(within(runList).getByRole("button", { name: "Run inbox action: Continue run" })).toBeVisible();
+  });
+
+  it("keeps confirmable inbox actions behind the confirmation gate", async () => {
+    const client = createClient();
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    const runList = screen.getByLabelText("运行线程");
+
+    await userEvent.click(within(runList).getByRole("button", { name: "Run inbox action: Apply reviewed diff" }));
+    expect(await screen.findByRole("dialog", { name: "确认应用补丁" })).toBeInTheDocument();
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.agentMessage).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: "取消" }));
+    await userEvent.click(within(runList).getByRole("button", { name: "Run inbox action: Continue run" }));
+
+    expect(await screen.findByRole("dialog", { name: "确认继续运行" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Needs fix" })).toBeInTheDocument();
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.agentMessage).not.toHaveBeenCalled();
+  });
+
+  it("opens safe inbox run actions directly", async () => {
+    const getContext = vi.fn((runId: string) =>
+      Promise.resolve(
+        runId === "run-old"
+          ? {
+              ...readyContext,
+              run_id: "run-old",
+              status: "APPLIED",
+              current_phase: "apply",
+              agent_activity: {
+                ...readyContext.agent_activity!,
+                conversation_state: {
+                  ...readyContext.agent_activity!.conversation_state!,
+                  task: "Already applied",
+                  status: "APPLIED"
+                }
+              }
+            }
+          : readyContext
+      )
+    );
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({
+        count: 2,
+        runs: [
+          {
+            run_id: "run-ready",
+            task: "Ship dashboard",
+            status: "REVIEWED_PASS",
+            gate_state: { approved: true, tests_passed: true, review_result: "PASS", ready_to_apply: true },
+            inbox: {
+              key: "ready_to_apply",
+              label: "Ready to apply",
+              next_action: { id: "apply", label: "Apply reviewed diff", kind: "local_agent", run_id: "run-ready", message: "apply", safe: false }
+            }
+          },
+          {
+            run_id: "run-old",
+            task: "Already applied",
+            status: "APPLIED",
+            inbox: {
+              key: "applied",
+              label: "Applied",
+              next_action: { id: "open_run", label: "Open run", kind: "open_run", run_id: "run-old", tab: "Overview", safe: true }
+            }
+          }
+        ],
+        inbox: {
+          total: 2,
+          focus_run_id: "run-ready",
+          groups: [
+            { key: "ready_to_apply", label: "Ready to apply", count: 1, run_ids: ["run-ready"] },
+            { key: "applied", label: "Applied", count: 1, run_ids: ["run-old"] }
+          ]
+        }
+      }),
+      getContext
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await userEvent.click(screen.getByRole("button", { name: "Run inbox action: Open run" }));
+
+    expect(await screen.findByRole("heading", { name: "Already applied" })).toBeInTheDocument();
+    await waitFor(() => expect(getContext).toHaveBeenCalledWith("run-old"));
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.agentMessage).not.toHaveBeenCalled();
   });
 
   it("filters runs by inbox group chips", async () => {

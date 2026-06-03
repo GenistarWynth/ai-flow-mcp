@@ -54,7 +54,7 @@ import {
 import "./styles.css";
 
 type TabName = "Overview" | "Readiness" | "Trace" | "Log" | "Diff" | "Artifacts" | "Config" | "Providers";
-type ConfirmState = { action: string; title: string; body: string; safe: boolean; confirmLabel?: string } | null;
+type ConfirmState = { action: string; title: string; body: string; safe: boolean; confirmLabel?: string; runId?: string } | null;
 type LocalMessage = { id: string; body: string; timestamp: string; role?: "user" | "assistant"; response?: AgentResponse; hideBubble?: boolean };
 type DoctorProfileStatus = {
   profile?: string;
@@ -1487,15 +1487,6 @@ function economyHealthCard(status: RunStatus | null) {
 }
 
 function confirmCopy(action: SuggestedAction, readyToApply: boolean): ConfirmState {
-  if (!action.safe) {
-    return {
-      action: action.action,
-      title: "暂不能执行",
-      body: action.reason || `当前状态不允许执行“${action.label}”。`,
-      safe: false,
-      confirmLabel: "知道了"
-    };
-  }
   if (action.action === "approve") {
     return {
       action: action.action,
@@ -1505,13 +1496,22 @@ function confirmCopy(action: SuggestedAction, readyToApply: boolean): ConfirmSta
       confirmLabel: "批准"
     };
   }
-  if (action.action === "apply") {
+  if (action.action === "apply" && action.safe) {
     return {
       action: action.action,
       title: readyToApply ? "确认应用补丁" : "暂不能应用",
       body: readyToApply ? "将已审查通过的 FINAL.diff 应用到当前工作区。" : "应用必须等待测试通过且审查为 PASS。",
       safe: readyToApply,
       confirmLabel: readyToApply ? "应用" : "知道了"
+    };
+  }
+  if (action.action === "continue" && action.requires_human_confirmation) {
+    return {
+      action: action.action,
+      title: "确认继续运行",
+      body: action.reason || "Patchbay Agent 会在后台推进下一阶段。",
+      safe: true,
+      confirmLabel: "继续"
     };
   }
   if (action.action === "cleanup") {
@@ -1521,6 +1521,15 @@ function confirmCopy(action: SuggestedAction, readyToApply: boolean): ConfirmSta
       body: "移除本次运行的 worktree 和临时资源。",
       safe: true,
       confirmLabel: "清理"
+    };
+  }
+  if (!action.safe) {
+    return {
+      action: action.action,
+      title: "暂不能执行",
+      body: action.reason || `当前状态不允许执行“${action.label}”。`,
+      safe: false,
+      confirmLabel: "知道了"
     };
   }
   return null;
@@ -1563,6 +1572,17 @@ function confirmationForAction(action: string): "plan_approved" | "apply_approve
   return undefined;
 }
 
+function canonicalPhaseAction(action?: string) {
+  const value = action?.trim();
+  if (!value) return "";
+  if (value === "approve_and_run") return "approve";
+  return value;
+}
+
+function isPhaseAction(action?: string) {
+  return ["approve", "apply", "cleanup", "continue", "write", "test", "review", "fix"].includes(canonicalPhaseAction(action));
+}
+
 function shouldAutopilot(action: string) {
   return ["continue", "write", "test", "review", "fix"].includes(action);
 }
@@ -1571,6 +1591,28 @@ function inboxFocusRunId(runs: RunSummary[], inbox?: RunsInbox | null) {
   const focusRunId = inbox?.focus_run_id ?? inbox?.focus?.run_id ?? "";
   if (focusRunId && runs.some((run) => run.run_id === focusRunId)) return focusRunId;
   return runs[0]?.run_id ?? "";
+}
+
+function readyToApplyRun(run: RunSummary) {
+  return Boolean(run.gate_state?.ready_to_apply || run.inbox?.key === "ready_to_apply");
+}
+
+function inboxSuggestedAction(run: RunSummary): SuggestedAction | null {
+  const action = run.inbox?.next_action;
+  if (!action) return null;
+  const phaseAction = canonicalPhaseAction(action.message || action.id);
+  if (!isPhaseAction(phaseAction)) return null;
+  const readyToApply = readyToApplyRun(run);
+  const requiresConfirmation = Boolean(action.requires_confirmation) || action.safe === false;
+  return {
+    id: action.id || phaseAction,
+    label: action.label || commandLabel(phaseAction),
+    action: phaseAction,
+    safe: phaseAction === "apply" ? readyToApply : true,
+    requires_human_confirmation: requiresConfirmation,
+    reason: action.reason,
+    run_id: run.run_id
+  };
 }
 
 export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { client?: PatchbayClient; pollIntervalMs?: number }) {
@@ -1825,22 +1867,22 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }
   };
 
-  const runAction = async (action: string) => {
-    if (!selectedRun || interactionBusy) return;
+  const runAction = async (action: string, targetRun = selectedRun) => {
+    if (!targetRun || interactionBusy) return;
     setError("");
     setActionInFlight(true);
     try {
       if (shouldAutopilot(action)) {
         const response = await client.agentMessage("continue", {
-          runId: selectedRun,
+          runId: targetRun,
           include: { diff: true, review: true },
           background: true
         });
-        await refreshRun(selectedRun, response);
+        await refreshRun(targetRun, response);
         return;
       }
-      await client.runAction(selectedRun, action);
-      await refreshRun(selectedRun);
+      await client.runAction(targetRun, action);
+      await refreshRun(targetRun);
     } finally {
       setActionInFlight(false);
     }
@@ -1852,22 +1894,33 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       typeof candidate === "string"
         ? suggestions.find((item) => item.action === candidate) ?? { id: candidate, label: commandLabel(candidate), action: candidate, safe: candidate !== "apply" || readyToApply }
         : actionFromSuggestion(candidate);
-    const healthAction = healthActionFromSuggestion(action);
-    if (healthAction) {
-      void runHealthAction(healthAction);
-      return;
+    const targetRun = action.run_id || selectedRun;
+    const targetSummary = targetRun ? runs.find((run) => run.run_id === targetRun) : undefined;
+    const targetReadyToApply = targetSummary ? readyToApplyRun(targetSummary) : readyToApply;
+    const phaseAction = isPhaseAction(action.action);
+    if (targetRun && targetRun !== selectedRun) {
+      setNewTaskMode(false);
+      setSelectedRun(targetRun);
     }
-    if (action.action === "apply" && !readyToApply) action.safe = false;
-    const confirmation = confirmCopy(action, readyToApply);
+    if (!phaseAction) {
+      const healthAction = healthActionFromSuggestion(action);
+      if (healthAction) {
+        void runHealthAction(healthAction);
+        return;
+      }
+    }
+    if (action.action === "apply" && !targetReadyToApply) action.safe = false;
+    const confirmation = confirmCopy(action, targetReadyToApply);
     if (confirmation) {
-      setConfirm(confirmation);
+      setConfirm({ ...confirmation, runId: targetRun });
       return;
     }
     if (!action.safe) {
-      setConfirm(confirmCopy(action, readyToApply));
+      const blocked = confirmCopy(action, targetReadyToApply);
+      if (blocked) setConfirm({ ...blocked, runId: targetRun });
       return;
     }
-    void runAction(action.action);
+    void runAction(action.action, targetRun);
   };
 
   const confirmAction = async () => {
@@ -1876,7 +1929,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       setConfirm(null);
       return;
     }
-    if (!selectedRun) return;
+    const targetRun = confirm.runId || selectedRun;
+    if (!targetRun) return;
     setError("");
     const action = confirm.action;
     setConfirm(null);
@@ -1885,25 +1939,25 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     try {
       if (confirmation) {
         const response = await client.agentMessage(action, {
-          runId: selectedRun,
+          runId: targetRun,
           confirmation,
           include: { diff: action === "apply", review: action === "apply" },
           background: action !== "apply"
         });
-        await refreshRun(selectedRun, response);
+        await refreshRun(targetRun, response);
       } else if (action === "cleanup") {
-        await client.cleanup(selectedRun);
-        await refreshRun(selectedRun);
+        await client.cleanup(targetRun);
+        await refreshRun(targetRun);
       } else if (shouldAutopilot(action)) {
         const response = await client.agentMessage("continue", {
-          runId: selectedRun,
+          runId: targetRun,
           include: { diff: true, review: true },
           background: true
         });
-        await refreshRun(selectedRun, response);
+        await refreshRun(targetRun, response);
       } else {
-        await client.runAction(selectedRun, action);
-        await refreshRun(selectedRun);
+        await client.runAction(targetRun, action);
+        await refreshRun(targetRun);
       }
     } finally {
       setActionInFlight(false);
@@ -2437,22 +2491,33 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         <RunInboxSummary inbox={runsInbox} selectedKey={inboxFilter} onSelectGroup={selectInboxGroup} />
         <div className="run-list" aria-label="运行线程">
           {visibleRuns.map((run) => (
-            <button
+            <div
               className={`run-item ${run.run_id === selectedRun ? "selected" : ""}`}
               key={run.run_id}
-              onClick={() => {
-                setNewTaskMode(false);
-                setSelectedRun(run.run_id);
-              }}
             >
-              <span className="run-task">{run.task || run.run_id}</span>
-              <span className="run-meta">
-                <span>{statusLabel(run.status)}</span>
-                <span>{run.run_id}</span>
-              </span>
-              <RunInboxBadge run={run} />
-              <BackgroundJobBadge job={run.background_job} />
-            </button>
+              <button
+                className="run-select"
+                type="button"
+                onClick={() => {
+                  setNewTaskMode(false);
+                  setSelectedRun(run.run_id);
+                }}
+              >
+                <span className="run-task">{run.task || run.run_id}</span>
+                <span className="run-meta">
+                  <span>{statusLabel(run.status)}</span>
+                  <span>{run.run_id}</span>
+                </span>
+                <RunInboxBadge run={run} />
+                <BackgroundJobBadge job={run.background_job} />
+              </button>
+              <RunInboxActionButton
+                run={run}
+                busy={interactionBusy}
+                onPhaseAction={handleAction}
+                onHealthAction={(action) => void runHealthAction(action)}
+              />
+            </div>
           ))}
         </div>
       </aside>
@@ -2787,6 +2852,45 @@ function RunInboxBadge({ run }: { run: RunSummary }) {
       <span>{inboxLabel(run)}</span>
       {detail ? <small>{detail}</small> : null}
     </span>
+  );
+}
+
+function RunInboxActionButton({
+  run,
+  busy,
+  onPhaseAction,
+  onHealthAction
+}: {
+  run: RunSummary;
+  busy?: boolean;
+  onPhaseAction: (action: SuggestedAction) => void;
+  onHealthAction: (action: AgentHealthAction) => void;
+}) {
+  const phaseAction = inboxSuggestedAction(run);
+  const rawAction = run.inbox?.next_action;
+  if (!phaseAction && !rawAction) return null;
+  const requiresConfirmation = Boolean(phaseAction?.requires_human_confirmation || rawAction?.requires_confirmation || rawAction?.safe === false);
+  const label = phaseAction?.label || rawAction?.label || "Open run";
+  const disabled = Boolean(busy || (!phaseAction && rawAction?.safe === false));
+  const Icon = rawAction?.kind === "diagnostic_tab" || rawAction?.kind === "open_run" ? Search : requiresConfirmation ? ShieldCheck : Play;
+  return (
+    <button
+      className={`run-inbox-action tone-${inboxTone(run.inbox?.key)} ${requiresConfirmation ? "confirmable" : ""}`}
+      type="button"
+      onClick={() => {
+        if (phaseAction) {
+          onPhaseAction(phaseAction);
+        } else if (rawAction) {
+          onHealthAction(rawAction);
+        }
+      }}
+      disabled={disabled}
+      title={rawAction?.reason || run.inbox?.summary || label}
+      aria-label={`Run inbox action: ${label}`}
+    >
+      <Icon size={13} />
+      <span>{label}</span>
+    </button>
   );
 }
 
