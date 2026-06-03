@@ -940,6 +940,141 @@ function timeLabel(timestamp?: string) {
   return timestamp ? timestamp.slice(11, 19) : "--:--:--";
 }
 
+function traceStatusTone(status?: string, action?: string) {
+  const value = `${status ?? ""} ${action ?? ""}`.toUpperCase();
+  if (value.includes("ERROR") || value.includes("FAILED") || value.includes("FAIL")) return "failed";
+  if (value.includes("PASS") || value.includes("SUCCESS") || value.includes("DONE") || value.includes("COMPLETE")) return "success";
+  if (value.includes("RUNNING") || value.includes("START") || value.includes("QUEUED")) return "running";
+  return "idle";
+}
+
+function traceHeading(entry: TraceEntry) {
+  const parts = [entry.phase ? phaseLabel(entry.phase) : "", entry.action ? commandLabel(entry.action) : "", entry.status ? statusLabel(entry.status) : ""].filter(Boolean);
+  if (parts.length) return parts.join(" · ");
+  return entry.tool || entry.provider || entry.agent || entry.source || "Activity";
+}
+
+function traceMeta(entry: TraceEntry) {
+  const provider = entry.provider || entry.agent;
+  const model = entry.model;
+  const meta = [
+    entry.timestamp ? timeLabel(entry.timestamp) : "",
+    provider && model ? `${provider} / ${model}` : provider || model || "",
+    entry.tool || "",
+    entry.path || "",
+    typeof entry.duration_ms === "number" ? compactDuration(entry.duration_ms) : ""
+  ];
+  return dedupeStrings(meta);
+}
+
+function selectedMessageTraceEntry(message: AgentMessage | null): TraceEntry | null {
+  if (!message) return null;
+  return {
+    source: "selected",
+    timestamp: message.timestamp,
+    provider: message.provider,
+    model: message.model,
+    phase: message.phase,
+    action: message.kind,
+    tool: message.tool,
+    status: message.status,
+    detail: message.body,
+    artifact_paths: message.artifacts
+  };
+}
+
+function traceEntryKey(entry: TraceEntry, index: number, prefix: string) {
+  return `${prefix}-${entry.index ?? entry.seq ?? index}-${entry.timestamp ?? ""}-${entry.phase ?? ""}-${entry.action ?? ""}`;
+}
+
+function TraceEntryCard({ entry, index }: { entry: TraceEntry; index: number }) {
+  const meta = traceMeta(entry);
+  const artifacts = entry.artifact_paths ?? [];
+  return (
+    <article className={`trace-entry-card tone-${traceStatusTone(entry.status, entry.action)}`} aria-label="Trace event">
+      <div className="trace-entry-index">{entry.index ?? entry.seq ?? index + 1}</div>
+      <div className="trace-entry-main">
+        <div className="trace-entry-head">
+          <strong>{traceHeading(entry)}</strong>
+          {entry.source ? <span>{entry.source}</span> : null}
+        </div>
+        {meta.length ? (
+          <div className="trace-entry-meta">
+            {meta.map((item) => (
+              <span key={item}>{item}</span>
+            ))}
+          </div>
+        ) : null}
+        {entry.detail ? <p>{entry.detail}</p> : null}
+        {entry.next_action ? <em>next: {entry.next_action}</em> : null}
+        {artifacts.length ? (
+          <div className="trace-entry-artifacts">
+            {artifacts.map((artifact) => (
+              <span key={artifact}>{artifact}</span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+function TraceEntryList({ title, entries, prefix }: { title: string; entries: TraceEntry[]; prefix: string }) {
+  if (!entries.length) {
+    return (
+      <section className="trace-section">
+        <div className="trace-section-head">
+          <h2>{title}</h2>
+          <span>0</span>
+        </div>
+        <div className="trace-empty">No entries returned.</div>
+      </section>
+    );
+  }
+  return (
+    <section className="trace-section">
+      <div className="trace-section-head">
+        <h2>{title}</h2>
+        <span>{entries.length}</span>
+      </div>
+      <div className="trace-entry-list">
+        {entries.map((entry, index) => (
+          <TraceEntryCard entry={entry} index={index} key={traceEntryKey(entry, index, prefix)} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function TracePanel({ message, trace, rawTrace }: { message: AgentMessage | null; trace: TraceEntry[]; rawTrace: TraceEntry[] }) {
+  const selected = selectedMessageTraceEntry(message);
+  const selectedEntries = selected ? [selected] : [];
+  const providerCount = new Set([...trace, ...rawTrace].map((entry) => entry.provider || entry.agent).filter(Boolean)).size;
+  return (
+    <div className="diagnostic-body trace-panel">
+      <section className="trace-summary" aria-label="Trace timeline">
+        <div>
+          <h2>活动摘要</h2>
+          <p>Run timeline and provider trace are summarized for inspection. Raw JSON remains available below.</p>
+        </div>
+        <div className="trace-stat-grid">
+          <span>{selectedEntries.length} selected</span>
+          <span>{trace.length} timeline</span>
+          <span>{rawTrace.length} trace</span>
+          <span>{providerCount} providers</span>
+        </div>
+      </section>
+      <TraceEntryList title="Selected message" entries={selectedEntries} prefix="selected" />
+      <TraceEntryList title="Run timeline" entries={trace} prefix="timeline" />
+      <TraceEntryList title="Provider trace" entries={rawTrace} prefix="raw" />
+      <details className="trace-raw-json">
+        <summary>Raw trace JSON</summary>
+        <pre>{JSON.stringify({ selected_message: message ?? {}, timeline: trace, raw_trace: rawTrace }, null, 2)}</pre>
+      </details>
+    </div>
+  );
+}
+
 async function copyTextToClipboard(text: string) {
   try {
     if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) return false;
@@ -4201,15 +4336,7 @@ function DetailPanel({
     );
   }
   if (tab === "Trace") {
-    return (
-      <div className="diagnostic-body">
-        <details className="provider-fold">
-          <summary>Provider / model</summary>
-          <pre>{JSON.stringify({ provider: message?.provider, model: message?.model, tool: message?.tool }, null, 2)}</pre>
-        </details>
-        <pre>{JSON.stringify({ selected_message: message ?? {}, timeline: trace, raw_trace: rawTrace }, null, 2)}</pre>
-      </div>
-    );
+    return <TracePanel message={message} trace={trace} rawTrace={rawTrace} />;
   }
   if (tab === "Diff") return <pre>{diff}</pre>;
   if (tab === "Log") return <pre>{artifactText}</pre>;

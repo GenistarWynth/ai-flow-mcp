@@ -98,6 +98,8 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("scripts/patchbay artifact <run_id> <path>", contract)
         self.assertIn("Agent diagnostic view replies", contract)
         self.assertIn("timelines, artifact previews", contract)
+        self.assertIn("Desktop/Web Trace views", contract)
+        self.assertIn("selected-message, run-timeline, and provider-trace summaries", contract)
         self.assertIn("focus_run_id", contract)
         self.assertIn("needs_approval", contract)
         self.assertIn("action_groups[]", contract)

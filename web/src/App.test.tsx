@@ -910,6 +910,32 @@ describe("Workbench", () => {
     expect(client.getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "codex" });
   });
 
+  it("renders the Trace diagnostics drawer as readable timeline summaries", async () => {
+    const client = createClient();
+
+    render(<Workbench client={client} />);
+
+    expect(await screen.findByRole("heading", { name: "Ship dashboard" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "活动" }));
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+
+    expect(within(details).getByRole("heading", { name: "活动摘要" })).toBeVisible();
+    expect(within(details).getByText("1 selected")).toBeVisible();
+    expect(within(details).getByText("1 timeline")).toBeVisible();
+    expect(within(details).getByText("1 trace")).toBeVisible();
+    const selectedSection = within(details).getByRole("heading", { name: "Selected message" }).closest("section")!;
+    const timelineSection = within(details).getByRole("heading", { name: "Run timeline" }).closest("section")!;
+    const providerSection = within(details).getByRole("heading", { name: "Provider trace" }).closest("section")!;
+    expect(within(selectedSection).getByText("ready from context")).toBeVisible();
+    expect(within(timelineSection).getByText("ready from context")).toBeVisible();
+    expect(within(providerSection).getByText("ready")).toBeVisible();
+    expect(within(providerSection).getByText("patchbay_review")).toBeVisible();
+    expect(within(providerSection).getByText(".ai/runs/run-ready/REVIEW.md")).toBeVisible();
+    expect(within(details).getByText("Raw trace JSON")).toBeVisible();
+    expect(within(details).getByText(/selected_message/)).not.toBeVisible();
+  });
+
   it("does not label custom write and fix providers as economy in the strategy map", async () => {
     const routing = {
       profile: "custom",

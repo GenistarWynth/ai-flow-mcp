@@ -80,6 +80,8 @@ Non-JSON `scripts/patchbay status <run_id>`, `scripts/patchbay context <run_id>`
 
 Non-JSON `scripts/patchbay events <run_id>`, `scripts/patchbay trace <run_id>`, `scripts/patchbay artifact <run_id> <path>`, and Agent diagnostic view replies should render timelines, artifact previews, requested diagnostic tabs, recovery hints, and grouped safe actions instead of dumping nested payloads. Use `--json` for automation or exact event/artifact data.
 
+Desktop/Web Trace views should present selected-message, run-timeline, and provider-trace summaries before raw JSON. Keep raw JSON available behind an explicit debug/detail affordance for exact troubleshooting.
+
 ## Setup And Skill Actions
 
 - `patchbay_setup` / `patchbay_install` initialize project files, local config, bundled Codex Skill installation, optional MCP registration, doctor summary, top-level `routing`, `recommendations`, `next_actions`, `actions[]`, and `action_groups[]`.
