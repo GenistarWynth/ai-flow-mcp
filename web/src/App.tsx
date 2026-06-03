@@ -2943,6 +2943,7 @@ function LocalAgentResponseDetails({
   const commands = localReplyCommandActions(response);
   const suggestions = localReplyActions(response).filter((action) => !(response.run_id && action.id === "open-latest-run" && action.runId === response.run_id));
   const suggestionGroups = localReplyActionGroups(response, suggestions);
+  const capabilities = localReplyCapabilities(response);
   const efficiency = response.efficiency_summary ?? response.metrics?.efficiency_summary;
   const hasPanels = Boolean(
     response.gate_diagnosis ||
@@ -2950,6 +2951,7 @@ function LocalAgentResponseDetails({
       response.routing ||
       response.metrics?.routing_evidence ||
       efficiency ||
+      capabilities.length ||
       commands.length ||
       suggestionGroups.length
   );
@@ -2960,6 +2962,7 @@ function LocalAgentResponseDetails({
       {response.setup ? <SetupResultCard response={response} /> : null}
       {response.routing || response.metrics?.routing_evidence ? <RoutingResultCard response={response} /> : null}
       <EfficiencySummaryCard summary={efficiency} />
+      <AgentCapabilitiesList capabilities={capabilities} />
       {commands.length ? (
         <div className="local-agent-command-actions" aria-label="Agent command actions">
           {commands.map((action) => (
@@ -3005,6 +3008,24 @@ function LocalAgentResponseDetails({
         </div>
       ) : null}
     </>
+  );
+}
+
+function localReplyCapabilities(response: AgentResponse | null) {
+  return (response?.capabilities ?? []).filter((capability) => capability.name || capability.summary);
+}
+
+function AgentCapabilitiesList({ capabilities }: { capabilities: NonNullable<AgentResponse["capabilities"]> }) {
+  if (!capabilities.length) return null;
+  return (
+    <div className="agent-capabilities" aria-label="Agent capabilities">
+      {capabilities.map((capability) => (
+        <div className="agent-capability" key={capability.name || capability.summary}>
+          <strong>{capability.name || "capability"}</strong>
+          {capability.summary ? <span>{capability.summary}</span> : null}
+        </div>
+      ))}
+    </div>
   );
 }
 

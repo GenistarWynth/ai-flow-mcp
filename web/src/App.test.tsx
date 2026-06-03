@@ -3066,6 +3066,48 @@ describe("Workbench", () => {
     expect(client.apply).not.toHaveBeenCalled();
   });
 
+  it("renders help capabilities from local Agent replies", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: "run-ready",
+      action: "help",
+      ok: true,
+      reply: "Patchbay Agent can help.",
+      capabilities: [
+        {
+          name: "unattended-approval",
+          summary:
+            "When a concrete run_id is selected, phrases such as `full access` or `无需向我确认` can approve the plan; final apply still needs apply_approved confirmation."
+        },
+        {
+          name: "economy-profile",
+          summary: "Route high-volume write/fix work to the economy provider while plan/review stay supervised."
+        }
+      ],
+      actions: []
+    });
+    const client = createClient({ agentMessage });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    const selectedRunComposer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(selectedRunComposer, "help{enter}");
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith("help", {
+        runId: "run-ready",
+        include: { diff: true, review: true },
+        background: true
+      })
+    );
+    const capabilities = await screen.findByLabelText("Agent capabilities");
+    expect(within(capabilities).getByText("unattended-approval")).toBeVisible();
+    expect(within(capabilities).getByText(/full access/)).toBeVisible();
+    expect(within(capabilities).getByText(/无需向我确认/)).toBeVisible();
+    expect(within(capabilities).getByText(/apply_approved/)).toBeVisible();
+    expect(within(capabilities).getByText("economy-profile")).toBeVisible();
+  });
+
   it("starts a fresh thread from selected-run local Agent replies", async () => {
     const agentMessage = vi
       .fn()

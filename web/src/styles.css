@@ -167,6 +167,29 @@ textarea { resize: none; }
   width: min(780px, calc(100% - 42px));
   margin-left: 42px;
 }
+.agent-capabilities {
+  display: grid;
+  gap: 7px;
+  width: min(780px, calc(100% - 42px));
+  margin-left: 42px;
+}
+.agent-capability {
+  display: grid;
+  gap: 3px;
+  padding: 9px 11px;
+  border: 1px solid #dbe4ef;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.agent-capability strong {
+  color: #1f2937;
+  font-size: 12px;
+}
+.agent-capability span {
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.45;
+}
 .empty-action {
   display: inline-flex;
   align-items: center;
