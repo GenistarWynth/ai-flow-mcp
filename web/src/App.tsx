@@ -1048,11 +1048,17 @@ function suggestionsFor(activity: AgentActivity, context: HandoffContext | null)
   const fromConversation = activity.conversation_state?.suggestions ?? [];
   if (fromConversation.length) return fromConversation;
   return (context?.next_actions ?? []).map((action) => ({
-    id: action.name,
-    label: commandLabel(action.name),
+    id: action.id ?? action.name,
+    label: action.label ?? commandLabel(action.name),
     action: action.name,
     safe: action.safe,
     tool: action.tool,
+    kind: action.kind,
+    message: action.message,
+    command: action.command,
+    host: action.host,
+    run_id: action.run_id,
+    tab: action.tab,
     requires_human_confirmation: action.requires_human_confirmation,
     reason: action.reason,
     alternative_action: action.alternative_action
@@ -1061,8 +1067,8 @@ function suggestionsFor(activity: AgentActivity, context: HandoffContext | null)
 
 function actionFromSuggestion(suggestion: SuggestedAction | AgentAction): SuggestedAction {
   const action = "action" in suggestion ? suggestion.action : suggestion.name;
-  return {
-    id: "id" in suggestion ? suggestion.id : action,
+  const result: SuggestedAction = {
+    id: "id" in suggestion && suggestion.id ? suggestion.id : action,
     label: suggestion.label ?? commandLabel(action),
     action,
     safe: suggestion.safe,
@@ -1071,6 +1077,44 @@ function actionFromSuggestion(suggestion: SuggestedAction | AgentAction): Sugges
     reason: suggestion.reason,
     alternative_action: suggestion.alternative_action
   };
+  if ("kind" in suggestion) result.kind = suggestion.kind;
+  if ("message" in suggestion) result.message = suggestion.message;
+  if ("command" in suggestion) result.command = suggestion.command;
+  if ("host" in suggestion) result.host = suggestion.host;
+  if ("run_id" in suggestion) result.run_id = suggestion.run_id;
+  if ("tab" in suggestion) result.tab = suggestion.tab;
+  return result;
+}
+
+function healthActionFromSuggestion(suggestion: SuggestedAction): AgentHealthAction | null {
+  const pollMessages: Record<string, string> = {
+    poll_context: "context",
+    poll_status: "status",
+    poll_events: "events"
+  };
+  const message = suggestion.message ?? pollMessages[suggestion.action] ?? pollMessages[suggestion.id];
+  const kind = suggestion.kind ?? (message ? "local_agent" : suggestion.tab ? "diagnostic_tab" : undefined);
+  if (!kind && !message && !suggestion.tab && !suggestion.run_id) return null;
+  return {
+    id: suggestion.id || suggestion.action,
+    label: suggestion.label || commandLabel(suggestion.action),
+    kind,
+    message,
+    command: suggestion.command,
+    host: suggestion.host,
+    run_id: suggestion.run_id,
+    tab: suggestion.tab,
+    safe: suggestion.safe,
+    reason: suggestion.reason
+  };
+}
+
+function canRunSuggestionWhileBusy(suggestion: SuggestedAction) {
+  if (suggestion.safe === false) return false;
+  const message = suggestion.message ?? (suggestion.action === "poll_context" ? "context" : suggestion.action === "poll_status" ? "status" : suggestion.action === "poll_events" ? "events" : "");
+  if (suggestion.kind === "diagnostic_tab" || suggestion.kind === "open_run") return true;
+  if (suggestion.kind === "local_agent" && ["context", "status", "events"].includes(message)) return true;
+  return ["poll_context", "poll_status", "poll_events"].includes(suggestion.action);
 }
 
 function doctorProfileStatus(report?: DoctorReport | null): DoctorProfileStatus | null {
@@ -1690,6 +1734,11 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       typeof candidate === "string"
         ? suggestions.find((item) => item.action === candidate) ?? { id: candidate, label: commandLabel(candidate), action: candidate, safe: candidate !== "apply" || readyToApply }
         : actionFromSuggestion(candidate);
+    const healthAction = healthActionFromSuggestion(action);
+    if (healthAction) {
+      void runHealthAction(healthAction);
+      return;
+    }
     if (action.action === "apply" && !readyToApply) action.safe = false;
     const confirmation = confirmCopy(action, readyToApply);
     if (confirmation) {
@@ -2403,7 +2452,13 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
           {selectedRun && suggestions.length ? (
             <div className="suggestions" aria-label="建议动作">
               {suggestions.map((suggestion) => (
-                <button className={`suggestion ${suggestion.safe ? "" : "blocked"}`} type="button" key={suggestion.id} onClick={() => handleAction(suggestion)} disabled={interactionBusy}>
+                <button
+                  className={`suggestion ${suggestion.safe ? "" : "blocked"}`}
+                  type="button"
+                  key={suggestion.id}
+                  onClick={() => handleAction(suggestion)}
+                  disabled={submitting || actionInFlight || (runBusy && !canRunSuggestionWhileBusy(suggestion))}
+                >
                   {suggestion.safe ? <Play size={13} /> : <AlertTriangle size={13} />}
                   {suggestion.label}
                 </button>
@@ -2610,13 +2665,24 @@ function NextActionCard({
 }) {
   const recoveryGroups = groupedHealthActions(failureRecovery?.actions, failureRecovery?.action_groups);
   if (busy) {
+    const refreshActions = suggestions.filter(canRunSuggestionWhileBusy);
     return (
       <div className="next-card running" aria-label="后台任务运行中">
         <CircleDot size={16} />
         <div>
           <strong>后台任务运行中</strong>
-          <span>Patchbay Agent 会自动刷新进度，完成后显示下一步。</span>
+          <span>Patchbay Agent 会自动刷新进度，也可以安全手动刷新。</span>
         </div>
+        {refreshActions.length ? (
+          <div className="next-card-actions">
+            {refreshActions.slice(0, 3).map((item) => (
+              <button type="button" key={item.id} onClick={() => onAction(item)}>
+                {item.message === "context" || item.action === "poll_context" ? <FileText size={13} /> : <RefreshCw size={13} />}
+                {item.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
     );
   }

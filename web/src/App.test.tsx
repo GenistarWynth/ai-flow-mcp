@@ -4960,7 +4960,52 @@ describe("Workbench", () => {
       status: "RUNNING",
       current_phase: "write",
       background_job: backgroundJob,
-      next_actions: [],
+      next_actions: [
+        {
+          name: "poll_context",
+          id: "poll_context",
+          label: "Poll context",
+          safe: true,
+          tool: "patchbay_context",
+          kind: "local_agent",
+          run_id: "run-ready",
+          message: "context",
+          requires_human_confirmation: false,
+          reason: "Refresh the latest handoff context for this background run."
+        },
+        {
+          name: "poll_status",
+          id: "poll_status",
+          label: "Poll status",
+          safe: true,
+          tool: "patchbay_status",
+          kind: "local_agent",
+          run_id: "run-ready",
+          message: "status",
+          requires_human_confirmation: false,
+          reason: "Refresh this background run without approving, continuing, or applying changes."
+        },
+        {
+          name: "poll_events",
+          id: "poll_events",
+          label: "Poll events",
+          safe: true,
+          tool: "patchbay_events",
+          kind: "local_agent",
+          run_id: "run-ready",
+          message: "events",
+          requires_human_confirmation: false,
+          reason: "Read the background run event stream without advancing any phase."
+        }
+      ],
+      action_groups: [
+        {
+          id: "background_polling",
+          label: "Background polling",
+          action_ids: ["poll_context", "poll_status", "poll_events"],
+          count: 3
+        }
+      ],
       timeline: [
         {
           source: "event",
@@ -4974,11 +5019,22 @@ describe("Workbench", () => {
       ],
       agent_activity: {
         ...plannedContext.agent_activity!,
-        headline: "Patchbay Agent 正在执行实现阶段。",
+        headline: "Patchbay Agent 正在后台执行实现阶段。",
         tone: "running",
         background_job: backgroundJob,
         current_step: { phase: "write", label: "实现", status: "RUNNING", status_label: "运行中", summary: "后台任务正在运行，状态会自动刷新。" },
-        next_action: null,
+        next_action: {
+          name: "poll_context",
+          id: "poll_context",
+          label: "Poll context",
+          safe: true,
+          tool: "patchbay_context",
+          kind: "local_agent",
+          run_id: "run-ready",
+          message: "context",
+          requires_human_confirmation: false,
+          reason: "Refresh the latest handoff context for this background run."
+        },
         conversation_state: {
           task: "Background implementation",
           status: "RUNNING",
@@ -4986,9 +5042,43 @@ describe("Workbench", () => {
           phase: "write",
           phase_label: "实现",
           tone: "running",
-          next_step: "后台任务正在运行，完成后会出现下一步。",
-          composer_placeholder: "后台任务运行中，完成后可继续",
-          suggestions: [{ id: "write", label: "开始实现", action: "write", safe: true }]
+          next_step: "后台任务正在实现阶段运行。可以安全执行“Poll context”刷新进度，不会推进任何门禁。",
+          composer_placeholder: "后台运行中，点击“Poll context”刷新",
+          suggestions: [
+            {
+              id: "poll_context",
+              label: "Poll context",
+              action: "poll_context",
+              safe: true,
+              tool: "patchbay_context",
+              kind: "local_agent",
+              run_id: "run-ready",
+              message: "context",
+              reason: "Refresh the latest handoff context for this background run."
+            },
+            {
+              id: "poll_status",
+              label: "Poll status",
+              action: "poll_status",
+              safe: true,
+              tool: "patchbay_status",
+              kind: "local_agent",
+              run_id: "run-ready",
+              message: "status",
+              reason: "Refresh this background run without approving, continuing, or applying changes."
+            },
+            {
+              id: "poll_events",
+              label: "Poll events",
+              action: "poll_events",
+              safe: true,
+              tool: "patchbay_events",
+              kind: "local_agent",
+              run_id: "run-ready",
+              message: "events",
+              reason: "Read the background run event stream without advancing any phase."
+            }
+          ]
         },
         messages: [
           {
@@ -5025,22 +5115,22 @@ describe("Workbench", () => {
 
     render(<Workbench client={client} />);
 
-    expect(await screen.findByText("Patchbay Agent 正在执行实现阶段。")).toBeInTheDocument();
+    expect(await screen.findByText("Patchbay Agent 正在后台执行实现阶段。")).toBeInTheDocument();
     expect(screen.getAllByLabelText("Background job status")).toHaveLength(2);
     expect(screen.getAllByText(/后台运行中/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/pid 4321/).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Open background run" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open activity" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Poll status" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Poll context" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Poll events" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Poll status" }).length).toBeGreaterThan(1);
+    expect(screen.getAllByRole("button", { name: "Poll context" }).length).toBeGreaterThan(1);
+    expect(screen.getAllByRole("button", { name: "Poll events" }).length).toBeGreaterThan(1);
     await userEvent.click(screen.getByRole("button", { name: "Open activity" }));
     expect(screen.getByRole("tab", { selected: true })).toBeInTheDocument();
     const statusCalls = vi.mocked(client.getStatus).mock.calls.length;
-    await userEvent.click(screen.getByRole("button", { name: "Poll status" }));
+    await userEvent.click(screen.getAllByRole("button", { name: "Poll status" }).at(-1)!);
     await waitFor(() => expect(client.getStatus).toHaveBeenCalledTimes(statusCalls + 1));
     const contextCalls = vi.mocked(client.getContext).mock.calls.length;
-    await userEvent.click(screen.getByRole("button", { name: "Poll context" }));
+    await userEvent.click(screen.getAllByRole("button", { name: "Poll context" }).at(-1)!);
     await waitFor(() => expect(client.getContext).toHaveBeenCalledTimes(contextCalls + 1));
     expect(screen.getByRole("heading", { name: "Background implementation" })).toBeInTheDocument();
     expect(screen.getAllByText(/1.5s/).length).toBeGreaterThan(0);
@@ -5048,7 +5138,8 @@ describe("Workbench", () => {
     expect(screen.getByText("运行中 · 实现")).toBeInTheDocument();
     expect(screen.getByLabelText("给 Patchbay Agent 输入消息")).toBeDisabled();
     expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /开始实现/ })).toBeDisabled();
+    expect(client.runAction).not.toHaveBeenCalledWith("run-ready", "poll_context");
+    expect(screen.queryByRole("button", { name: /开始实现/ })).not.toBeInTheDocument();
   });
 
   it("auto-refreshes active background jobs until completion", async () => {

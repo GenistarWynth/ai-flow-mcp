@@ -399,8 +399,16 @@ export type TraceEntry = {
 
 export type NextAction = {
   name: string;
+  id?: string;
+  label?: string;
   safe: boolean;
   tool: string;
+  kind?: AgentHealthAction["kind"];
+  message?: string;
+  command?: string;
+  host?: string;
+  run_id?: string;
+  tab?: RunReferenceView["tab"];
   requires_human_confirmation: boolean;
   reason: string;
   alternative_action?: AgentHealthAction | null;
@@ -498,6 +506,12 @@ export type SuggestedAction = {
   action: string;
   safe: boolean;
   tool?: string;
+  kind?: AgentHealthAction["kind"];
+  message?: string;
+  command?: string;
+  host?: string;
+  run_id?: string;
+  tab?: RunReferenceView["tab"];
   requires_human_confirmation?: boolean;
   reason?: string;
   alternative_action?: AgentHealthAction | null;
@@ -611,6 +625,7 @@ export type HandoffContext = {
   routing_evidence?: RoutingEvidence;
   efficiency_summary?: EfficiencySummary;
   next_actions?: NextAction[];
+  action_groups?: ActionGroup[];
   provider_trail?: ProviderTrailEntry[];
   artifacts?: HandoffArtifact[];
   timeline?: TraceEntry[];

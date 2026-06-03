@@ -634,6 +634,7 @@ textarea { resize: none; }
 .next-card strong, .next-card span { display: block; overflow-wrap: anywhere; }
 .next-card span { margin-top: 3px; color: #647083; font-size: 12px; }
 .next-card p { margin: 6px 0 0; color: #344255; font-size: 12px; overflow-wrap: anywhere; }
+.next-card-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .recovery-artifacts { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
 .recovery-artifacts span { margin: 0; border: 1px solid #f0b6b2; border-radius: 8px; padding: 4px 6px; color: #b42318; background: #fff8f7; font-size: 12px; font-weight: 700; }
 .recovery-action-groups { display: grid; gap: 7px; margin-top: 8px; }
