@@ -40,6 +40,7 @@ import {
   PatchbayClient,
   PhaseProvider,
   PhaseStrategy,
+  ProviderTrailEntry,
   ProviderUsage,
   RoutingEvidence,
   RunMetrics,
@@ -1353,6 +1354,189 @@ function DiffPanel({ diff }: { diff: string }) {
         <summary>Raw diff</summary>
         {diff ? <pre>{diff}</pre> : <div className="trace-empty">No raw diff available.</div>}
       </details>
+    </div>
+  );
+}
+
+function providerIdentity(item: { provider?: string; model?: string; command_key?: string }) {
+  const provider = item.provider || item.command_key || "provider";
+  const model = item.model || item.command_key;
+  return provider && model && provider !== model ? `${provider} / ${model}` : provider || model || "-";
+}
+
+function providerUsageKey(item: ProviderUsage, index: number) {
+  return [
+    item.phase,
+    item.provider,
+    item.model,
+    item.command_key,
+    item.events,
+    item.duration_ms,
+    item.token_usage?.total_tokens ?? item.total_tokens,
+    index
+  ].join("|");
+}
+
+function uniqueProviderUsage(items: ProviderUsage[]) {
+  const seen = new Set<string>();
+  return items.filter((item, index) => {
+    const key = providerUsageKey(item, index);
+    const stable = key.replace(/\|\d+$/, "");
+    if (seen.has(stable)) return false;
+    seen.add(stable);
+    return true;
+  });
+}
+
+function observedProviderUsage(phase: string, metrics?: RunMetrics | null, routing?: RoutingEvidence | null) {
+  const routed = routing?.phases?.[phase]?.observed ?? [];
+  const measured = (metrics?.provider_usage ?? []).filter((item) => item.phase === phase);
+  return uniqueProviderUsage([...routed, ...measured]);
+}
+
+function providerUsageDetail(item: ProviderUsage) {
+  const signals: string[] = [];
+  if (item.events) signals.push(`${item.events} events`);
+  if (typeof item.duration_ms === "number") signals.push(compactDuration(item.duration_ms));
+  const totalTokens = item.token_usage?.total_tokens ?? item.total_tokens;
+  if (item.token_usage?.known || typeof totalTokens === "number") signals.push(`${compactNumber(totalTokens)} tokens`);
+  if (item.cost?.known) signals.push(`${item.cost.currency ?? "USD"} ${compactNumber(item.cost.estimated_total ?? 0)}`);
+  return signals.join(" · ") || "observed";
+}
+
+function providerTrailDetail(item: ProviderTrailEntry) {
+  return dedupeStrings([item.status ? statusLabel(item.status) : "recorded", item.timestamp ? timeLabel(item.timestamp) : ""]).join(" · ");
+}
+
+function providerRouteTone(phase: string, route?: PhaseStrategy | PhaseProvider, routing?: RoutingEvidence | null) {
+  const evidence = routing?.phases?.[phase];
+  if (phase === "write" || phase === "fix") {
+    if (evidence?.observed_economy || evidence?.configured_economy || (route as PhaseStrategy | undefined)?.economy_route) return "economy";
+    return "custom";
+  }
+  if ((route as PhaseStrategy | undefined)?.tier === "economy") return "economy";
+  if ((route as PhaseStrategy | undefined)?.tier === "custom") return "custom";
+  return "supervision";
+}
+
+function providerPhaseRows(
+  metrics?: RunMetrics | null,
+  routing?: RoutingEvidence | null,
+  providers?: Record<string, PhaseProvider>,
+  trail?: ProviderTrailEntry[]
+) {
+  const strategies = new Map(phaseStrategyEntries(undefined, routing, providers));
+  const phasesToShow = new Set<string>(strategyPhases);
+  Object.keys(providers ?? {}).forEach((phase) => phasesToShow.add(phase));
+  Object.keys(routing?.phases ?? {}).forEach((phase) => phasesToShow.add(phase));
+  (metrics?.provider_usage ?? []).forEach((item) => item.phase && phasesToShow.add(item.phase));
+  (trail ?? []).forEach((item) => item.phase && phasesToShow.add(item.phase));
+  return Array.from(phasesToShow)
+    .map((phase) => {
+      const configured = strategies.get(phase) ?? providers?.[phase] ?? routing?.phases?.[phase]?.configured;
+      const observed = observedProviderUsage(phase, metrics, routing);
+      const events = (trail ?? []).filter((item) => item.phase === phase);
+      return { phase, configured, observed, events };
+    })
+    .filter((row) => Boolean(row.configured || row.observed.length || row.events.length));
+}
+
+function ProvidersPanel({ status, context }: { status: RunStatus | null; context: HandoffContext | null }) {
+  const metrics = context?.run_metrics ?? status?.run_metrics;
+  const routing = context?.routing_evidence ?? metrics?.routing_evidence ?? status?.routing_evidence;
+  const providers = status?.effective_phase_providers ?? {};
+  const trail = context?.provider_trail ?? [];
+  const rows = providerPhaseRows(metrics, routing, providers, trail);
+  const configuredCount = rows.filter((row) => row.configured).length;
+  const observedCount = rows.filter((row) => row.observed.length || row.events.length).length;
+  const target = routing?.economy_health?.target ?? routing?.target;
+  const health = economyHealthLabel(routing);
+  const coverage = routingCoverageLabel(routing);
+  const summary =
+    routing?.economy_health?.summary ??
+    routing?.summary ??
+    "Configured phase providers and observed provider events are summarized for routing inspection.";
+  const recommendation = routing?.economy_health?.recommendation ?? routing?.recommendation ?? metrics?.efficiency_summary?.recommendation;
+  return (
+    <div className="providers-panel">
+      <section className="providers-summary" aria-label="Provider summary">
+        <div>
+          <h2>提供方摘要</h2>
+          <p>{summary}</p>
+        </div>
+        <div className="provider-stat-grid">
+          <span>{health || "健康未知"}</span>
+          <span>{coverage || `${observedCount} observed`}</span>
+          <span>{configuredCount} configured</span>
+          <span>{trail.length} events</span>
+        </div>
+        {target ? (
+          <div className="provider-target">
+            <span>Economy target</span>
+            <strong>{routeSummary(target)}</strong>
+          </div>
+        ) : null}
+        {recommendation ? <small>{recommendation}</small> : null}
+      </section>
+      <section className="providers-section" aria-label="Phase provider routes">
+        <div className="trace-section-head">
+          <h2>阶段路由</h2>
+          <span>{rows.length}</span>
+        </div>
+        {rows.length ? (
+          <div className="provider-route-list">
+            {rows.map((row) => {
+              const tier = (row.configured as PhaseStrategy | undefined)?.tier ?? providerRouteTone(row.phase, row.configured, routing);
+              const signal = routeEvidenceLabel(row.phase, routing) || (row.configured as PhaseStrategy | undefined)?.reason || strategyReason(row.phase);
+              const commandStatus = routing?.phases?.[row.phase]?.command_status ?? (row.configured as PhaseStrategy | undefined)?.command_status;
+              return (
+                <article className={`provider-route-card ${providerRouteTone(row.phase, row.configured, routing)}`} key={row.phase}>
+                  <div className="provider-route-head">
+                    <span>{phaseLabel(row.phase)}</span>
+                    <strong>{strategyTierLabel(tier)}</strong>
+                  </div>
+                  <code>{routeSummary(row.configured)}</code>
+                  {signal ? <small>{signal}</small> : null}
+                  {commandStatus?.status && commandStatus.status !== "ready" ? <em>{commandStatus.recommendation ?? commandStatus.status}</em> : null}
+                  <div className="provider-observed-list" aria-label={`${phaseLabel(row.phase)} observed providers`}>
+                    <span className="provider-observed-title">观察证据</span>
+                    {row.observed.length ? (
+                      row.observed.map((item, index) => (
+                        <span key={providerUsageKey(item, index)}>
+                          {providerIdentity(item)} · {providerUsageDetail(item)}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="empty">No provider usage observed.</span>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="trace-empty">No provider routing data loaded.</div>
+        )}
+      </section>
+      <section className="providers-section" aria-label="Provider event trail">
+        <div className="trace-section-head">
+          <h2>事件轨迹</h2>
+          <span>{trail.length}</span>
+        </div>
+        {trail.length ? (
+          <div className="provider-trail-list">
+            {trail.map((item, index) => (
+              <article className={`provider-trail-card ${traceStatusTone(item.status)}`} key={`${item.phase}-${item.provider}-${item.timestamp}-${index}`}>
+                <span>{phaseLabel(item.phase)}</span>
+                <strong>{providerIdentity(item)}</strong>
+                <small>{providerTrailDetail(item)}</small>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="trace-empty">No provider trail events recorded.</div>
+        )}
+      </section>
     </div>
   );
 }
@@ -4821,27 +5005,7 @@ function DetailPanel({
   if (tab === "Diff") return <DiffPanel diff={diff} />;
   if (tab === "Log") return <LogPanel artifactText={artifactText} recovery={recovery} status={status} artifacts={artifacts} />;
   if (tab === "Artifacts") return <ArtifactsPanel artifactText={artifactText} artifacts={artifacts} recovery={recovery} status={status} />;
-  if (tab === "Providers") {
-    const providers = Object.entries(status?.effective_phase_providers ?? {});
-    return (
-      <div className="provider-list">
-        {providers.map(([phase, provider]) => (
-          <div className="provider-item" key={phase}>
-            <span>{phaseLabel(phase)}</span>
-            <strong>{provider.provider || "-"}</strong>
-            <small>{provider.model || provider.command_key || "默认"}</small>
-          </div>
-        ))}
-        {(context?.provider_trail ?? []).map((item, index) => (
-          <div className="provider-item trail" key={`${item.phase}-${index}`}>
-            <span>{phaseLabel(item.phase)}</span>
-            <strong>{item.provider || "-"}</strong>
-            <small>{item.model || item.status || "已记录"}</small>
-          </div>
-        ))}
-      </div>
-    );
-  }
+  if (tab === "Providers") return <ProvidersPanel status={status} context={context} />;
   return (
     <ConfigPanel config={config} />
   );

@@ -899,8 +899,20 @@ describe("Workbench", () => {
 
     await userEvent.click(screen.getByRole("tab", { name: "提供方" }));
 
-    expect(screen.getAllByText("reasonix_cli")[0]).toBeVisible();
-    expect(screen.getAllByText("codex_cli")[0]).toBeVisible();
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    expect(within(details).getByRole("heading", { name: "提供方摘要" })).toBeVisible();
+    expect(within(details).getByText("Configured phase providers and observed provider events are summarized for routing inspection.")).toBeVisible();
+    expect(within(details).getByText("4 configured")).toBeVisible();
+    expect(within(details).getByText("3 observed")).toBeVisible();
+    expect(within(details).getByText("1 events")).toBeVisible();
+    const routesSection = within(details).getByRole("heading", { name: "阶段路由" }).closest("section")!;
+    expect(within(routesSection).getByText("实现")).toBeVisible();
+    expect(within(routesSection).getAllByText("reasonix_cli / reasonix")[0]).toBeVisible();
+    expect(within(routesSection).getByText("reasonix_cli · 2 events · 8.0s")).toBeVisible();
+    expect(within(routesSection).getByText("No provider usage observed.")).toBeVisible();
+    const trailSection = within(details).getByRole("heading", { name: "事件轨迹" }).closest("section")!;
+    expect(within(trailSection).getByText("codex_cli / gpt-5")).toBeVisible();
+    expect(within(trailSection).getByText("通过 · 10:02:00")).toBeVisible();
     expect(client.getContext).toHaveBeenCalledWith("run-ready");
 
     await userEvent.click(screen.getByRole("tab", { name: "就绪" }));

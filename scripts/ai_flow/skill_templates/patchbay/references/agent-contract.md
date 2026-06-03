@@ -88,6 +88,8 @@ Desktop/Web Diff views should summarize changed files, additions, deletions, and
 
 Desktop/Web Config views should summarize resolved phase routes, provider commands, test allowlists, custom providers, and workflow safeguards before raw config JSON. Keep the raw JSON available behind an explicit debug/detail affordance.
 
+Desktop/Web Providers views should summarize configured phase routes, observed provider usage, provider event trail, economy target, coverage, and economy health before any raw event inspection. Make write/fix economy routing evidence visible without requiring users to read trace JSON.
+
 ## Setup And Skill Actions
 
 - `patchbay_setup` / `patchbay_install` initialize project files, local config, bundled Codex Skill installation, optional MCP registration, doctor summary, top-level `routing`, `recommendations`, `next_actions`, `actions[]`, and `action_groups[]`.
