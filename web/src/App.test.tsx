@@ -936,6 +936,58 @@ describe("Workbench", () => {
     expect(within(details).getByText(/selected_message/)).not.toBeVisible();
   });
 
+  it("renders the Config diagnostics drawer as readable configuration summaries", async () => {
+    const client = createClient({
+      getConfig: vi.fn().mockResolvedValue({
+        config: "C:/repo/.ai/patchbay.toml",
+        resolved: {
+          phases: {
+            plan: { provider: "claude_cli", model: "opus", timeout: 900 },
+            write: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix", timeout: 900 },
+            fix: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix", timeout: 900 },
+            review: { provider: "codex_cli", model: "gpt-5", timeout: 900 },
+            test: { commands: ["npm test"], timeout: 300 },
+            apply: { timeout: 120 }
+          },
+          commands: { claude: "claude", codex: "codex", reasonix: "" },
+          providers: { cheap_writer: { roles: ["write", "fix"], command: "deepseek-writer", args: ["--json"] } },
+          commands_allowlist: { test: ["npm test", "pytest -q"] },
+          workflow: {
+            require_plan_approval: true,
+            fail_on_dirty_workspace: true,
+            apply_to_current_workspace_only_after_review_pass: true,
+            allow_apply_without_tests: false
+          }
+        }
+      })
+    });
+
+    render(<Workbench client={client} />);
+
+    expect(await screen.findByRole("heading", { name: "Ship dashboard" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "配置" }));
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+
+    expect(within(details).getByRole("heading", { name: "配置摘要" })).toBeVisible();
+    expect(within(details).getByText("C:/repo/.ai/patchbay.toml")).toBeVisible();
+    expect(within(details).getByText("6 phases")).toBeVisible();
+    expect(within(details).getByText("3 commands")).toBeVisible();
+    expect(within(details).getByText("1 providers")).toBeVisible();
+    expect(within(details).getByText("2 tests")).toBeVisible();
+    expect(within(details).getAllByText("reasonix_cli / deepseek-v4-pro").length).toBeGreaterThan(0);
+    expect(within(details).getAllByText("command reasonix · 900s").length).toBeGreaterThan(0);
+    expect(within(details).getByText("cheap_writer")).toBeVisible();
+    expect(within(details).getByText("write/fix · deepseek-writer --json")).toBeVisible();
+    expect(within(details).getByText("reasonix: 未配置")).toBeVisible();
+    expect(within(details).getByText("npm test")).toBeVisible();
+    expect(within(details).getByText("pytest -q")).toBeVisible();
+    expect(within(details).getByText("计划批准门禁")).toBeVisible();
+    expect(within(details).getAllByText("开启").length).toBeGreaterThan(0);
+    expect(within(details).getByText("Raw config JSON")).toBeVisible();
+    expect(within(details).getAllByText(/patchbay.toml/).length).toBeGreaterThan(0);
+  });
+
   it("does not label custom write and fix providers as economy in the strategy map", async () => {
     const routing = {
       profile: "custom",

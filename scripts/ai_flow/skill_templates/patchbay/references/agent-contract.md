@@ -84,6 +84,8 @@ Desktop/Web Trace views should present selected-message, run-timeline, and provi
 
 Desktop/Web Log and Artifacts views should use `failure_recovery`, status errors, priority artifacts, and the loaded artifact preview to present a failure summary, suggested next step, highlighted error lines, and an artifact index before the raw preview.
 
+Desktop/Web Config views should summarize resolved phase routes, provider commands, test allowlists, custom providers, and workflow safeguards before raw config JSON. Keep the raw JSON available behind an explicit debug/detail affordance.
+
 ## Setup And Skill Actions
 
 - `patchbay_setup` / `patchbay_install` initialize project files, local config, bundled Codex Skill installation, optional MCP registration, doctor summary, top-level `routing`, `recommendations`, `next_actions`, `actions[]`, and `action_groups[]`.

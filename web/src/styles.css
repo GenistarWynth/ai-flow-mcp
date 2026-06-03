@@ -929,7 +929,6 @@ button.danger { color: #b42318; border-color: #f0b6b2; background: #fff8f7; }
 .tabs button.active { background: #edf4ff; color: #174ea6; }
 .details pre, .config-view pre, .artifacts-panel pre {
   margin: 0;
-  height: 100%;
   overflow: auto;
   white-space: pre-wrap;
   background: #111827;
@@ -942,8 +941,108 @@ button.danger { color: #b42318; border-color: #f0b6b2; background: #fff8f7; }
 .provider-fold { border-bottom: 1px solid #d9dee6; background: #ffffff; }
 .provider-fold summary { cursor: pointer; padding: 10px 12px; font-weight: 750; }
 .provider-fold pre { max-height: 160px; }
-.config-view { height: 100%; }
-.config-view svg { display: none; }
+.config-view {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 12px;
+}
+.config-summary,
+.config-section,
+.config-raw-json {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #d9dee6;
+  border-radius: 8px;
+  padding: 10px;
+  background: #ffffff;
+}
+.config-summary h2,
+.config-section h2 {
+  margin: 0;
+  color: #344255;
+  font-size: 13px;
+}
+.config-summary p {
+  margin: 4px 0 0;
+  color: #647083;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.config-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.config-stat-grid span,
+.config-chip-list span {
+  border: 1px solid #cfd7e3;
+  border-radius: 8px;
+  padding: 6px 7px;
+  color: #344255;
+  background: #fbfcfe;
+  font-size: 12px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+.config-row-list {
+  display: grid;
+  gap: 7px;
+}
+.config-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 3px 8px;
+  border: 1px solid #d9dee6;
+  border-radius: 8px;
+  padding: 8px;
+  background: #ffffff;
+}
+.config-row.compact {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.config-row span {
+  color: #647083;
+  font-size: 12px;
+  font-weight: 800;
+}
+.config-row strong {
+  color: #172033;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.config-row small {
+  grid-column: 2;
+  color: #647083;
+  font-size: 11px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.config-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.config-chip-list span.blocked {
+  border-color: #fed7aa;
+  color: #92400e;
+  background: #fff7ed;
+}
+.config-raw-json {
+  padding: 0;
+  overflow: hidden;
+}
+.config-raw-json summary {
+  cursor: pointer;
+  padding: 9px 10px;
+  color: #344255;
+  font-size: 12px;
+  font-weight: 800;
+}
+.config-raw-json pre {
+  max-height: 320px;
+}
 .provider-list { display: grid; align-content: start; gap: 8px; padding: 12px; }
 .provider-item { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 4px 10px; padding: 10px; border: 1px solid #d9dee6; border-radius: 8px; background: #ffffff; }
 .provider-item.trail { background: #fbfcfe; }

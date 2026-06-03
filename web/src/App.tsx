@@ -1081,6 +1081,7 @@ type DiagnosticArtifact = {
   path?: string;
   priority?: boolean;
 };
+type ConfigRecord = Record<string, unknown>;
 
 function diagnosticRecovery(context: HandoffContext | null, status: RunStatus | null) {
   return context?.failure_recovery ?? status?.failure_recovery ?? null;
@@ -1243,6 +1244,202 @@ function ArtifactsPanel({
         </div>
         {artifactText ? <pre>{artifactText}</pre> : <div className="trace-empty">未加载产物预览。</div>}
       </section>
+    </div>
+  );
+}
+
+function asRecord(value: unknown): ConfigRecord | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as ConfigRecord : null;
+}
+
+function stringValue(value: unknown) {
+  if (value === undefined || value === null || value === "") return "";
+  if (Array.isArray(value)) return value.map((item) => String(item)).filter(Boolean).join(" ");
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function configResolved(config: unknown) {
+  const root = asRecord(config);
+  return asRecord(root?.resolved) ?? root;
+}
+
+function configPath(config: unknown) {
+  return stringValue(asRecord(config)?.config);
+}
+
+const configPhaseOrder = ["plan", "write", "fix", "review", "test", "apply"];
+
+function configPhaseEntries(config: unknown) {
+  const resolved = configResolved(config);
+  const phaseRecord = asRecord(resolved?.phases);
+  if (!phaseRecord) return [];
+  return configPhaseOrder
+    .map((phase) => {
+      const item = asRecord(phaseRecord[phase]);
+      if (!item) return null;
+      const provider = stringValue(item.provider);
+      const model = stringValue(item.model);
+      const commandKey = stringValue(item.command_key);
+      const timeout = stringValue(item.timeout);
+      const phaseCommands = stringList(item.commands);
+      const detail = [
+        commandKey ? `command ${commandKey}` : "",
+        timeout ? `${timeout}s` : "",
+        phaseCommands.length ? `${phaseCommands.length} commands` : ""
+      ].filter(Boolean).join(" · ");
+      return {
+        phase,
+        route: provider || model || commandKey ? routeSummary({ provider, model, command_key: commandKey }) : "默认",
+        detail
+      };
+    })
+    .filter(Boolean) as { phase: string; route: string; detail: string }[];
+}
+
+function configCommandEntries(config: unknown) {
+  const commands = asRecord(configResolved(config)?.commands);
+  return Object.entries(commands ?? {})
+    .map(([key, value]) => ({ key, value: stringValue(value) || "未配置" }))
+    .filter((entry) => entry.key);
+}
+
+function configProviderEntries(config: unknown) {
+  const providers = asRecord(configResolved(config)?.providers);
+  return Object.entries(providers ?? {})
+    .map(([id, raw]) => {
+      const item = asRecord(raw);
+      if (!item) return null;
+      const roles = stringList(item.roles).join("/");
+      const command = stringValue(item.command);
+      const args = stringList(item.args).join(" ");
+      return {
+        id,
+        detail: [roles, [command, args].filter(Boolean).join(" ")].filter(Boolean).join(" · ") || "自定义 provider"
+      };
+    })
+    .filter(Boolean) as { id: string; detail: string }[];
+}
+
+function configTestCommands(config: unknown) {
+  const resolved = configResolved(config);
+  const testPhase = asRecord(asRecord(resolved?.phases)?.test);
+  const allowlist = asRecord(resolved?.commands_allowlist);
+  return dedupeStrings([...stringList(testPhase?.commands), ...stringList(allowlist?.test)]);
+}
+
+function configWorkflowEntries(config: unknown) {
+  const workflow = asRecord(configResolved(config)?.workflow);
+  const labels: Record<string, string> = {
+    require_plan_approval: "计划批准门禁",
+    fail_on_dirty_workspace: "脏工作区保护",
+    apply_to_current_workspace_only_after_review_pass: "审查通过后应用",
+    allow_apply_without_tests: "允许无测试应用"
+  };
+  return Object.entries(labels)
+    .map(([key, label]) => {
+      const value = workflow?.[key];
+      if (value === undefined) return null;
+      const detail = typeof value === "boolean" ? (value ? "开启" : "关闭") : stringValue(value);
+      return { key, label, detail };
+    })
+    .filter(Boolean) as { key: string; label: string; detail: string }[];
+}
+
+function ConfigPanel({ config }: { config: unknown }) {
+  const phaseEntries = configPhaseEntries(config);
+  const commandEntries = configCommandEntries(config);
+  const providerEntries = configProviderEntries(config);
+  const testCommands = configTestCommands(config);
+  const workflowEntries = configWorkflowEntries(config);
+  const path = configPath(config);
+  return (
+    <div className="diagnostic-body config-view">
+      <section className="config-summary" aria-label="Config summary">
+        <div>
+          <h2>配置摘要</h2>
+          {path ? <p>{path}</p> : <p>当前配置来自默认值或本地项目配置。</p>}
+        </div>
+        <div className="config-stat-grid">
+          <span>{phaseEntries.length} phases</span>
+          <span>{commandEntries.length} commands</span>
+          <span>{providerEntries.length} providers</span>
+          <span>{testCommands.length} tests</span>
+        </div>
+      </section>
+      <section className="config-section" aria-label="Configured phase routes">
+        <div className="trace-section-head">
+          <h2>阶段路由</h2>
+          <span>{phaseEntries.length}</span>
+        </div>
+        <div className="config-row-list">
+          {phaseEntries.length ? phaseEntries.map((entry) => (
+            <div className="config-row" key={entry.phase}>
+              <span>{phaseLabel(entry.phase)}</span>
+              <strong>{entry.route}</strong>
+              {entry.detail ? <small>{entry.detail}</small> : null}
+            </div>
+          )) : <div className="trace-empty">未发现阶段配置。</div>}
+        </div>
+      </section>
+      {providerEntries.length ? (
+        <section className="config-section" aria-label="Custom providers">
+          <div className="trace-section-head">
+            <h2>自定义 provider</h2>
+            <span>{providerEntries.length}</span>
+          </div>
+          <div className="config-row-list">
+            {providerEntries.map((entry) => (
+              <div className="config-row" key={entry.id}>
+                <span>{entry.id}</span>
+                <strong>{entry.detail}</strong>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+      <section className="config-section" aria-label="Configured commands">
+        <div className="trace-section-head">
+          <h2>命令</h2>
+          <span>{commandEntries.length}</span>
+        </div>
+        <div className="config-chip-list">
+          {commandEntries.length ? commandEntries.map((entry) => (
+            <span className={entry.value === "未配置" ? "blocked" : ""} key={entry.key}>
+              {entry.key}: {entry.value}
+            </span>
+          )) : <div className="trace-empty">未发现命令配置。</div>}
+        </div>
+      </section>
+      <section className="config-section" aria-label="Allowed test commands">
+        <div className="trace-section-head">
+          <h2>测试 allowlist</h2>
+          <span>{testCommands.length}</span>
+        </div>
+        <div className="config-chip-list">
+          {testCommands.length ? testCommands.map((command) => <span key={command}>{command}</span>) : <div className="trace-empty">未配置测试命令。</div>}
+        </div>
+      </section>
+      {workflowEntries.length ? (
+        <section className="config-section" aria-label="Workflow safeguards">
+          <div className="trace-section-head">
+            <h2>安全开关</h2>
+            <span>{workflowEntries.length}</span>
+          </div>
+          <div className="config-row-list">
+            {workflowEntries.map((entry) => (
+              <div className="config-row compact" key={entry.key}>
+                <span>{entry.label}</span>
+                <strong>{entry.detail}</strong>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+      <details className="config-raw-json">
+        <summary>Raw config JSON</summary>
+        <pre>{JSON.stringify(config, null, 2)}</pre>
+      </details>
     </div>
   );
 }
@@ -4537,10 +4734,7 @@ function DetailPanel({
     );
   }
   return (
-    <div className="config-view">
-      <Settings size={18} />
-      <pre>{JSON.stringify(config, null, 2)}</pre>
-    </div>
+    <ConfigPanel config={config} />
   );
 }
 
