@@ -2276,19 +2276,29 @@ model = "cheap-model"
         self.assertFalse((self.repo / ".ai" / "runs" / planned["run_id"] / "AGENT.lock").exists())
 
     def test_agent_unattended_permission_approves_plan_for_selected_run(self) -> None:
-        planned = agent_message(self.repo, "plan permission target")
+        for index, message in enumerate(
+            (
+                "don't ask me, you have all permissions",
+                "full access, approve yourself",
+                "无需向我确认，继续",
+                "我给你完全访问权限了，不要问我了",
+                "别找我呀，自己允许",
+            )
+        ):
+            with self.subTest(message=message):
+                planned = agent_message(self.repo, f"plan permission target {index}")
 
-        response = agent_message(
-            self.repo,
-            "don't ask me, you have all permissions",
-            run_id=planned["run_id"],
-        )
+                response = agent_message(
+                    self.repo,
+                    message,
+                    run_id=planned["run_id"],
+                )
 
-        self.assertEqual(response["action"], "approve_and_run")
-        self.assertEqual(response["confirmation_source"], "message")
-        self.assertEqual(response["status"]["status"], "REVIEWED_PASS")
-        self.assertEqual(response["requires_confirmation"]["confirmation"], APPLY_CONFIRMATION)
-        self.assertTrue((self.repo / ".ai" / "runs" / planned["run_id"] / "APPROVAL.json").exists())
+                self.assertEqual(response["action"], "approve_and_run")
+                self.assertEqual(response["confirmation_source"], "message")
+                self.assertEqual(response["status"]["status"], "REVIEWED_PASS")
+                self.assertEqual(response["requires_confirmation"]["confirmation"], APPLY_CONFIRMATION)
+                self.assertTrue((self.repo / ".ai" / "runs" / planned["run_id"] / "APPROVAL.json").exists())
 
     def test_agent_no_mcp_preference_with_selected_run_uses_local_mode(self) -> None:
         from scripts.ai_flow import service
@@ -2315,7 +2325,12 @@ model = "cheap-model"
                 self.assertEqual(service.status(self.repo, run_id)["status"], "PLANNED")
 
     def test_agent_unattended_permission_without_run_does_not_start_task(self) -> None:
-        for message in ("don't ask me, you have all permissions", "\u4e0d\u8981\u95ee\u6211\u4e86\uff0c\u6240\u6709\u6743\u9650\u90fd\u7ed9\u4f60"):
+        for message in (
+            "don't ask me, you have all permissions",
+            "full access, approve yourself",
+            "\u4e0d\u8981\u95ee\u6211\u4e86\uff0c\u6240\u6709\u6743\u9650\u90fd\u7ed9\u4f60",
+            "\u65e0\u9700\u5411\u6211\u786e\u8ba4\uff0c\u6240\u6709\u6743\u9650\u5168\u90e8\u7ed9\u4f60",
+        ):
             with self.subTest(message=message):
                 response = agent_message(self.repo, message)
 
