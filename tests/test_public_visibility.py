@@ -118,6 +118,8 @@ class PublicVisibilityTest(unittest.TestCase):
         self.assertIn("configure economy provider command to <path>", text)
         self.assertIn("configure_economy_provider_command", text)
         self.assertIn("providers.<id>.command", text)
+        self.assertIn("无需向我确认", text)
+        self.assertIn("完全访问权限", text)
 
     def test_english_readme_quickstart_surfaces_custom_economy_provider_agent_prompts(self) -> None:
         text = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
@@ -125,6 +127,8 @@ class PublicVisibilityTest(unittest.TestCase):
         self.assertIn('patchbay agent message "configure DeepSeek provider" --json', text)
         self.assertIn('patchbay agent message "configure DeepSeek provider to <command>" --json', text)
         self.assertIn('patchbay agent message "configure economy provider command to <path>" --json', text)
+        self.assertIn("full access", text)
+        self.assertIn("approve yourself", text)
 
     def test_background_plan_returns_job_metadata(self) -> None:
         from scripts.ai_flow import service

@@ -61,6 +61,8 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("read-only `profile`, `routing`, safe `actions[]`, and `action_groups[]` preview", result["files"]["SKILL.md"])
         self.assertIn("When `action_groups[]` is present", result["files"]["SKILL.md"])
         self.assertIn("background_polling", result["files"]["SKILL.md"])
+        self.assertIn("full access", result["files"]["SKILL.md"])
+        self.assertIn("无需向我确认", result["files"]["SKILL.md"])
         self.assertIn("gate_diagnosis", result["files"]["SKILL.md"])
         self.assertIn("readiness for Claude Desktop", result["files"]["SKILL.md"])
         self.assertIn("检查 Gemini 命令行环境", result["files"]["SKILL.md"])
