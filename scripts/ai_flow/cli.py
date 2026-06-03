@@ -123,7 +123,7 @@ def _action_guard(action: dict[str, Any] | None) -> str:
 def _action_label(action: dict[str, Any] | None) -> str:
     if not isinstance(action, dict):
         return "-"
-    return str(action.get("label") or action.get("id") or action.get("message") or "-")
+    return str(action.get("label") or action.get("id") or action.get("name") or action.get("message") or "-")
 
 
 def _action_summary(action: dict[str, Any] | None) -> str:
@@ -155,7 +155,11 @@ def _print_grouped_actions(actions: list[Any], groups: list[Any]) -> None:
     printable = [action for action in actions if isinstance(action, dict)]
     if not printable:
         return
-    by_id = {str(action.get("id")): action for action in printable if action.get("id")}
+    by_id = {
+        str(action.get("id") or action.get("name")): action
+        for action in printable
+        if action.get("id") or action.get("name")
+    }
     printed: set[int] = set()
     if groups:
         print("Actions:")
@@ -507,7 +511,10 @@ def _print_next_actions(data: dict[str, Any]) -> None:
         return
     print("Next actions:")
     for item in next_actions:
-        print(f"- {item}")
+        if isinstance(item, dict):
+            print(f"- {_action_summary(item)}{_action_detail(item)}")
+        else:
+            print(f"- {item}")
 
 
 def _run_reference_line(run: dict[str, Any]) -> str:
@@ -601,6 +608,191 @@ def _print_agent_guidance_result(data: dict[str, Any]) -> None:
 
     actions = data.get("actions") if isinstance(data.get("actions"), list) else []
     groups = data.get("action_groups") if isinstance(data.get("action_groups"), list) else []
+    if actions:
+        print("")
+        _print_grouped_actions(actions, groups)
+
+
+def _print_gate_state(value: Any) -> None:
+    if not isinstance(value, dict) or not value:
+        return
+    print(
+        "Gate state: "
+        f"approved={bool(value.get('approved'))}, "
+        f"tests={value.get('tests_status') or '-'}, "
+        f"review={value.get('review_result') or '-'}, "
+        f"ready_to_apply={bool(value.get('ready_to_apply'))}"
+    )
+
+
+def _print_failure_recovery(value: Any) -> None:
+    if not isinstance(value, dict) or not value:
+        return
+    print("Failure recovery:")
+    for key in ("stage", "error", "suggested_next_action", "summary"):
+        item = value.get(key)
+        if item:
+            print(f"- {key}: {_short_text(item, limit=220)}")
+    artifacts = value.get("artifacts") if isinstance(value.get("artifacts"), list) else []
+    if artifacts:
+        print(f"- artifacts: {', '.join(str(item) for item in artifacts[:8])}")
+    actions = value.get("actions") if isinstance(value.get("actions"), list) else []
+    groups = value.get("action_groups") if isinstance(value.get("action_groups"), list) else []
+    if actions:
+        _print_grouped_actions(actions, groups)
+
+
+def _print_routing_evidence(value: Any) -> None:
+    if not isinstance(value, dict) or not value:
+        return
+    summary = value.get("summary")
+    if summary:
+        print(f"Routing: {summary}")
+    health = value.get("economy_health") if isinstance(value.get("economy_health"), dict) else {}
+    if health:
+        print(f"economy health: {health.get('status') or '-'} ({health.get('severity') or '-'})")
+        if health.get("recommendation"):
+            print(f"routing recommendation: {_short_text(health.get('recommendation'))}")
+    actions = value.get("actions") if isinstance(value.get("actions"), list) else []
+    if actions:
+        _print_actions(actions, title="Routing actions")
+
+
+def _print_efficiency(value: Any) -> None:
+    if not isinstance(value, dict) or not value:
+        return
+    summary = value.get("summary")
+    if summary:
+        print(f"Efficiency: {summary}")
+    recommendation = value.get("recommendation")
+    if recommendation:
+        print(f"efficiency recommendation: {_short_text(recommendation)}")
+
+
+def _print_run_metrics_brief(value: Any) -> None:
+    if not isinstance(value, dict) or not value:
+        return
+    total_duration = value.get("total_duration_ms")
+    event_count = value.get("event_count")
+    trace_count = value.get("trace_count")
+    print(
+        "Run metrics: "
+        f"events={event_count if event_count is not None else '-'}, "
+        f"trace={trace_count if trace_count is not None else '-'}, "
+        f"duration={_duration_label(total_duration) if total_duration is not None else '-'}"
+    )
+    tiers = value.get("tier_usage") if isinstance(value.get("tier_usage"), dict) else {}
+    if tiers:
+        print("Tier usage:")
+        for tier in ("economy", "supervision", "execution"):
+            if tier in tiers:
+                print(f"- {_tier_summary(tier, tiers[tier])}")
+    providers = value.get("provider_usage") if isinstance(value.get("provider_usage"), list) else []
+    if providers:
+        print("Provider usage:")
+        for item in providers[:5]:
+            print(f"- {_provider_summary(item)}")
+
+
+def _print_provider_trail(value: Any) -> None:
+    if not isinstance(value, list) or not value:
+        return
+    print("Provider trail:")
+    for item in value[:8]:
+        if not isinstance(item, dict):
+            continue
+        phase = item.get("phase") or "-"
+        provider = item.get("provider") or "-"
+        model = item.get("model") or "-"
+        status = item.get("status") or "-"
+        print(f"- {phase}: {provider} / {model} | {status}")
+
+
+def _print_artifacts_brief(value: Any) -> None:
+    if not isinstance(value, list) or not value:
+        return
+    names: list[str] = []
+    for item in value[:10]:
+        if isinstance(item, dict):
+            names.append(str(item.get("name") or item.get("path") or "-"))
+        else:
+            names.append(str(item))
+    print(f"Artifacts: {', '.join(names)}")
+
+
+def _print_agent_activity(value: Any) -> None:
+    if not isinstance(value, dict) or not value:
+        return
+    headline = value.get("headline")
+    if headline:
+        print(f"Agent activity: {_short_text(headline)}")
+    current = value.get("current_step") if isinstance(value.get("current_step"), dict) else {}
+    if current:
+        print(
+            "Current step: "
+            f"{current.get('phase') or '-'} | {current.get('status') or '-'} | "
+            f"{_short_text(current.get('summary'), limit=140)}"
+        )
+    conversation = value.get("conversation_state") if isinstance(value.get("conversation_state"), dict) else {}
+    if conversation.get("next_step"):
+        print(f"Conversation next step: {_short_text(conversation.get('next_step'), limit=220)}")
+    action = value.get("next_action") if isinstance(value.get("next_action"), dict) else {}
+    if action:
+        print(f"agent next_action: {_action_summary(action)}{_action_detail(action)}")
+    health_cards = value.get("health_cards") if isinstance(value.get("health_cards"), list) else []
+    if health_cards:
+        print("Health cards:")
+        for card in health_cards[:6]:
+            if not isinstance(card, dict):
+                continue
+            print(
+                f"- {card.get('label') or card.get('key') or '-'}: "
+                f"{card.get('status') or '-'} | {_short_text(card.get('detail'), limit=180)}"
+            )
+
+
+def _print_status_result(data: dict[str, Any]) -> None:
+    print(f"Patchbay status: {data.get('run_id') or '-'}")
+    task = data.get("task")
+    if task:
+        print(f"task: {_short_text(task)}")
+    print(f"status: {data.get('status') or '-'} | phase: {data.get('current_phase') or data.get('stage') or '-'}")
+    if data.get("error"):
+        print(f"error: {_short_text(data.get('error'), limit=220)}")
+    if data.get("suggested_next_action"):
+        print(f"suggested_next_action: {_short_text(data.get('suggested_next_action'), limit=220)}")
+    _print_gate_state(data.get("gate_state"))
+    _print_failure_recovery(data.get("failure_recovery"))
+    _print_routing_evidence(data.get("routing_evidence"))
+    _print_efficiency(data.get("efficiency_summary"))
+    _print_run_metrics_brief(data.get("run_metrics"))
+    artifacts = data.get("artifacts") if isinstance(data.get("artifacts"), list) else []
+    if artifacts:
+        _print_artifacts_brief(artifacts)
+
+
+def _print_context_result(data: dict[str, Any]) -> None:
+    reply = str(data.get("reply") or "").strip()
+    if reply:
+        print(reply)
+        print("")
+    payload = data.get("context") if isinstance(data.get("context"), dict) else data
+    print(f"Patchbay context: {payload.get('run_id') or data.get('run_id') or '-'}")
+    summary = payload.get("handoff_summary")
+    if summary:
+        print(f"summary: {_short_text(summary, limit=260)}")
+    print(f"status: {payload.get('status') or '-'} | phase: {payload.get('current_phase') or '-'}")
+    _print_gate_state(payload.get("gate_state"))
+    _print_agent_activity(payload.get("agent_activity"))
+    _print_failure_recovery(payload.get("failure_recovery"))
+    _print_routing_evidence(payload.get("routing_evidence"))
+    _print_efficiency(payload.get("efficiency_summary"))
+    _print_run_metrics_brief(payload.get("run_metrics"))
+    _print_provider_trail(payload.get("provider_trail"))
+    _print_artifacts_brief(payload.get("artifacts"))
+    _print_next_actions(payload)
+    actions = payload.get("next_actions") if isinstance(payload.get("next_actions"), list) else []
+    groups = payload.get("action_groups") if isinstance(payload.get("action_groups"), list) else []
     if actions:
         print("")
         _print_grouped_actions(actions, groups)
@@ -1042,6 +1234,10 @@ def main(argv: list[str] | None = None) -> int:
         _print_readiness_result(result)
     elif args.command in {"setup", "install"} and not as_json and isinstance(result, dict):
         _print_setup_result(result)
+    elif args.command == "status" and not as_json and isinstance(result, dict):
+        _print_status_result(result)
+    elif args.command == "context" and not as_json and isinstance(result, dict):
+        _print_context_result(result)
     elif args.command == "metrics" and not as_json and isinstance(result, dict):
         _print_metrics_result(result)
     elif (
@@ -1103,6 +1299,28 @@ def main(argv: list[str] | None = None) -> int:
         and result.get("action") in {"help", "local_mode", "next_step", "gate_status"}
     ):
         _print_agent_guidance_result(result)
+    elif (
+        args.command == "agent"
+        and getattr(args, "agent_command", "") == "message"
+        and not as_json
+        and isinstance(result, dict)
+        and result.get("action") == "context"
+        and isinstance(result.get("context"), dict)
+    ):
+        _print_context_result(result)
+    elif (
+        args.command == "agent"
+        and getattr(args, "agent_command", "") == "message"
+        and not as_json
+        and isinstance(result, dict)
+        and result.get("action") == "status"
+        and isinstance(result.get("status"), dict)
+    ):
+        reply = str(result.get("reply") or "").strip()
+        if reply:
+            print(reply)
+            print("")
+        _print_status_result(result["status"])
     else:
         _print_result(result, as_json=as_json)
     return 0

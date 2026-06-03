@@ -294,6 +294,39 @@ class PublicVisibilityTest(unittest.TestCase):
         self.assertIn("capabilities", structured)
         self.assertIn("actions", structured)
 
+    def test_run_diagnostic_text_views_summarize_status_and_context(self) -> None:
+        planned = self.cli_json("plan", "--task", "run diagnostic text view", "--mock")
+        run_id = planned["run_id"]
+
+        direct_status = run(["python", str(self.script), "status", run_id], self.repo)
+        agent_status = run(["python", str(self.script), "agent", "message", "status", "--run-id", run_id], self.repo)
+        direct_context = run(["python", str(self.script), "context", run_id], self.repo)
+        agent_context = run(["python", str(self.script), "agent", "message", "context", "--run-id", run_id], self.repo)
+        structured_status = self.cli_json("status", run_id)
+        structured_context = self.cli_json("context", run_id)
+
+        for completed in (direct_status, agent_status):
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("Patchbay status:", completed.stdout)
+            self.assertIn("Gate state:", completed.stdout)
+            self.assertIn("Run metrics:", completed.stdout)
+            self.assertNotIn("gate_state: {", completed.stdout)
+            self.assertNotIn("run_metrics: {", completed.stdout)
+            self.assertNotIn("routing_evidence: {", completed.stdout)
+
+        for completed in (direct_context, agent_context):
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("Patchbay context:", completed.stdout)
+            self.assertIn("summary:", completed.stdout)
+            self.assertIn("Agent activity:", completed.stdout)
+            self.assertIn("Next actions:", completed.stdout)
+            self.assertNotIn("agent_activity: {", completed.stdout)
+            self.assertNotIn("timeline: [{", completed.stdout)
+            self.assertNotIn("next_actions: [{", completed.stdout)
+
+        self.assertIn("gate_state", structured_status)
+        self.assertIn("agent_activity", structured_context)
+
     def test_artifact_reads_and_tails_run_file(self) -> None:
         planned = self.cli_json("plan", "--task", "artifact read", "--mock")
 
