@@ -68,6 +68,8 @@ scripts/patchbay agent message "走本地模式，不走 MCP" --json
 
 For local no-MCP CLI use, non-JSON `scripts/patchbay doctor` and `scripts/patchbay agent message readiness` should render the readiness summary, checks, routing summary, recommendations, and grouped safe actions. Use `--json` when a host needs the full structured payload.
 
+Non-JSON `scripts/patchbay setup` / `install` and Agent setup replies should render setup step summaries, then the same readiness/action summary. Use `--json` for automation.
+
 ## Setup And Skill Actions
 
 - `patchbay_setup` / `patchbay_install` initialize project files, local config, bundled Codex Skill installation, optional MCP registration, doctor summary, top-level `routing`, `recommendations`, `next_actions`, `actions[]`, and `action_groups[]`.

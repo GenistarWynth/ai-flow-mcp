@@ -16,10 +16,14 @@ from unittest import mock
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def run(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+def run(command: list[str], cwd: Path, *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    child_env = os.environ.copy()
+    if env:
+        child_env.update(env)
     return subprocess.run(
         command,
         cwd=str(cwd),
+        env=child_env,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -146,6 +150,30 @@ class PublicVisibilityTest(unittest.TestCase):
 
         self.assertIn("doctor", structured)
         self.assertIn("checks", structured["doctor"])
+
+    def test_setup_text_views_summarize_steps_and_readiness(self) -> None:
+        direct = run(["python", str(self.script), "setup", "--host", "codex", "--no-mcp", "--dry-run"], self.repo)
+        agent = run(
+            ["python", str(self.script), "agent", "message", "patchbay setup without MCP"],
+            self.repo,
+            env={"CODEX_HOME": str(self.tempdir / "codex-home")},
+        )
+        structured = self.cli_json("setup", "--host", "codex", "--no-mcp", "--dry-run")
+
+        for completed in (direct, agent):
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("Patchbay setup:", completed.stdout)
+            self.assertIn("root:", completed.stdout)
+            self.assertIn("config:", completed.stdout)
+            self.assertIn("skill:", completed.stdout)
+            self.assertIn("mcp: skipped", completed.stdout)
+            self.assertIn("Patchbay readiness:", completed.stdout)
+            self.assertIn("Actions:", completed.stdout)
+            self.assertNotIn("setup: {", completed.stdout)
+            self.assertNotIn("doctor: {", completed.stdout)
+
+        self.assertIn("doctor", structured)
+        self.assertIn("setup_host", structured)
 
     def test_artifact_reads_and_tails_run_file(self) -> None:
         planned = self.cli_json("plan", "--task", "artifact read", "--mock")

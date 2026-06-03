@@ -83,6 +83,8 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("scripts/patchbay agent message status", contract)
         self.assertIn("scripts/patchbay agent message readiness", contract)
         self.assertIn("readiness summary, checks, routing summary", contract)
+        self.assertIn("scripts/patchbay setup", contract)
+        self.assertIn("setup step summaries", contract)
         self.assertIn("focus_run_id", contract)
         self.assertIn("needs_approval", contract)
         self.assertIn("action_groups[]", contract)

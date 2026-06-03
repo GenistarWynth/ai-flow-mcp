@@ -237,6 +237,78 @@ def _print_readiness_result(data: dict[str, Any]) -> None:
         _print_grouped_actions(actions, groups if isinstance(groups, list) else [])
 
 
+def _setup_step_status(step: Any) -> str:
+    if not isinstance(step, dict):
+        return "-"
+    if step.get("skipped"):
+        reason = step.get("reason")
+        return f"skipped ({reason})" if reason else "skipped"
+    if step.get("dry_run"):
+        return "dry run"
+    if step.get("created"):
+        return "created"
+    if step.get("installed"):
+        return "installed"
+    if step.get("executed"):
+        return "executed"
+    if step.get("exists"):
+        return "exists"
+    if step.get("ok"):
+        return "ok"
+    return "ready"
+
+
+def _print_setup_result(data: dict[str, Any]) -> None:
+    reply = str(data.get("reply") or "").strip()
+    if reply:
+        print(reply)
+        print("")
+
+    setup = data.get("setup") if isinstance(data.get("setup"), dict) else data
+    mode = "dry run" if setup.get("dry_run") else "applied" if setup.get("applied") else "not applied"
+    print(f"Patchbay setup: {mode}")
+    root = setup.get("root")
+    host = setup.get("setup_host")
+    if root:
+        print(f"root: {root}")
+    if host:
+        print(f"host: {host}")
+
+    init = setup.get("init") if isinstance(setup.get("init"), dict) else {}
+    if init:
+        would_create = init.get("would_create") if isinstance(init.get("would_create"), list) else []
+        suffix = f"; would create {len(would_create)} paths" if would_create else ""
+        print(f"init: {_setup_step_status(init)}{suffix}")
+
+    config = setup.get("config") if isinstance(setup.get("config"), dict) else {}
+    if config:
+        path = config.get("path")
+        print(f"config: {_setup_step_status(config)}" + (f" [{path}]" if path else ""))
+
+    skill = setup.get("skill") if isinstance(setup.get("skill"), dict) else {}
+    if skill:
+        destination = skill.get("destination")
+        print(f"skill: {_setup_step_status(skill)}" + (f" [{destination}]" if destination else ""))
+
+    mcp = setup.get("mcp") if isinstance(setup.get("mcp"), dict) else {}
+    if mcp:
+        command = mcp.get("command")
+        print(f"mcp: {_setup_step_status(mcp)}" + (f" [{command}]" if command else ""))
+
+    doctor = setup.get("doctor") if isinstance(setup.get("doctor"), dict) else None
+    if doctor:
+        print("")
+        _print_readiness_result(
+            {
+                "doctor": doctor,
+                "routing": setup.get("routing") or data.get("routing"),
+                "recommendations": setup.get("recommendations") or data.get("recommendations"),
+                "actions": setup.get("actions") or data.get("actions"),
+                "action_groups": setup.get("action_groups") or data.get("action_groups"),
+            }
+        )
+
+
 def _run_title(run: dict[str, Any]) -> str:
     task = str(run.get("task") or "").strip()
     run_id = str(run.get("run_id") or "").strip()
@@ -671,6 +743,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     elif args.command == "doctor" and not as_json and isinstance(result, dict):
         _print_readiness_result(result)
+    elif args.command in {"setup", "install"} and not as_json and isinstance(result, dict):
+        _print_setup_result(result)
     elif (
         args.command == "agent"
         and getattr(args, "agent_command", "") == "message"
@@ -689,6 +763,15 @@ def main(argv: list[str] | None = None) -> int:
         and isinstance(result.get("doctor"), dict)
     ):
         _print_readiness_result(result)
+    elif (
+        args.command == "agent"
+        and getattr(args, "agent_command", "") == "message"
+        and not as_json
+        and isinstance(result, dict)
+        and result.get("action") == "setup"
+        and isinstance(result.get("setup"), dict)
+    ):
+        _print_setup_result(result)
     else:
         _print_result(result, as_json=as_json)
     return 0
