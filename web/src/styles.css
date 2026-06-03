@@ -667,7 +667,10 @@ button.danger { color: #b42318; border-color: #f0b6b2; background: #fff8f7; }
   border-top: 1px solid #d9dee6;
   background: rgba(255, 255, 255, 0.92);
 }
-.suggestions { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 1px; }
+.suggestions { display: flex; align-items: flex-start; gap: 10px; overflow-x: auto; padding-bottom: 1px; }
+.suggestion-group { display: grid; gap: 4px; flex: 0 0 auto; }
+.suggestion-group > span { color: #647083; font-size: 11px; font-weight: 800; line-height: 1; }
+.suggestion-buttons { display: flex; gap: 7px; }
 .composer-box {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 40px;

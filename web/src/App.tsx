@@ -1065,6 +1065,42 @@ function suggestionsFor(activity: AgentActivity, context: HandoffContext | null)
   }));
 }
 
+function suggestionGroupsFor(suggestions: SuggestedAction[], groups: ActionGroup[] | undefined) {
+  if (!suggestions.length) return [];
+  if (!groups?.length) return [{ id: "suggested", label: "建议动作", reason: undefined, suggestions }];
+  const byKey = new Map<string, SuggestedAction>();
+  for (const suggestion of suggestions) {
+    for (const key of suggestionActionKeys(suggestion)) {
+      byKey.set(key, suggestion);
+    }
+  }
+  const used = new Set<string>();
+  const result: { id: string; label: string; reason?: string; suggestions: SuggestedAction[] }[] = [];
+  for (const group of groups) {
+    const grouped = (group.action_ids ?? []).map((id) => byKey.get(id)).filter(Boolean) as SuggestedAction[];
+    const unique = grouped.filter((suggestion) => {
+      const key = suggestionActionKey(suggestion);
+      if (used.has(key)) return false;
+      used.add(key);
+      return true;
+    });
+    if (unique.length) {
+      result.push({ id: group.id, label: localReplyActionGroupLabel(group), reason: group.reason, suggestions: unique });
+    }
+  }
+  const remaining = suggestions.filter((suggestion) => !used.has(suggestionActionKey(suggestion)));
+  if (remaining.length) result.push({ id: "suggested", label: "建议动作", suggestions: remaining });
+  return result;
+}
+
+function suggestionActionKeys(suggestion: SuggestedAction) {
+  return dedupeStrings([suggestion.id, suggestion.action, suggestion.message, suggestion.label]);
+}
+
+function suggestionActionKey(suggestion: SuggestedAction) {
+  return suggestionActionKeys(suggestion)[0] ?? suggestion.label;
+}
+
 function actionFromSuggestion(suggestion: SuggestedAction | AgentAction): SuggestedAction {
   const action = "action" in suggestion ? suggestion.action : suggestion.name;
   const result: SuggestedAction = {
@@ -1653,6 +1689,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const messages = dedupeMessages(activity.messages ?? []);
   const primaryAction = activity.next_action;
   const suggestions = suggestionsFor(activity, activeContext);
+  const suggestionGroups = useMemo(() => suggestionGroupsFor(suggestions, activeContext?.action_groups), [suggestions, activeContext?.action_groups]);
   const failureGuidance =
     loadedStatus === "FAILED"
       ? conversationState?.next_step ?? activity.current_step?.summary ?? "运行遇到错误，请查看诊断日志。"
@@ -2451,17 +2488,24 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         <form className="composer" onSubmit={(event) => void submitComposer(event)}>
           {selectedRun && suggestions.length ? (
             <div className="suggestions" aria-label="建议动作">
-              {suggestions.map((suggestion) => (
-                <button
-                  className={`suggestion ${suggestion.safe ? "" : "blocked"}`}
-                  type="button"
-                  key={suggestion.id}
-                  onClick={() => handleAction(suggestion)}
-                  disabled={submitting || actionInFlight || (runBusy && !canRunSuggestionWhileBusy(suggestion))}
-                >
-                  {suggestion.safe ? <Play size={13} /> : <AlertTriangle size={13} />}
-                  {suggestion.label}
-                </button>
+              {suggestionGroups.map((group) => (
+                <div className="suggestion-group" key={group.id}>
+                  <span title={group.reason}>{group.label}</span>
+                  <div className="suggestion-buttons">
+                    {group.suggestions.map((suggestion) => (
+                      <button
+                        className={`suggestion ${suggestion.safe ? "" : "blocked"}`}
+                        type="button"
+                        key={suggestion.id}
+                        onClick={() => handleAction(suggestion)}
+                        disabled={submitting || actionInFlight || (runBusy && !canRunSuggestionWhileBusy(suggestion))}
+                      >
+                        {suggestion.safe ? <Play size={13} /> : <AlertTriangle size={13} />}
+                        {suggestion.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           ) : null}

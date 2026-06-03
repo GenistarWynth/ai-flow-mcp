@@ -5121,6 +5121,7 @@ describe("Workbench", () => {
     expect(screen.getAllByText(/pid 4321/).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Open background run" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open activity" })).toBeInTheDocument();
+    expect(screen.getByText("后台轮询")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Poll status" }).length).toBeGreaterThan(1);
     expect(screen.getAllByRole("button", { name: "Poll context" }).length).toBeGreaterThan(1);
     expect(screen.getAllByRole("button", { name: "Poll events" }).length).toBeGreaterThan(1);
