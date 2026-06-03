@@ -381,7 +381,32 @@ def _structured_actions(
                 "reason": "Re-run read-only readiness checks after applying setup or routing changes.",
             }
         )
+    elif _ready_for_safe_followups(checks):
+        actions.extend(
+            [
+                {
+                    "id": "start_new_task",
+                    "label": "Start new task",
+                    "kind": "focus_composer",
+                    "safe": True,
+                    "reason": "Readiness is healthy; focus the composer to start a gated Patchbay plan.",
+                },
+                {
+                    "id": "show_runs",
+                    "label": "Show runs",
+                    "kind": "local_agent",
+                    "message": "status",
+                    "safe": True,
+                    "reason": "List recent Patchbay runs without advancing any gate.",
+                },
+            ]
+        )
     return _dedupe_actions(actions)
+
+
+def _ready_for_safe_followups(checks: dict[str, Any]) -> bool:
+    required_sections = ("repo", "config", "cli", "mcp", "skill")
+    return all(bool(checks.get(section, {}).get("ok")) for section in required_sections)
 
 
 def _nested_action(payload: dict[str, Any], action_id: str) -> dict[str, Any] | None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -206,6 +207,36 @@ provider = "mock"
         self.assertNotIn("apply_economy_profile", actions)
         action_groups = {item["id"]: item for item in result["action_groups"]}
         self.assertIn("configure_reasonix_command", action_groups["routing"]["action_ids"])
+
+    def test_doctor_ready_state_offers_safe_followups(self) -> None:
+        from scripts.ai_flow import service
+        from scripts.ai_flow.doctor import run_doctor
+        from scripts.ai_flow.skill_install import run_skill_install
+
+        service.init_project(self.tmp)
+        skills_root = self.tmp / "skills"
+        run_skill_install(self.tmp, path=skills_root)
+        config_path = self.tmp / ".ai" / "patchbay.toml"
+        escaped = sys.executable.replace("\\", "\\\\")
+        config_path.write_text(
+            f"""[commands]
+reasonix = "{escaped}"
+""",
+            encoding="utf-8",
+        )
+
+        result = run_doctor(self.tmp, include_mcp=False, skill_path=skills_root, suppress_mcp_actions=True)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["recommendations"], [])
+        self.assertEqual(result["next_actions"], [])
+        self.assertTrue(result["routing"]["economy_command_ready"])
+        actions = {item["id"]: item for item in result["actions"]}
+        self.assertEqual(actions["start_new_task"]["kind"], "focus_composer")
+        self.assertEqual(actions["show_runs"]["message"], "status")
+        action_groups = {item["id"]: item for item in result["action_groups"]}
+        self.assertIn("start_new_task", action_groups["new_task"]["action_ids"])
+        self.assertIn("show_runs", action_groups["local"]["action_ids"])
 
     def test_doctor_recommends_custom_economy_provider_command(self) -> None:
         from scripts.ai_flow import service
