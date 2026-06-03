@@ -421,6 +421,15 @@ def _tool_schema(name: str) -> dict[str, Any]:
             "phase": {"type": "string", "description": "Optional filter by phase name."},
         }
         required = ["run_id"]
+    elif name.endswith("_config_profile_apply"):
+        properties = {
+            "profile": {
+                "type": "string",
+                "enum": ["economy"],
+                "description": "Routing profile to apply. economy routes write/fix work to Reasonix/DeepSeek.",
+            }
+        }
+        required = []
     elif name.endswith("_apply"):
         properties = {
             "run_id": {"type": "string"},
@@ -448,15 +457,6 @@ def _tool_schema(name: str) -> dict[str, Any]:
     elif name.endswith("_config_test_add"):
         properties = {"command": {"type": "string"}}
         required = ["command"]
-    elif name.endswith("_config_profile_apply"):
-        properties = {
-            "profile": {
-                "type": "string",
-                "enum": ["economy"],
-                "description": "Routing profile to apply. economy routes write/fix work to Reasonix/DeepSeek.",
-            }
-        }
-        required = []
     elif name.endswith("_config_profile_show"):
         properties = {}
         required = []

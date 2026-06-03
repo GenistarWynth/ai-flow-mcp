@@ -1200,7 +1200,7 @@ test = []
         self.cli_json("test", run_id)
         self.cli_json("review", run_id, "--mock")
         (self.repo / "dirty.txt").write_text("dirty\n", encoding="utf-8")
-        result = self.cli("apply", run_id)
+        result = self.cli("apply", run_id, "--confirmation", "apply_approved")
         self.assertNotEqual(result.returncode, 0)
         status = self.cli_json("status", run_id)
         self.assertEqual(status["status"], "FAILED")
@@ -1226,7 +1226,7 @@ test = []
             encoding="utf-8",
         )
 
-        result = self.cli("apply", run_id)
+        result = self.cli("apply", run_id, "--confirmation", "apply_approved")
 
         self.assertNotEqual(result.returncode, 0)
         status = self.cli_json("status", run_id)
