@@ -262,6 +262,52 @@ class AgentWorkflowTests(AgentTestCase):
         self.assertTrue(any(action["id"] == "apply_economy_profile" for action in response["actions"]))
         self.assertIn("Recommendations:", response["reply"])
 
+    def test_agent_doctor_ready_state_promotes_safe_followups(self) -> None:
+        from scripts.ai_flow import agent
+
+        doctor_actions = [
+            {
+                "id": "start_new_task",
+                "label": "Start new task",
+                "kind": "focus_composer",
+                "safe": True,
+                "reason": "Readiness is healthy; focus the composer to start a gated Patchbay plan.",
+            },
+            {
+                "id": "show_runs",
+                "label": "Show runs",
+                "kind": "local_agent",
+                "message": "status",
+                "safe": True,
+                "reason": "List recent Patchbay runs without advancing any gate.",
+            },
+        ]
+        doctor_actions.append(dict(doctor_actions[-1]))
+        with mock.patch.object(
+            agent,
+            "run_doctor",
+            return_value={
+                "ok": True,
+                "host": "codex",
+                "checks": {},
+                "next_actions": [],
+                "recommendations": [],
+                "actions": doctor_actions,
+                "routing": {"economy_command_ready": True},
+            },
+        ):
+            response = agent_message(self.repo, "readiness")
+
+        self.assertEqual(response["action"], "doctor")
+        self.assertEqual(response["next_actions"], ["start", "status"])
+        self.assertEqual([item["id"] for item in response["actions"]], ["start_new_task", "show_runs"])
+        actions = {item["id"]: item for item in response["actions"]}
+        self.assertEqual(actions["start_new_task"]["kind"], "focus_composer")
+        self.assertEqual(actions["show_runs"]["message"], "status")
+        action_groups = {item["id"]: item for item in response["action_groups"]}
+        self.assertIn("start_new_task", action_groups["new_task"]["action_ids"])
+        self.assertIn("show_runs", action_groups["local"]["action_ids"])
+
     def test_agent_chinese_environment_check_returns_readiness_without_starting_run(self) -> None:
         for message in ("检查环境", "环境检查", "环境自检", "项目自检"):
             with self.subTest(message=message):

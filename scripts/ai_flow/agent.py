@@ -2590,6 +2590,8 @@ def _doctor_response(root: Path, message: str = "") -> dict[str, Any]:
         actions = _without_mcp_followup_actions(actions)
         report = {**report, "next_actions": next_actions, "actions": actions}
     suggested_actions = _doctor_suggested_actions(next_actions, recommendations)
+    if not suggested_actions:
+        suggested_actions = _next_actions_from_structured_actions(actions)
     if report.get("ok"):
         reply = "Patchbay readiness checks passed."
     elif next_actions:
@@ -2623,6 +2625,22 @@ def _doctor_suggested_actions(next_actions: list[str], recommendations: list[str
     if any("providers." in item and ".command" in item for item in recommendations):
         actions.append("configure economy provider command")
     return _dedupe_strings(actions)
+
+
+def _next_actions_from_structured_actions(actions: list[dict[str, Any]]) -> list[str]:
+    values: list[str] = []
+    for action in actions:
+        message = str(action.get("message") or "").strip()
+        if message:
+            values.append(message)
+            continue
+        if str(action.get("id") or "") == "start_new_task" or str(action.get("kind") or "") == "focus_composer":
+            values.append("start")
+            continue
+        command = str(action.get("command") or "").strip()
+        if command:
+            values.append(command)
+    return _dedupe_strings(values)
 
 
 def _economy_command_not_ready_sentence(routing: dict[str, Any]) -> str:
@@ -3221,6 +3239,8 @@ def _background_pending_response(
 def _with_action_groups(response: dict[str, Any]) -> dict[str, Any]:
     actions = response.get("actions")
     if isinstance(actions, list):
+        actions = _dedupe_actions([action for action in actions if isinstance(action, dict)])
+        response["actions"] = actions
         groups = group_actions(actions)
         if groups:
             response["action_groups"] = groups
