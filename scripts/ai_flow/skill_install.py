@@ -77,11 +77,8 @@ def run_skill_doctor(cwd: Path, host: str = "codex", *, path: str | Path | None 
             for file_path in sorted(source.rglob("*"))
             if file_path.is_file()
         ]
-    missing_source_files = [
-        file_name
-        for file_name in ("SKILL.md", "agents/openai.yaml", "references/install.md")
-        if file_name not in source_files
-    ]
+    required_source_files = ("SKILL.md", "agents/openai.yaml", "references/install.md", "references/agent-contract.md")
+    missing_source_files = [file_name for file_name in required_source_files if file_name not in source_files]
     source_ok = bool(source) and not missing_source_files
     installed = (destination / "SKILL.md").exists()
     installed_files: list[str] = []

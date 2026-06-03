@@ -25,98 +25,102 @@ class SkillInstallTest(unittest.TestCase):
         from scripts.ai_flow.skill_install import run_skill_print
 
         result = run_skill_print(self.tmp)
+        skill = result["files"]["SKILL.md"]
+        contract = result["files"]["references/agent-contract.md"]
+        install = result["files"]["references/install.md"]
 
         self.assertIn("SKILL.md", result["files"])
         self.assertIn("agents/openai.yaml", result["files"])
         self.assertIn("references/install.md", result["files"])
-        self.assertIn("Recommended Conversational Entry", result["files"]["SKILL.md"])
-        self.assertIn('scripts/patchbay agent message "<user task>" --background --json', result["files"]["SKILL.md"])
-        self.assertIn("Use this manual phase workflow when the conversational Agent tool is unavailable", result["files"]["SKILL.md"])
+        self.assertIn("references/agent-contract.md", result["files"])
+        self.assertLess(len(skill), 9000)
+        self.assertIn("Entry Choice", skill)
+        self.assertIn('scripts/patchbay agent message "<user task>" --background --json', skill)
+        self.assertIn("Read `references/agent-contract.md` only when", skill)
+        self.assertIn("Do not call `patchbay_*` MCP tools", skill)
+        self.assertIn('scripts/patchbay setup --no-mcp --json', skill)
+        self.assertIn('scripts/patchbay doctor --local-only --json', skill)
+        self.assertIn('scripts/patchbay agent message "patchbay setup without MCP" --json', skill)
+        self.assertIn('scripts/patchbay agent message "readiness without MCP" --json', skill)
+        self.assertIn('scripts/patchbay agent message "走本地模式，不走 MCP" --json', skill)
+        self.assertIn("只用本地工具", skill)
+        self.assertIn("Required Gates", skill)
+        self.assertIn("Never apply without a separate explicit apply confirmation", skill)
+        self.assertIn("cheaper economy route", skill)
+        self.assertIn("完全访问权限", skill)
         self.assertIn("Patchbay's conversational agent", result["files"]["agents/openai.yaml"])
         self.assertIn("inspect economy routing evidence", result["files"]["agents/openai.yaml"])
-        self.assertIn("patchbay_agent", result["files"]["SKILL.md"])
-        self.assertIn("do not call `patchbay_*` MCP tools", result["files"]["SKILL.md"])
-        self.assertIn('scripts/patchbay setup --no-mcp --json', result["files"]["SKILL.md"])
-        self.assertIn('scripts/patchbay doctor --local-only --json', result["files"]["SKILL.md"])
-        self.assertIn('scripts/patchbay agent message "patchbay setup without MCP" --json', result["files"]["SKILL.md"])
-        self.assertIn('scripts/patchbay agent message "readiness without MCP" --json', result["files"]["SKILL.md"])
-        self.assertIn('scripts/patchbay agent message "走本地模式，不走 MCP" --json', result["files"]["SKILL.md"])
-        self.assertIn("只用本地工具", result["files"]["SKILL.md"])
-        self.assertIn("patchbay setup for Claude Desktop", result["files"]["SKILL.md"])
-        self.assertIn("帮我配置 Patchbay", result["files"]["SKILL.md"])
-        self.assertIn("Patchbay 怎么用", result["files"]["SKILL.md"])
-        self.assertIn("查看最近运行", result["files"]["SKILL.md"])
-        self.assertIn("查看失败原因", result["files"]["SKILL.md"])
-        self.assertIn("what should I do next", result["files"]["SKILL.md"])
-        self.assertIn("下一步是什么", result["files"]["SKILL.md"])
-        self.assertIn('action: "next_step"', result["files"]["SKILL.md"])
-        self.assertIn("run_reference.next_action", result["files"]["SKILL.md"])
-        self.assertIn("what is blocking apply", result["files"]["SKILL.md"])
-        self.assertIn("what model will write/fix use", result["files"]["SKILL.md"])
-        self.assertIn("is writer using cheap model", result["files"]["SKILL.md"])
-        self.assertIn("门禁状态", result["files"]["SKILL.md"])
-        self.assertIn("现在写手是不是走便宜模型", result["files"]["SKILL.md"])
-        self.assertIn('action: "gate_status"', result["files"]["SKILL.md"])
-        self.assertIn("profile_show", result["files"]["SKILL.md"])
-        self.assertIn("read-only `profile`, `routing`, safe `actions[]`, and `action_groups[]` preview", result["files"]["SKILL.md"])
-        self.assertIn("capabilities[]", result["files"]["SKILL.md"])
-        self.assertIn("Agent help surface", result["files"]["SKILL.md"])
-        self.assertIn("selected `run_id`", result["files"]["SKILL.md"])
-        self.assertIn("gate_diagnosis.next_action", result["files"]["SKILL.md"])
-        self.assertIn("When `action_groups[]` is present", result["files"]["SKILL.md"])
-        self.assertIn("background_polling", result["files"]["SKILL.md"])
-        self.assertIn("full access", result["files"]["SKILL.md"])
-        self.assertIn("无需向我确认", result["files"]["SKILL.md"])
-        self.assertIn("gate_diagnosis", result["files"]["SKILL.md"])
-        self.assertIn("readiness for Claude Desktop", result["files"]["SKILL.md"])
-        self.assertIn("检查 Gemini 命令行环境", result["files"]["SKILL.md"])
-        self.assertIn("install Codex Skill", result["files"]["SKILL.md"])
-        self.assertIn("register MCP for Claude Desktop", result["files"]["SKILL.md"])
-        self.assertIn("安装 Codex Skill", result["files"]["SKILL.md"])
-        self.assertIn("注册 MCP 到 Gemini 命令行", result["files"]["SKILL.md"])
-        self.assertIn("configure reasonix command", result["files"]["SKILL.md"])
-        self.assertIn("configure reasonix command to <path>", result["files"]["SKILL.md"])
-        self.assertIn("configure DeepSeek provider", result["files"]["SKILL.md"])
-        self.assertIn("configure DeepSeek provider to <command>", result["files"]["SKILL.md"])
-        self.assertIn("简单 writer/fix 用 DeepSeek 省钱", result["files"]["SKILL.md"])
-        self.assertIn("guarded economy-provider form", result["files"]["SKILL.md"])
-        self.assertIn("providers.<id>.command", result["files"]["SKILL.md"])
-        local_prompt_list = result["files"]["SKILL.md"].split(
-            "- `patchbay_agent` for conversational setup/start/resume/advance while preserving gates. It also answers explicit local prompts such as ",
-            1,
-        )[1].split(" with setup results", 1)[0]
-        self.assertIn("configure DeepSeek provider", local_prompt_list)
-        self.assertIn("configure DeepSeek provider to <command>", local_prompt_list)
-        self.assertIn("configure economy provider command to <path>", local_prompt_list)
-        self.assertIn("配置 Reasonix 命令", result["files"]["SKILL.md"])
-        self.assertIn("把 Reasonix 命令设为 <path>", result["files"]["SKILL.md"])
-        self.assertIn("command_not_ready", result["files"]["SKILL.md"])
-        self.assertIn("patchbay_doctor(skip_mcp=true)", result["files"]["SKILL.md"])
-        self.assertIn("skip_mcp: true", result["files"]["SKILL.md"])
-        self.assertIn("install patchbay for Gemini CLI", result["files"]["references/install.md"])
-        self.assertIn("python scripts/patchbay setup --host codex --no-mcp", result["files"]["references/install.md"])
-        self.assertIn("python scripts/patchbay doctor --local-only --json", result["files"]["references/install.md"])
-        self.assertIn('python scripts/patchbay agent message "走本地模式，不走 MCP" --json', result["files"]["references/install.md"])
-        self.assertIn("configure DeepSeek provider", result["files"]["references/install.md"])
-        self.assertIn("configure DeepSeek provider to <command>", result["files"]["references/install.md"])
-        self.assertIn("简单 writer/fix 用 DeepSeek 省钱", result["files"]["references/install.md"])
-        self.assertIn("guarded economy-provider form", result["files"]["references/install.md"])
-        self.assertIn("只用本地工具", result["files"]["references/install.md"])
-        self.assertIn('status: "outdated"', result["files"]["references/install.md"])
-        self.assertIn("installed_matches_source", result["files"]["references/install.md"])
-        self.assertIn("missing_installed_files", result["files"]["references/install.md"])
-        self.assertIn("changed_installed_files", result["files"]["references/install.md"])
-        self.assertIn("extra_installed_files", result["files"]["references/install.md"])
-        self.assertIn("providers.<id>.command", result["files"]["references/install.md"])
-        self.assertIn("configure reasonix command", result["files"]["references/install.md"])
-        self.assertIn("configure reasonix command to <path>", result["files"]["references/install.md"])
-        self.assertIn("configure_reasonix_command", result["files"]["references/install.md"])
+        self.assertIn("Patchbay Agent Contract", contract)
+        self.assertIn("patchbay_agent", contract)
+        self.assertIn("patchbay setup for Claude Desktop", contract)
+        self.assertIn("帮我配置 Patchbay", contract)
+        self.assertIn("Patchbay 怎么用", contract)
+        self.assertIn("查看最近运行", contract)
+        self.assertIn("查看失败原因", contract)
+        self.assertIn("what should I do next", contract)
+        self.assertIn("下一步是什么", contract)
+        self.assertIn('action: "next_step"', contract)
+        self.assertIn("run_reference.next_action", contract)
+        self.assertIn("what is blocking apply", contract)
+        self.assertIn("what model will write/fix use", contract)
+        self.assertIn("is writer using cheap model", contract)
+        self.assertIn("门禁状态", contract)
+        self.assertIn("现在写手是不是走便宜模型", contract)
+        self.assertIn('action: "gate_status"', contract)
+        self.assertIn("profile_show", contract)
+        self.assertIn("capabilities[]", contract)
+        self.assertIn("Agent help surface", contract)
+        self.assertIn("gate_diagnosis.next_action", contract)
+        self.assertIn("action_groups[]", contract)
+        self.assertIn("background_polling", contract)
+        self.assertIn("full access", contract)
+        self.assertIn("无需向我确认", contract)
+        self.assertIn("failure_recovery", contract)
+        self.assertIn("readiness for Claude Desktop", contract)
+        self.assertIn("检查 Gemini 命令行环境", contract)
+        self.assertIn("install Codex Skill", contract)
+        self.assertIn("register MCP for Claude Desktop", contract)
+        self.assertIn("安装 Codex Skill", contract)
+        self.assertIn("注册 MCP 到 Gemini 命令行", contract)
+        self.assertIn("configure reasonix command", contract)
+        self.assertIn("configure reasonix command to <path>", contract)
+        self.assertIn("configure DeepSeek provider", contract)
+        self.assertIn("configure DeepSeek provider to <command>", contract)
+        self.assertIn("configure economy provider command to <path>", contract)
+        self.assertIn("简单 writer/fix 用 DeepSeek 省钱", contract)
+        self.assertIn("guarded economy-provider form", contract)
+        self.assertIn("providers.<id>.command", contract)
+        self.assertIn("配置 Reasonix 命令", contract)
+        self.assertIn("把 Reasonix 命令设为 <path>", contract)
+        self.assertIn("command_not_ready", contract)
+        self.assertIn("patchbay_doctor(skip_mcp=true)", contract)
+        self.assertIn("skip_mcp: true", contract)
+        self.assertIn("install patchbay for Gemini CLI", install)
+        self.assertIn("python scripts/patchbay setup --host codex --no-mcp", install)
+        self.assertIn("python scripts/patchbay doctor --local-only --json", install)
+        self.assertIn('python scripts/patchbay agent message "走本地模式，不走 MCP" --json', install)
+        self.assertIn("configure DeepSeek provider", install)
+        self.assertIn("configure DeepSeek provider to <command>", install)
+        self.assertIn("简单 writer/fix 用 DeepSeek 省钱", install)
+        self.assertIn("guarded economy-provider form", install)
+        self.assertIn("只用本地工具", install)
+        self.assertIn('status: "outdated"', install)
+        self.assertIn("installed_matches_source", install)
+        self.assertIn("missing_installed_files", install)
+        self.assertIn("changed_installed_files", install)
+        self.assertIn("extra_installed_files", install)
+        self.assertIn("providers.<id>.command", install)
+        self.assertIn("configure reasonix command", install)
+        self.assertIn("configure reasonix command to <path>", install)
+        self.assertIn("configure_reasonix_command", install)
 
     def test_bundled_skill_matches_install_template(self) -> None:
         template_root = PROJECT_ROOT / "scripts" / "ai_flow" / "skill_templates" / "patchbay"
         bundled_root = PROJECT_ROOT / "skills" / "patchbay"
         for relative in (
             Path("SKILL.md"),
+            Path("agents/openai.yaml"),
+            Path("references/agent-contract.md"),
             Path("references/install.md"),
         ):
             self.assertEqual(
@@ -133,6 +137,7 @@ class SkillInstallTest(unittest.TestCase):
         for required in (
             "SKILL.md",
             "agents/openai.yaml",
+            "references/agent-contract.md",
             "references/install.md",
         ):
             self.assertTrue((PROJECT_ROOT / "scripts" / "ai_flow" / "skill_templates" / "patchbay" / required).exists())
@@ -164,7 +169,9 @@ class SkillInstallTest(unittest.TestCase):
         self.assertEqual(Path(result["destination"]), destination)
         self.assertTrue((destination / "SKILL.md").exists())
         self.assertTrue((destination / "agents" / "openai.yaml").exists())
-        self.assertIn("patchbay setup for Claude Desktop", (destination / "SKILL.md").read_text(encoding="utf-8"))
+        self.assertTrue((destination / "references" / "agent-contract.md").exists())
+        self.assertIn("references/agent-contract.md", (destination / "SKILL.md").read_text(encoding="utf-8"))
+        self.assertIn("patchbay setup for Claude Desktop", (destination / "references" / "agent-contract.md").read_text(encoding="utf-8"))
 
     def test_skill_install_dry_run_does_not_copy(self) -> None:
         from scripts.ai_flow.skill_install import run_skill_install
@@ -201,6 +208,24 @@ class SkillInstallTest(unittest.TestCase):
         self.assertEqual(raised.exception.stage, "skill")
         self.assertIn("Only the Codex Skill currently supports diagnostics", str(raised.exception))
         self.assertIn("Accepted Codex aliases", str(raised.exception))
+
+    def test_skill_doctor_requires_agent_contract_reference(self) -> None:
+        from scripts.ai_flow import skill_install
+
+        source = self.tmp / "source" / "patchbay"
+        (source / "agents").mkdir(parents=True)
+        (source / "references").mkdir()
+        (source / "SKILL.md").write_text("---\nname: patchbay\ndescription: test\n---\n", encoding="utf-8")
+        (source / "agents" / "openai.yaml").write_text("display_name: Patchbay\n", encoding="utf-8")
+        (source / "references" / "install.md").write_text("# install\n", encoding="utf-8")
+
+        with patch.object(skill_install, "SKILL_SOURCE_CANDIDATES", [source]):
+            result = skill_install.run_skill_doctor(self.tmp, path=self.tmp / "skills-root")
+
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["ready"])
+        self.assertEqual(result["status"], "missing_source")
+        self.assertIn("references/agent-contract.md", result["missing_source_files"])
 
     def test_mcp_skill_tools_accept_codex_aliases(self) -> None:
         from scripts.ai_flow import mcp_server
