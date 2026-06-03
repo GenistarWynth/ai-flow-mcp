@@ -66,6 +66,8 @@ scripts/patchbay agent message "走本地模式，不走 MCP" --json
 
 `readiness without MCP`, `patchbay doctor --local-only`, and `patchbay_doctor(skip_mcp=true)` suppress MCP probe/register follow-up actions in both top-level and nested doctor payloads.
 
+For local no-MCP CLI use, non-JSON `scripts/patchbay doctor` and `scripts/patchbay agent message readiness` should render the readiness summary, checks, routing summary, recommendations, and grouped safe actions. Use `--json` when a host needs the full structured payload.
+
 ## Setup And Skill Actions
 
 - `patchbay_setup` / `patchbay_install` initialize project files, local config, bundled Codex Skill installation, optional MCP registration, doctor summary, top-level `routing`, `recommendations`, `next_actions`, `actions[]`, and `action_groups[]`.

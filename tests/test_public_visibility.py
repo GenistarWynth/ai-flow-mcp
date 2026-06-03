@@ -130,6 +130,23 @@ class PublicVisibilityTest(unittest.TestCase):
         self.assertIn("runs", structured)
         self.assertIn(planned["run_id"], {item["run_id"] for item in structured["runs"]["runs"]})
 
+    def test_readiness_text_views_summarize_checks_and_actions(self) -> None:
+        doctor = run(["python", str(self.script), "doctor", "--local-only"], self.repo)
+        readiness = run(["python", str(self.script), "agent", "message", "readiness without MCP"], self.repo)
+        structured = self.cli_json("agent", "message", "readiness")
+
+        for completed in (doctor, readiness):
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("Patchbay readiness:", completed.stdout)
+            self.assertIn("Checks:", completed.stdout)
+            self.assertIn("- repo:", completed.stdout)
+            self.assertIn("Actions:", completed.stdout)
+            self.assertNotIn("checks: {", completed.stdout)
+            self.assertNotIn("actions: [{", completed.stdout)
+
+        self.assertIn("doctor", structured)
+        self.assertIn("checks", structured["doctor"])
+
     def test_artifact_reads_and_tails_run_file(self) -> None:
         planned = self.cli_json("plan", "--task", "artifact read", "--mock")
 

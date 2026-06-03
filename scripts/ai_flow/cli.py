@@ -135,7 +135,7 @@ def _action_summary(action: dict[str, Any] | None) -> str:
 
 def _action_detail(action: dict[str, Any]) -> str:
     parts: list[str] = []
-    for key in ("run_id", "tab", "message", "command"):
+    for key in ("run_id", "tab", "message", "command", "host"):
         value = action.get(key)
         if isinstance(value, str) and value:
             parts.append(f"{key}={value}")
@@ -149,6 +149,92 @@ def _print_actions(actions: list[Any], *, title: str = "Actions") -> None:
     print(title + ":")
     for action in printable:
         print(f"- {_action_summary(action)}{_action_detail(action)}")
+
+
+def _print_grouped_actions(actions: list[Any], groups: list[Any]) -> None:
+    printable = [action for action in actions if isinstance(action, dict)]
+    if not printable:
+        return
+    by_id = {str(action.get("id")): action for action in printable if action.get("id")}
+    printed: set[int] = set()
+    if groups:
+        print("Actions:")
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            action_ids = group.get("action_ids") if isinstance(group.get("action_ids"), list) else []
+            group_actions = [by_id[str(action_id)] for action_id in action_ids if str(action_id) in by_id]
+            if not group_actions:
+                continue
+            print(f"{group.get('label') or group.get('id') or 'Group'}:")
+            for action in group_actions:
+                if id(action) in printed:
+                    continue
+                printed.add(id(action))
+                print(f"- {_action_summary(action)}{_action_detail(action)}")
+    remaining = [action for action in printable if id(action) not in printed]
+    if remaining:
+        _print_actions(remaining, title="Actions" if not printed else "Other actions")
+
+
+def _check_status(check: Any) -> str:
+    if not isinstance(check, dict):
+        return str(check)
+    if check.get("skipped"):
+        return "skipped"
+    status = check.get("status")
+    if isinstance(status, str) and status:
+        return status
+    if "ready" in check:
+        return "ready" if check.get("ready") else "not ready"
+    if "ok" in check:
+        return "ok" if check.get("ok") else "needs attention"
+    return "unknown"
+
+
+def _print_readiness_result(data: dict[str, Any]) -> None:
+    reply = str(data.get("reply") or "").strip()
+    if reply:
+        print(reply)
+        print("")
+
+    doctor = data.get("doctor") if isinstance(data.get("doctor"), dict) else data
+    ok = bool(doctor.get("ok"))
+    print(f"Patchbay readiness: {'ready' if ok else 'needs attention'}")
+    root = doctor.get("root")
+    host = doctor.get("host")
+    if root:
+        print(f"root: {root}")
+    if host:
+        print(f"host: {host}")
+
+    checks = doctor.get("checks") if isinstance(doctor.get("checks"), dict) else {}
+    if checks:
+        print("Checks:")
+        for name, check in checks.items():
+            print(f"- {name}: {_check_status(check)}")
+
+    routing = data.get("routing") if isinstance(data.get("routing"), dict) else doctor.get("routing")
+    if isinstance(routing, dict):
+        summary = routing.get("summary")
+        workload_policy = routing.get("workload_policy") if isinstance(routing.get("workload_policy"), dict) else {}
+        if not summary:
+            summary = workload_policy.get("summary")
+        if summary:
+            print(f"Routing: {summary}")
+
+    recommendations = data.get("recommendations") or doctor.get("recommendations") or []
+    if isinstance(recommendations, list) and recommendations:
+        print("Recommendations:")
+        for item in recommendations:
+            print(f"- {item}")
+
+    actions = data.get("actions") if isinstance(data.get("actions"), list) else doctor.get("actions")
+    groups = data.get("action_groups") if isinstance(data.get("action_groups"), list) else doctor.get("action_groups")
+    if isinstance(actions, list):
+        if actions:
+            print("")
+        _print_grouped_actions(actions, groups if isinstance(groups, list) else [])
 
 
 def _run_title(run: dict[str, Any]) -> str:
@@ -583,6 +669,8 @@ def main(argv: list[str] | None = None) -> int:
             inbox_only=bool(getattr(args, "inbox", False)),
             focus_only=bool(getattr(args, "focus", False)),
         )
+    elif args.command == "doctor" and not as_json and isinstance(result, dict):
+        _print_readiness_result(result)
     elif (
         args.command == "agent"
         and getattr(args, "agent_command", "") == "message"
@@ -592,6 +680,15 @@ def main(argv: list[str] | None = None) -> int:
         and isinstance(result.get("runs"), dict)
     ):
         _print_agent_runs_result(result)
+    elif (
+        args.command == "agent"
+        and getattr(args, "agent_command", "") == "message"
+        and not as_json
+        and isinstance(result, dict)
+        and result.get("action") == "doctor"
+        and isinstance(result.get("doctor"), dict)
+    ):
+        _print_readiness_result(result)
     else:
         _print_result(result, as_json=as_json)
     return 0
