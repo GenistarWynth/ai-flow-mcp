@@ -524,7 +524,7 @@ def _start_background_agent(
     response["requires_confirmation"] = None
     response["next_actions"] = _background_next_actions()
     response["actions"] = background_actions
-    return response
+    return _with_action_groups(response)
 
 
 def _active_background_job(status_data: dict[str, Any]) -> dict[str, Any] | None:
@@ -2270,7 +2270,7 @@ def _metrics_response(root: Path, run_id: str) -> dict[str, Any]:
     if efficiency:
         metrics_payload["efficiency_summary"] = efficiency
     actions = list(result.get("actions") or (routing.get("actions") if isinstance(routing, dict) else []) or [])
-    return {
+    return _with_action_groups({
         "schema_version": SCHEMA_VERSION,
         "ok": True,
         "action": "metrics",
@@ -2286,7 +2286,7 @@ def _metrics_response(root: Path, run_id: str) -> dict[str, Any]:
         "actions": actions,
         "error": None,
         "metrics": metrics_payload,
-    }
+    })
 
 
 def _latest_metrics_response(root: Path, text: str) -> dict[str, Any]:
@@ -2327,7 +2327,7 @@ def _latest_metrics_response(root: Path, text: str) -> dict[str, Any]:
             "runs": report,
         }
     )
-    return response
+    return _with_action_groups(response)
 
 
 def _latest_view_response(root: Path, text: str) -> dict[str, Any]:
@@ -2376,7 +2376,7 @@ def _latest_view_response(root: Path, text: str) -> dict[str, Any]:
         },
         *list(response.get("actions") or []),
     ]
-    return response
+    return _with_action_groups(response)
 
 
 def _include_for_requested_view(root: Path, run_id: str, tab: str) -> dict[str, Any]:

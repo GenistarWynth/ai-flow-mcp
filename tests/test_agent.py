@@ -1177,6 +1177,9 @@ test = []
         self.assertIn("Latest run", response["reply"])
         actions = {item["id"]: item for item in response["actions"]}
         self.assertEqual(actions["open_latest_run"]["run_id"], planned["run_id"])
+        action_groups = {item["id"]: item for item in response["action_groups"]}
+        self.assertIn("open_latest_run", action_groups["diagnostics"]["action_ids"])
+        self.assertIn("apply_economy_profile", action_groups["routing"]["action_ids"])
         self.assertEqual(len(list((self.repo / ".ai" / "runs").iterdir())), 1)
 
     def test_agent_metrics_with_run_returns_efficiency_digest(self) -> None:
@@ -1190,6 +1193,8 @@ test = []
         self.assertEqual(response["metrics"]["run_id"], planned["run_id"])
         self.assertIn("run_metrics", response["metrics"])
         self.assertIn("phase attempt", response["reply"])
+        action_groups = {item["id"]: item for item in response["action_groups"]}
+        self.assertIn("apply_economy_profile", action_groups["routing"]["action_ids"])
 
     def test_agent_metrics_word_in_task_still_starts_plan(self) -> None:
         response = agent_message(self.repo, "improve metrics dashboard")
@@ -1319,6 +1324,8 @@ test = []
                 actions = {item["id"]: item for item in response["actions"]}
                 self.assertEqual(actions["open_latest_run"]["run_id"], run_id)
                 self.assertEqual(actions["open_latest_run"]["tab"], tab)
+                action_groups = {item["id"]: item for item in response["action_groups"]}
+                self.assertIn("open_latest_run", action_groups["diagnostics"]["action_ids"])
                 self.assertFalse((self.repo / ".ai" / "runs" / run_id / "APPROVAL.json").exists())
 
     def test_agent_view_prompt_without_runs_returns_local_guidance(self) -> None:
@@ -2459,6 +2466,9 @@ model = "cheap-model"
         self.assertEqual(actions["poll_status"]["message"], "status")
         self.assertEqual(actions["poll_context"]["message"], "context")
         self.assertTrue(all(item["safe"] for item in response["actions"]))
+        action_groups = {item["id"]: item for item in response["action_groups"]}
+        self.assertEqual(action_groups["background_polling"]["action_ids"], ["poll_status", "poll_context", "poll_events"])
+        self.assertIn("open_background_run", action_groups["diagnostics"]["action_ids"])
         background_actions = {item["id"]: item for item in response["background_job"]["actions"]}
         self.assertEqual(background_actions["open_background_run"]["run_id"], run_id)
         self.assertEqual(background_actions["open_trace"]["tab"], "Trace")
