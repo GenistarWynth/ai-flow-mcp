@@ -3726,6 +3726,18 @@ describe("Workbench", () => {
 
     await userEvent.click(within(panel).getByRole("button", { name: "Inspect artifacts" }));
     expect(screen.getByRole("tab", { name: "产物" })).toHaveAttribute("aria-selected", "true");
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    const diagnosticSummary = within(details).getByLabelText("Failure diagnostic summary");
+    expect(within(diagnosticSummary).getByText("失败摘要")).toBeVisible();
+    expect(within(diagnosticSummary).getByText("实现")).toBeVisible();
+    expect(within(diagnosticSummary).getByText("Run failed in write.")).toBeVisible();
+    expect(within(diagnosticSummary).getByText("writer exploded")).toBeVisible();
+    expect(within(diagnosticSummary).getByText("Inspect writer.log and rerun with a narrower task.")).toBeVisible();
+    const artifactInventory = within(details).getByLabelText("Artifact inventory");
+    expect(within(artifactInventory).getByText("产物索引")).toBeVisible();
+    expect(within(artifactInventory).getAllByText("优先失败产物").length).toBeGreaterThan(0);
+    expect(within(details).getByText("当前预览")).toBeVisible();
+    expect(within(details).getByText("artifact text")).toBeVisible();
 
     await userEvent.click(within(panel).getByRole("button", { name: "Start replacement task" }));
     expect(await screen.findByRole("heading", { name: "新任务" })).toBeInTheDocument();

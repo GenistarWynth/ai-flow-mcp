@@ -1075,6 +1075,178 @@ function TracePanel({ message, trace, rawTrace }: { message: AgentMessage | null
   );
 }
 
+type DiagnosticArtifact = {
+  name: string;
+  purpose?: string;
+  path?: string;
+  priority?: boolean;
+};
+
+function diagnosticRecovery(context: HandoffContext | null, status: RunStatus | null) {
+  return context?.failure_recovery ?? status?.failure_recovery ?? null;
+}
+
+function diagnosticArtifacts(context: HandoffContext | null, status: RunStatus | null, activity: AgentActivity, recovery?: FailureRecovery | null) {
+  const byName = new Map<string, DiagnosticArtifact>();
+  const priorityNames = new Set(recovery?.artifacts ?? []);
+  const add = (artifact: DiagnosticArtifact | string | undefined | null, priority = false) => {
+    if (!artifact) return;
+    const item = typeof artifact === "string" ? { name: artifact } : artifact;
+    if (!item.name) return;
+    const current = byName.get(item.name) ?? { name: item.name };
+    byName.set(item.name, {
+      ...current,
+      ...item,
+      priority: current.priority || priority || priorityNames.has(item.name)
+    });
+  };
+  recovery?.artifacts?.forEach((artifact) => add(artifact, true));
+  context?.artifacts?.forEach((artifact) => add(artifact));
+  activity.artifacts?.forEach((artifact) => add(artifact));
+  status?.artifacts?.forEach((artifact) => add(artifact));
+  return Array.from(byName.values()).sort((left, right) => Number(Boolean(right.priority)) - Number(Boolean(left.priority)));
+}
+
+function artifactPreviewLines(text: string) {
+  return text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+}
+
+function diagnosticSignalLines(text: string) {
+  return artifactPreviewLines(text)
+    .filter((line) => /(error|failed|failure|exception|traceback|changes requested|not found|timeout|denied|invalid|无法|失败|错误|异常|超时|未找到|拒绝)/i.test(line))
+    .slice(0, 4);
+}
+
+function FailureDiagnosticSummary({
+  recovery,
+  status,
+  artifactText
+}: {
+  recovery?: FailureRecovery | null;
+  status?: RunStatus | null;
+  artifactText: string;
+}) {
+  const summary = recovery?.summary || status?.error || "No failure summary reported.";
+  const nextAction = recovery?.suggested_next_action || status?.suggested_next_action || "";
+  const signals = diagnosticSignalLines([recovery?.error, status?.error, artifactText].filter(Boolean).join("\n"));
+  if (!recovery && !status?.error && !status?.suggested_next_action && !signals.length) return null;
+  return (
+    <section className="diagnostic-summary" aria-label="Failure diagnostic summary">
+      <div className="diagnostic-summary-head">
+        <AlertTriangle size={15} />
+        <strong>失败摘要</strong>
+        <span>{phaseLabel(recovery?.stage ?? status?.current_phase)}</span>
+      </div>
+      <p>{summary}</p>
+      {recovery?.error && recovery.error !== summary ? <em>{recovery.error}</em> : null}
+      {nextAction ? (
+        <div className="diagnostic-next">
+          <span>建议下一步</span>
+          <strong>{nextAction}</strong>
+        </div>
+      ) : null}
+      {signals.length ? (
+        <div className="diagnostic-signal-list" aria-label="Log failure signals">
+          {signals.map((line, index) => (
+            <code key={`${index}-${line}`}>{line}</code>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function ArtifactInventory({ artifacts }: { artifacts: DiagnosticArtifact[] }) {
+  if (!artifacts.length) {
+    return <div className="trace-empty">No artifacts reported.</div>;
+  }
+  return (
+    <section className="artifact-inventory" aria-label="Artifact inventory">
+      <div className="trace-section-head">
+        <h2>产物索引</h2>
+        <span>{artifacts.length}</span>
+      </div>
+      <div className="artifact-list">
+        {artifacts.map((artifact) => (
+          <div className={`artifact-row ${artifact.priority ? "priority" : ""}`} key={artifact.name}>
+            <FileText size={15} />
+            <div>
+              <strong>{artifact.name}</strong>
+              <span>{artifact.purpose || artifact.path || (artifact.priority ? "优先失败产物" : "运行产物")}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function LogPanel({
+  artifactText,
+  recovery,
+  status,
+  artifacts
+}: {
+  artifactText: string;
+  recovery?: FailureRecovery | null;
+  status: RunStatus | null;
+  artifacts: DiagnosticArtifact[];
+}) {
+  const previewLines = artifactPreviewLines(artifactText);
+  const priorityArtifacts = artifacts.filter((artifact) => artifact.priority);
+  return (
+    <div className="diagnostic-body log-panel">
+      <FailureDiagnosticSummary recovery={recovery} status={status} artifactText={artifactText} />
+      {priorityArtifacts.length ? (
+        <section className="diagnostic-priority-artifacts" aria-label="Priority failure artifacts">
+          <div className="trace-section-head">
+            <h2>优先检查</h2>
+            <span>{priorityArtifacts.length}</span>
+          </div>
+          <div className="recovery-artifacts">
+            {priorityArtifacts.map((artifact) => (
+              <span key={artifact.name}>{artifact.name}</span>
+            ))}
+          </div>
+        </section>
+      ) : null}
+      <section className="artifact-preview-card">
+        <div className="trace-section-head">
+          <h2>日志预览</h2>
+          <span>{previewLines.length}</span>
+        </div>
+        {artifactText ? <pre>{artifactText}</pre> : <div className="trace-empty">未加载日志产物。</div>}
+      </section>
+    </div>
+  );
+}
+
+function ArtifactsPanel({
+  artifactText,
+  artifacts,
+  recovery,
+  status
+}: {
+  artifactText: string;
+  artifacts: DiagnosticArtifact[];
+  recovery?: FailureRecovery | null;
+  status: RunStatus | null;
+}) {
+  return (
+    <div className="diagnostic-body artifacts-panel">
+      <FailureDiagnosticSummary recovery={recovery} status={status} artifactText={artifactText} />
+      <ArtifactInventory artifacts={artifacts} />
+      <section className="artifact-preview-card">
+        <div className="trace-section-head">
+          <h2>当前预览</h2>
+          <span>{artifactPreviewLines(artifactText).length}</span>
+        </div>
+        {artifactText ? <pre>{artifactText}</pre> : <div className="trace-empty">未加载产物预览。</div>}
+      </section>
+    </div>
+  );
+}
+
 async function copyTextToClipboard(text: string) {
   try {
     if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) return false;
@@ -4338,24 +4510,11 @@ function DetailPanel({
   if (tab === "Trace") {
     return <TracePanel message={message} trace={trace} rawTrace={rawTrace} />;
   }
+  const recovery = diagnosticRecovery(context, status);
+  const artifacts = diagnosticArtifacts(context, status, activity, recovery);
   if (tab === "Diff") return <pre>{diff}</pre>;
-  if (tab === "Log") return <pre>{artifactText}</pre>;
-  if (tab === "Artifacts") {
-    return (
-      <div className="artifacts-panel">
-        {(context?.artifacts ?? activity.artifacts ?? []).map((artifact) => (
-          <div className="artifact-row" key={artifact.name}>
-            <FileText size={15} />
-            <div>
-              <strong>{artifact.name}</strong>
-              <span>{artifact.purpose}</span>
-            </div>
-          </div>
-        ))}
-        <pre>{artifactText}</pre>
-      </div>
-    );
-  }
+  if (tab === "Log") return <LogPanel artifactText={artifactText} recovery={recovery} status={status} artifacts={artifacts} />;
+  if (tab === "Artifacts") return <ArtifactsPanel artifactText={artifactText} artifacts={artifacts} recovery={recovery} status={status} />;
   if (tab === "Providers") {
     const providers = Object.entries(status?.effective_phase_providers ?? {});
     return (
