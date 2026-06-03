@@ -1566,6 +1566,8 @@ class McpSchemaTests(unittest.TestCase):
         self.assertIn("health_cards", tools["patchbay_context"])
         self.assertIn("conversation_state.suggestions", tools["patchbay_context"])
         self.assertIn("action_groups[]", tools["patchbay_context"])
+        self.assertIn("Composer-style clients", tools["patchbay_context"])
+        self.assertIn("flat button list", tools["patchbay_context"])
         self.assertIn("poll_context/status/events", tools["patchbay_context"])
         self.assertIn("background_polling", tools["patchbay_context"])
         self.assertIn("patchbay_agent", tools)
