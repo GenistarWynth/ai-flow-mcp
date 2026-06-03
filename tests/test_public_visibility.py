@@ -88,6 +88,27 @@ class PublicVisibilityTest(unittest.TestCase):
         self.assertIn("needs_approval", groups)
         self.assertIn(planned["run_id"], groups["needs_approval"]["run_ids"])
 
+    def test_runs_text_views_surface_inbox_and_focus(self) -> None:
+        planned = self.cli_json("plan", "--task", "cli inbox view", "--mock")
+
+        full = run(["python", str(self.script), "runs"], self.repo)
+        inbox = run(["python", str(self.script), "runs", "--inbox"], self.repo)
+        focus = run(["python", str(self.script), "runs", "--focus"], self.repo)
+
+        for completed in (full, inbox, focus):
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("Agent inbox:", completed.stdout)
+            self.assertIn("Needs plan approval", completed.stdout)
+            self.assertIn(planned["run_id"], completed.stdout)
+            self.assertIn("Approve plan (confirmation:plan_approved)", completed.stdout)
+
+        self.assertIn("Runs:", full.stdout)
+        self.assertNotIn("Runs:", inbox.stdout)
+        self.assertIn("Focus:", focus.stdout)
+        self.assertIn("run_id:", focus.stdout)
+        self.assertIn("title: cli inbox view", focus.stdout)
+        self.assertIn("next_action: Approve plan (confirmation:plan_approved)", focus.stdout)
+
     def test_artifact_reads_and_tails_run_file(self) -> None:
         planned = self.cli_json("plan", "--task", "artifact read", "--mock")
 

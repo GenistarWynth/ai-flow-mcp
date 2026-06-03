@@ -108,6 +108,109 @@ def _print_result(data: Any, *, as_json: bool = False) -> None:
         print(data)
 
 
+def _action_guard(action: dict[str, Any] | None) -> str:
+    if not isinstance(action, dict) or not action:
+        return "-"
+    confirmation = action.get("requires_confirmation")
+    if isinstance(confirmation, dict):
+        token = confirmation.get("confirmation") or confirmation.get("type") or "required"
+        return f"confirmation:{token}"
+    if action.get("safe") is False:
+        return "manual"
+    return "safe"
+
+
+def _action_label(action: dict[str, Any] | None) -> str:
+    if not isinstance(action, dict):
+        return "-"
+    return str(action.get("label") or action.get("id") or action.get("message") or "-")
+
+
+def _action_summary(action: dict[str, Any] | None) -> str:
+    label = _action_label(action)
+    if label == "-":
+        return "-"
+    return f"{label} ({_action_guard(action)})"
+
+
+def _run_title(run: dict[str, Any]) -> str:
+    task = str(run.get("task") or "").strip()
+    run_id = str(run.get("run_id") or "").strip()
+    return task or run_id or "-"
+
+
+def _print_run_detail(run: dict[str, Any]) -> None:
+    inbox = run.get("inbox") if isinstance(run.get("inbox"), dict) else {}
+    action = inbox.get("next_action") if isinstance(inbox.get("next_action"), dict) else {}
+    print(f"run_id: {run.get('run_id')}")
+    print(f"title: {_run_title(run)}")
+    print(f"status: {run.get('status') or '-'}")
+    print(f"phase: {run.get('current_phase') or '-'}")
+    print(f"inbox: {inbox.get('label') or inbox.get('key') or '-'}")
+    print(f"next_action: {_action_summary(action)}")
+    commands = run.get("next_commands") if isinstance(run.get("next_commands"), list) else []
+    if commands:
+        print(f"next_commands: {', '.join(str(item) for item in commands)}")
+    run_dir = run.get("run_dir")
+    if run_dir:
+        print(f"run_dir: {run_dir}")
+
+
+def _print_runs_result(data: dict[str, Any], *, inbox_only: bool = False, focus_only: bool = False) -> None:
+    inbox = data.get("inbox") if isinstance(data.get("inbox"), dict) else {}
+    runs = data.get("runs") if isinstance(data.get("runs"), list) else []
+    summary = inbox.get("summary") or f"{len(runs)} runs."
+    print(f"Agent inbox: {summary}")
+
+    groups = inbox.get("groups") if isinstance(inbox.get("groups"), list) else []
+    if groups:
+        print("Groups:")
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            run_ids = group.get("run_ids") if isinstance(group.get("run_ids"), list) else []
+            suffix = f" [{', '.join(str(item) for item in run_ids[:3])}]" if run_ids else ""
+            if len(run_ids) > 3:
+                suffix += " ..."
+            print(f"- {group.get('label') or group.get('key')}: {group.get('count', 0)}{suffix}")
+
+    focus = inbox.get("focus") if isinstance(inbox.get("focus"), dict) else None
+    if focus:
+        focus_inbox = focus.get("inbox") if isinstance(focus.get("inbox"), dict) else {}
+        focus_action = focus_inbox.get("next_action") if isinstance(focus_inbox.get("next_action"), dict) else {}
+        print(
+            "Focus: "
+            f"{focus.get('run_id')} | {_run_title(focus)} | "
+            f"{focus_inbox.get('label') or focus_inbox.get('key') or focus.get('status') or '-'} | "
+            f"{_action_summary(focus_action)}"
+        )
+
+    if focus_only:
+        if focus:
+            print("")
+            _print_run_detail(focus)
+        return
+    if inbox_only:
+        return
+
+    if not runs:
+        print("No Patchbay runs yet.")
+        return
+
+    print("Runs:")
+    for run in runs:
+        if not isinstance(run, dict):
+            continue
+        inbox_state = run.get("inbox") if isinstance(run.get("inbox"), dict) else {}
+        action = inbox_state.get("next_action") if isinstance(inbox_state.get("next_action"), dict) else {}
+        print(
+            "- "
+            f"{run.get('run_id')} | {_run_title(run)} | {run.get('status') or '-'} | "
+            f"{inbox_state.get('label') or inbox_state.get('key') or '-'} | "
+            f"{_action_summary(action)}"
+        )
+
+
 def _add_json(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
 
@@ -261,6 +364,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     runs = sub.add_parser("runs", help="List recent Patchbay runs.")
     runs.add_argument("--limit", type=int, default=20)
+    runs.add_argument("--inbox", action="store_true", help="Show only the Agent inbox summary, groups, and focus.")
+    runs.add_argument("--focus", action="store_true", help="Show the highest-priority run details and next action.")
     _add_json(runs)
 
     artifact = sub.add_parser("artifact", help="Read a run artifact file.")
@@ -439,6 +544,12 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command in {"events", "trace"} and getattr(args, "follow", False):
         if as_json:
             print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+    elif args.command == "runs" and not as_json and isinstance(result, dict):
+        _print_runs_result(
+            result,
+            inbox_only=bool(getattr(args, "inbox", False)),
+            focus_only=bool(getattr(args, "focus", False)),
+        )
     else:
         _print_result(result, as_json=as_json)
     return 0

@@ -58,6 +58,8 @@ If the user says MCP keeps asking for confirmation, asks to avoid MCP, asks for 
 ```bash
 scripts/patchbay setup --no-mcp --json
 scripts/patchbay doctor --local-only --json
+scripts/patchbay runs --inbox
+scripts/patchbay runs --focus
 scripts/patchbay agent message "patchbay setup without MCP" --json
 scripts/patchbay agent message "readiness without MCP" --json
 scripts/patchbay agent message "走本地模式，不走 MCP" --json
