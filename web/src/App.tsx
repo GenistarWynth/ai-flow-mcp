@@ -934,6 +934,7 @@ function localMessageHasDetails(message: LocalMessage) {
       message.response?.metrics?.routing_evidence ||
       message.response?.efficiency_summary ||
       message.response?.metrics?.efficiency_summary ||
+      message.response?.recovery ||
       (message.response?.actions?.length ?? 0) > 0 ||
       (message.response?.next_actions?.length ?? 0) > 0
   );
@@ -3063,6 +3064,7 @@ function LocalAgentResponseDetails({
       response.routing ||
       response.metrics?.routing_evidence ||
       efficiency ||
+      response.recovery ||
       capabilities.length ||
       commands.length ||
       suggestionGroups.length
@@ -3074,6 +3076,7 @@ function LocalAgentResponseDetails({
       {response.setup ? <SetupResultCard response={response} /> : null}
       {response.routing || response.metrics?.routing_evidence ? <RoutingResultCard response={response} /> : null}
       <EfficiencySummaryCard summary={efficiency} />
+      <LocalRecoveryCard recovery={response.recovery} onAction={onCommandAction} actionBusy={actionBusy} />
       <AgentCapabilitiesList capabilities={capabilities} />
       {commands.length ? (
         <div className="local-agent-command-actions" aria-label="Agent command actions">
@@ -3120,6 +3123,68 @@ function LocalAgentResponseDetails({
         </div>
       ) : null}
     </>
+  );
+}
+
+function LocalRecoveryCard({
+  recovery,
+  onAction,
+  actionBusy
+}: {
+  recovery?: FailureRecovery | null;
+  onAction?: (action: AgentHealthAction) => void;
+  actionBusy?: boolean;
+}) {
+  if (!recovery) return null;
+  const groups = groupedHealthActions(recovery.actions, recovery.action_groups);
+  const summary = recovery.summary || recovery.error || "运行遇到错误，请打开诊断查看日志。";
+  const stage = recovery.stage ? phaseLabel(recovery.stage) : "失败";
+  return (
+    <div className="local-recovery-card" aria-label="Agent failure recovery">
+      <div className="local-recovery-head">
+        <AlertTriangle size={15} />
+        <strong>失败恢复</strong>
+        <span>{stage}</span>
+      </div>
+      <p>{summary}</p>
+      {recovery.error && recovery.error !== summary ? <small>{recovery.error}</small> : null}
+      {recovery.suggested_next_action ? (
+        <div className="local-recovery-next">
+          <span>建议下一步</span>
+          <strong>{recovery.suggested_next_action}</strong>
+        </div>
+      ) : null}
+      {recovery.artifacts?.length ? (
+        <div className="recovery-artifacts" aria-label="建议检查的失败产物">
+          {recovery.artifacts.slice(0, 6).map((artifact) => (
+            <span key={artifact}>{artifact}</span>
+          ))}
+        </div>
+      ) : null}
+      {groups.length ? (
+        <div className="recovery-action-groups" aria-label="Agent failure recovery actions">
+          {groups.map((group) => (
+            <div className="recovery-action-group" key={group.id}>
+              <span title={group.reason}>{group.label}</span>
+              <div className="recovery-actions">
+                {group.actions.map((item) => (
+                  <button
+                    type="button"
+                    key={item.id || item.label}
+                    onClick={() => onAction?.(item)}
+                    disabled={!onAction || (actionBusy && item.kind !== "diagnostic_tab")}
+                    title={item.reason}
+                  >
+                    {item.kind === "focus_composer" ? <Plus size={13} /> : item.kind === "diagnostic_tab" ? <Search size={13} /> : <Settings size={13} />}
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

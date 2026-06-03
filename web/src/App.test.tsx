@@ -3224,6 +3224,132 @@ describe("Workbench", () => {
     expect(client.apply).not.toHaveBeenCalled();
   });
 
+  it("renders failed run recovery in selected-run status replies", async () => {
+    const failedContext: HandoffContext = {
+      ...plannedContext,
+      run_id: "run-ready",
+      status: "FAILED",
+      current_phase: "write",
+      timeline: [],
+      failure_recovery: {
+        stage: "write",
+        error: "writer exploded",
+        suggested_next_action: "Inspect writer.log and rerun with a narrower task.",
+        artifacts: ["writer.log", "events.jsonl"],
+        summary: "Run failed in write."
+      },
+      agent_activity: {
+        ...plannedContext.agent_activity!,
+        headline: "Patchbay Agent 在实现阶段遇到错误。",
+        tone: "failed",
+        current_step: {
+          phase: "write",
+          label: "实现",
+          status: "FAILED",
+          status_label: "失败",
+          summary: "writer exploded"
+        },
+        conversation_state: {
+          ...plannedContext.agent_activity!.conversation_state,
+          task: "Ship dashboard",
+          status: "FAILED",
+          phase: "write",
+          next_step: "Inspect writer.log and rerun with a narrower task."
+        },
+        messages: []
+      }
+    };
+    const recovery = {
+      stage: "write",
+      error: "writer exploded",
+      suggested_next_action: "Inspect writer.log and rerun with a narrower task.",
+      actions: [
+        {
+          id: "inspect_events",
+          label: "Inspect events",
+          kind: "diagnostic_tab",
+          tab: "Trace",
+          safe: true,
+          reason: "Open event timeline."
+        },
+        {
+          id: "inspect_artifacts",
+          label: "Inspect artifacts",
+          kind: "diagnostic_tab",
+          tab: "Artifacts",
+          safe: true,
+          reason: "Open failed artifacts."
+        },
+        {
+          id: "start_new_task",
+          label: "Start replacement task",
+          kind: "focus_composer",
+          safe: true,
+          reason: "Start over."
+        }
+      ],
+      action_groups: [
+        { id: "diagnostics", label: "Diagnostics", action_ids: ["inspect_events", "inspect_artifacts"], count: 2 },
+        { id: "new_task", label: "New task", action_ids: ["start_new_task"], count: 1 }
+      ],
+      artifacts: ["writer.log", "events.jsonl"],
+      summary: "Run failed in write."
+    };
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: "run-ready",
+      action: "status",
+      ok: true,
+      reply: "Run failed in write. Suggested next action: Inspect writer.log.",
+      recovery,
+      status: {
+        run_id: "run-ready",
+        task: "Ship dashboard",
+        status: "FAILED",
+        current_phase: "write",
+        error: "writer exploded",
+        suggested_next_action: "Inspect writer.log and rerun with a narrower task.",
+        failure_recovery: recovery,
+        gate_state: { approved: true, tests_passed: false, review_result: null, ready_to_apply: false },
+        next_commands: [],
+        artifacts: ["writer.log", "events.jsonl"],
+        effective_phase_providers: {}
+      },
+      context: failedContext
+    });
+    const client = createClient({ agentMessage });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await userEvent.type(screen.getByLabelText("给 Patchbay Agent 输入消息"), "status{enter}");
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith("status", {
+        runId: "run-ready",
+        include: { diff: true, review: true },
+        background: true
+      })
+    );
+    const panel = await screen.findByLabelText("Agent failure recovery");
+    expect(within(panel).getByText("失败恢复")).toBeVisible();
+    expect(within(panel).getByText("实现")).toBeVisible();
+    expect(within(panel).getByText("Run failed in write.")).toBeVisible();
+    expect(within(panel).getByText("writer exploded")).toBeVisible();
+    expect(within(panel).getByText("Inspect writer.log and rerun with a narrower task.")).toBeVisible();
+    expect(within(panel).getByText("writer.log")).toBeVisible();
+    expect(within(panel).getByText("events.jsonl")).toBeVisible();
+    expect(within(panel).getByText("诊断")).toBeVisible();
+    expect(within(panel).getByText("新任务")).toBeVisible();
+
+    await userEvent.click(within(panel).getByRole("button", { name: "Inspect artifacts" }));
+    expect(screen.getByRole("tab", { name: "产物" })).toHaveAttribute("aria-selected", "true");
+
+    await userEvent.click(within(panel).getByRole("button", { name: "Start replacement task" }));
+    expect(await screen.findByRole("heading", { name: "新任务" })).toBeInTheDocument();
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
   it("honors host metadata on help setup shortcuts", async () => {
     const agentMessage = vi
       .fn()
