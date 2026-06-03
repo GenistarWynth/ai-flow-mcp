@@ -1799,7 +1799,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         profile,
         routing,
         next_actions: profile.next_actions ?? ["readiness", "start"],
-        actions: profile.actions ?? []
+        actions: profile.actions ?? [],
+        action_groups: profile.action_groups ?? []
       };
       if (selectedRun) appendLocalAgentReply(response);
       else setNewTaskReply(response);
@@ -1880,6 +1881,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         profile: result.status,
         routing,
         actions: result.actions ?? [],
+        action_groups: result.action_groups ?? result.status?.action_groups ?? [],
         next_actions: result.next_actions ?? ["readiness", "start"]
       };
       if (selectedRun) appendLocalAgentReply(response);

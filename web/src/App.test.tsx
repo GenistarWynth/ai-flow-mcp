@@ -579,7 +579,26 @@ describe("Workbench", () => {
           command_ready: true
         }
       },
-      next_actions: ["readiness"]
+      next_actions: ["readiness"],
+      actions: [
+        {
+          id: "open_readiness",
+          label: "Open readiness",
+          kind: "local_agent",
+          message: "readiness",
+          safe: true,
+          reason: "Inspect setup and resolved write/fix routing."
+        }
+      ],
+      action_groups: [
+        {
+          id: "setup",
+          label: "Setup and readiness",
+          reason: "Inspect the activated provider from readiness.",
+          action_ids: ["open_readiness"],
+          count: 1
+        }
+      ]
     });
     const getDoctor = vi.fn().mockResolvedValue({
       ok: true,
@@ -636,6 +655,9 @@ describe("Workbench", () => {
       })
     );
     expect(await screen.findByText("Economy provider cheap_writer activated.")).toBeVisible();
+    const localActions = await screen.findByLabelText("Agent 建议动作");
+    expect(within(localActions).getByText("就绪设置")).toHaveAttribute("title", "Inspect the activated provider from readiness.");
+    expect(within(localActions).getByRole("button", { name: "Open readiness" })).toBeVisible();
     expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "codex" });
     expect(client.agentMessage).not.toHaveBeenCalled();
   });
@@ -4152,6 +4174,22 @@ describe("Workbench", () => {
           safe: true,
           reason: "Start a new task."
         }
+      ],
+      action_groups: [
+        {
+          id: "setup",
+          label: "Setup and readiness",
+          reason: "Open readiness checks after applying the economy profile.",
+          action_ids: ["open_readiness"],
+          count: 1
+        },
+        {
+          id: "new_task",
+          label: "New task",
+          reason: "Start a task with economy write/fix routing enabled.",
+          action_ids: ["start_new_task"],
+          count: 1
+        }
       ]
     });
     const getDoctor = vi
@@ -4200,6 +4238,9 @@ describe("Workbench", () => {
 
     await waitFor(() => expect(applyConfigProfile).toHaveBeenCalledWith("economy"));
     expect(await screen.findByText("Economy routing profile applied.")).toBeVisible();
+    const localActions = await screen.findByLabelText("Agent 建议动作");
+    expect(within(localActions).getByText("就绪设置")).toHaveAttribute("title", "Open readiness checks after applying the economy profile.");
+    expect(within(localActions).getByText("新任务")).toHaveAttribute("title", "Start a task with economy write/fix routing enabled.");
     expect(screen.getByRole("button", { name: "Open readiness" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Start new task" })).toBeVisible();
     const routingResult = await screen.findByLabelText("Routing result");
