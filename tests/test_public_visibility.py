@@ -327,6 +327,39 @@ class PublicVisibilityTest(unittest.TestCase):
         self.assertIn("gate_state", structured_status)
         self.assertIn("agent_activity", structured_context)
 
+    def test_diagnostic_view_text_views_summarize_events_trace_and_artifacts(self) -> None:
+        planned = self.cli_json("plan", "--task", "diagnostic views text view", "--mock")
+        run_id = planned["run_id"]
+
+        events = run(["python", str(self.script), "events", run_id], self.repo)
+        trace = run(["python", str(self.script), "trace", run_id], self.repo)
+        artifact = run(["python", str(self.script), "artifact", run_id, "PLAN.md", "--tail", "3"], self.repo)
+        agent_events = run(["python", str(self.script), "agent", "message", "events", "--run-id", run_id], self.repo)
+        agent_logs = run(["python", str(self.script), "agent", "message", "logs", "--run-id", run_id], self.repo)
+        structured = self.cli_json("events", run_id)
+
+        self.assertIn("Patchbay events:", events.stdout)
+        self.assertIn("Timeline:", events.stdout)
+        self.assertIn("plan.start", events.stdout)
+        self.assertIn("Patchbay trace:", trace.stdout)
+        self.assertIn("No trace entries returned.", trace.stdout)
+        self.assertIn("Patchbay artifact:", artifact.stdout)
+        self.assertIn("PATCHBAY_MOCK_OUTPUT.md", artifact.stdout)
+        self.assertIn("Patchbay events view:", agent_events.stdout)
+        self.assertIn("Patchbay artifact view:", agent_logs.stdout)
+        self.assertIn("requested_view: Log", agent_logs.stdout)
+
+        for completed in (events, trace, artifact, agent_events, agent_logs):
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertNotIn("events: [{", completed.stdout)
+            self.assertNotIn("trace: []", completed.stdout)
+            self.assertNotIn("status: {", completed.stdout)
+            self.assertNotIn("context: {", completed.stdout)
+            self.assertNotIn("artifacts: {", completed.stdout)
+
+        self.assertIn("events", structured)
+        self.assertEqual(structured["run_id"], run_id)
+
     def test_artifact_reads_and_tails_run_file(self) -> None:
         planned = self.cli_json("plan", "--task", "artifact read", "--mock")
 

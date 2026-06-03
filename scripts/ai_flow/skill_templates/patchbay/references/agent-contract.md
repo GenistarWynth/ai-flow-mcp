@@ -44,7 +44,7 @@ The group does not override the action kind. A `kind: "command"` action should s
 `patchbay_agent` handles setup, start, resume, advance, readiness, routing, help, status, next-step, and gate-status prompts without requiring the host to parse natural language. Examples include:
 
 - Setup/help: `patchbay setup`, `patchbay setup for Claude Desktop`, `install patchbay for Gemini CLI`, `install Codex Skill`, `register MCP for Claude Desktop`, `安装 Codex Skill`, `注册 MCP 到 Gemini 命令行`, `帮我配置 Patchbay`, `Patchbay 怎么用`, `使用说明`.
-- Run visibility: `status`, `runs`, `查看最近运行`, `任务列表`, `context`, `handoff context`, `events`, `poll context`, `poll events`.
+- Run visibility: `status`, `runs`, `查看最近运行`, `任务列表`, `context`, `handoff context`, `events`, `trace`, `logs`, `artifact`, `diff`, `poll context`, `poll events`.
 - Background control: `cancel background job`, `stop background job`, `取消后台任务`, `停止后台任务`.
 - Next-step and gates: `what should I do next`, `下一步是什么`, `why can't I apply`, `what is blocking apply`, `门禁状态`, `为什么不能应用`.
 - Readiness: `readiness`, `readiness for Claude Desktop`, `diagnose`, `patchbay doctor`, `检查环境`, `环境自检`, `检查 Gemini 命令行环境`.
@@ -77,6 +77,8 @@ Non-JSON `scripts/patchbay metrics <run_id>` and Agent metrics replies should re
 Non-JSON Agent guidance replies (`help`, local/no-MCP mode, `next step`, and gate-status prompts) should render capabilities, selected/latest run references, gate diagnostics, next actions, and grouped safe actions instead of dumping nested payloads. Use `--json` for hosts that need every structured field.
 
 Non-JSON `scripts/patchbay status <run_id>`, `scripts/patchbay context <run_id>`, and run-bound Agent status/context replies should render run state, gate state, failure recovery, Agent activity, health cards, routing/efficiency evidence, metrics, provider trail, artifacts, and grouped safe actions. Use `--json` for exact handoff payloads.
+
+Non-JSON `scripts/patchbay events <run_id>`, `scripts/patchbay trace <run_id>`, `scripts/patchbay artifact <run_id> <path>`, and Agent diagnostic view replies should render timelines, artifact previews, requested diagnostic tabs, recovery hints, and grouped safe actions instead of dumping nested payloads. Use `--json` for automation or exact event/artifact data.
 
 ## Setup And Skill Actions
 

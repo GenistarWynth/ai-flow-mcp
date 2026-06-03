@@ -798,6 +798,110 @@ def _print_context_result(data: dict[str, Any]) -> None:
         _print_grouped_actions(actions, groups)
 
 
+def _event_summary(index: int, event: Any) -> str:
+    if not isinstance(event, dict):
+        return f"{index}: {event}"
+    timestamp = event.get("timestamp") or "-"
+    phase = event.get("phase") or "-"
+    action = event.get("action") or "-"
+    status = event.get("status") or "-"
+    provider = event.get("provider") or "-"
+    model = event.get("model") or "-"
+    parts = [f"{index}: {timestamp}", f"{phase}.{action}", str(status)]
+    if provider != "-" or model != "-":
+        parts.append(f"{provider} / {model}")
+    if event.get("duration_ms") is not None:
+        parts.append(f"duration={_duration_label(event.get('duration_ms'))}")
+    if event.get("next_action"):
+        parts.append(f"next={event.get('next_action')}")
+    detail = event.get("detail")
+    if detail:
+        parts.append(_short_text(detail, limit=140))
+    return " | ".join(parts)
+
+
+def _print_event_log_result(data: dict[str, Any], *, kind: str) -> None:
+    title = "events" if kind == "events" else "trace"
+    entries = data.get(kind) if isinstance(data.get(kind), list) else []
+    print(f"Patchbay {title}: {data.get('run_id') or '-'}")
+    print(f"since: {data.get('since', 0)} | returned: {data.get('returned', len(entries))} | total: {data.get('total', len(entries))}")
+    if not entries:
+        print(f"No {title} entries returned.")
+        return
+    print("Timeline:")
+    try:
+        start = int(data.get("since") or 0)
+    except (TypeError, ValueError):
+        start = 0
+    for offset, event in enumerate(entries, start=start):
+        print(f"- {_event_summary(offset, event)}")
+
+
+def _print_artifact_result(data: dict[str, Any]) -> None:
+    print(f"Patchbay artifact: {data.get('artifact') or '-'}")
+    print(f"run_id: {data.get('run_id') or '-'}")
+    path = data.get("path")
+    if path:
+        print(f"path: {path}")
+    if data.get("lines_returned") is not None:
+        print(f"lines_returned: {data.get('lines_returned')}")
+    text = data.get("text")
+    if isinstance(text, str):
+        print("")
+        print(text, end="" if text.endswith("\n") else "\n")
+
+
+def _print_agent_artifacts(value: Any) -> None:
+    if not isinstance(value, dict) or not value:
+        return
+    print("Artifacts:")
+    for name, artifact in value.items():
+        if isinstance(artifact, dict) and artifact.get("error"):
+            print(f"- {name}: error ({artifact.get('error')})")
+        elif isinstance(artifact, dict):
+            text = artifact.get("text")
+            detail = f"{len(str(text).splitlines())} lines" if isinstance(text, str) else "available"
+            print(f"- {name}: {detail}")
+        else:
+            print(f"- {name}: {type(artifact).__name__}")
+
+
+def _print_agent_view_result(data: dict[str, Any]) -> None:
+    reply = str(data.get("reply") or "").strip()
+    if reply:
+        print(reply)
+        print("")
+    action = str(data.get("action") or "view")
+    print(f"Patchbay {action.replace('_', ' ')} view: {data.get('run_id') or '-'}")
+    requested = data.get("requested_view") if isinstance(data.get("requested_view"), dict) else {}
+    if requested:
+        print(f"requested_view: {requested.get('tab') or '-'} | {_short_text(requested.get('reason'), limit=180)}")
+    status = data.get("status") if isinstance(data.get("status"), dict) else {}
+    if status:
+        print(f"status: {status.get('status') or '-'} | phase: {status.get('current_phase') or status.get('stage') or '-'}")
+        if status.get("suggested_next_action"):
+            print(f"suggested_next_action: {_short_text(status.get('suggested_next_action'))}")
+    events = data.get("events") if isinstance(data.get("events"), dict) else {}
+    if events:
+        _print_event_log_result(events, kind="events")
+    trace = data.get("trace") if isinstance(data.get("trace"), dict) else {}
+    if trace:
+        _print_event_log_result(trace, kind="trace")
+    _print_agent_artifacts(data.get("artifacts"))
+    diff = data.get("diff")
+    if isinstance(diff, str) and diff:
+        print("Diff:")
+        print(diff, end="" if diff.endswith("\n") else "\n")
+    recovery = data.get("recovery") if isinstance(data.get("recovery"), dict) else {}
+    _print_failure_recovery(recovery)
+    _print_next_actions(data)
+    actions = data.get("actions") if isinstance(data.get("actions"), list) else []
+    groups = data.get("action_groups") if isinstance(data.get("action_groups"), list) else []
+    if actions:
+        print("")
+        _print_grouped_actions(actions, groups)
+
+
 def _run_title(run: dict[str, Any]) -> str:
     task = str(run.get("task") or "").strip()
     run_id = str(run.get("run_id") or "").strip()
@@ -1224,6 +1328,8 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command in {"events", "trace"} and getattr(args, "follow", False):
         if as_json:
             print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+    elif args.command in {"events", "trace"} and not as_json and isinstance(result, dict):
+        _print_event_log_result(result, kind=args.command)
     elif args.command == "runs" and not as_json and isinstance(result, dict):
         _print_runs_result(
             result,
@@ -1240,6 +1346,8 @@ def main(argv: list[str] | None = None) -> int:
         _print_context_result(result)
     elif args.command == "metrics" and not as_json and isinstance(result, dict):
         _print_metrics_result(result)
+    elif args.command == "artifact" and not as_json and isinstance(result, dict):
+        _print_artifact_result(result)
     elif (
         args.command == "config"
         and getattr(args, "config_command", "") == "profile"
@@ -1321,6 +1429,17 @@ def main(argv: list[str] | None = None) -> int:
             print(reply)
             print("")
         _print_status_result(result["status"])
+    elif (
+        args.command == "agent"
+        and getattr(args, "agent_command", "") == "message"
+        and not as_json
+        and isinstance(result, dict)
+        and (
+            result.get("action") in {"events", "artifact", "diff"}
+            or isinstance(result.get("requested_view"), dict)
+        )
+    ):
+        _print_agent_view_result(result)
     else:
         _print_result(result, as_json=as_json)
     return 0
