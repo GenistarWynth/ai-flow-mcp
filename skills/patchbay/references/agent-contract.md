@@ -87,7 +87,7 @@ Stateless `status` or `runs` responses may expose `runs.inbox`, per-run `inbox`,
 
 ## Runs Inbox
 
-`patchbay_runs`, `scripts/patchbay runs --json`, and stateless Agent `status` / `runs` replies return a structured Agent inbox for multi-run clients. The local non-JSON CLI consumes the same payload: `scripts/patchbay runs` prints the summary, groups, focus, and run list; `scripts/patchbay runs --inbox` prints only the queue view; `scripts/patchbay runs --focus` expands the highest-priority run with next-action and command hints.
+`patchbay_runs`, `scripts/patchbay runs --json`, and stateless Agent `status` / `runs` replies return a structured Agent inbox for multi-run clients. The local non-JSON CLI consumes the same payload: `scripts/patchbay runs` prints the summary, groups, focus, and run list; `scripts/patchbay runs --inbox` prints only the queue view; `scripts/patchbay runs --focus` expands the highest-priority run with next-action and command hints. Non-JSON `scripts/patchbay agent message runs` and `scripts/patchbay agent message status` print the Agent reply, then render the same inbox plus top-level safe actions.
 
 - Top-level `runs.inbox.total`, `groups`, `focus_run_id`, `active_count`, `confirmation_required_count`, `safe_action_count`, and `summary`.
 - Per-run `current_phase`, `next_commands`, `gate_state`, `background_job`, `inbox`, `actions[]`, and `action_groups[]`.

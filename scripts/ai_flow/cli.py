@@ -133,6 +133,24 @@ def _action_summary(action: dict[str, Any] | None) -> str:
     return f"{label} ({_action_guard(action)})"
 
 
+def _action_detail(action: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for key in ("run_id", "tab", "message", "command"):
+        value = action.get(key)
+        if isinstance(value, str) and value:
+            parts.append(f"{key}={value}")
+    return f" [{', '.join(parts)}]" if parts else ""
+
+
+def _print_actions(actions: list[Any], *, title: str = "Actions") -> None:
+    printable = [action for action in actions if isinstance(action, dict)]
+    if not printable:
+        return
+    print(title + ":")
+    for action in printable:
+        print(f"- {_action_summary(action)}{_action_detail(action)}")
+
+
 def _run_title(run: dict[str, Any]) -> str:
     task = str(run.get("task") or "").strip()
     run_id = str(run.get("run_id") or "").strip()
@@ -209,6 +227,21 @@ def _print_runs_result(data: dict[str, Any], *, inbox_only: bool = False, focus_
             f"{inbox_state.get('label') or inbox_state.get('key') or '-'} | "
             f"{_action_summary(action)}"
         )
+
+
+def _print_agent_runs_result(data: dict[str, Any]) -> None:
+    reply = str(data.get("reply") or "").strip()
+    if reply:
+        print(reply)
+        print("")
+
+    runs = data.get("runs") if isinstance(data.get("runs"), dict) else {}
+    _print_runs_result(runs)
+
+    actions = data.get("actions") if isinstance(data.get("actions"), list) else []
+    if actions:
+        print("")
+        _print_actions(actions)
 
 
 def _add_json(parser: argparse.ArgumentParser) -> None:
@@ -550,6 +583,15 @@ def main(argv: list[str] | None = None) -> int:
             inbox_only=bool(getattr(args, "inbox", False)),
             focus_only=bool(getattr(args, "focus", False)),
         )
+    elif (
+        args.command == "agent"
+        and getattr(args, "agent_command", "") == "message"
+        and not as_json
+        and isinstance(result, dict)
+        and result.get("action") == "runs"
+        and isinstance(result.get("runs"), dict)
+    ):
+        _print_agent_runs_result(result)
     else:
         _print_result(result, as_json=as_json)
     return 0
