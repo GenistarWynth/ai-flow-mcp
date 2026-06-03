@@ -1567,6 +1567,12 @@ function shouldAutopilot(action: string) {
   return ["continue", "write", "test", "review", "fix"].includes(action);
 }
 
+function inboxFocusRunId(runs: RunSummary[], inbox?: RunsInbox | null) {
+  const focusRunId = inbox?.focus_run_id ?? inbox?.focus?.run_id ?? "";
+  if (focusRunId && runs.some((run) => run.run_id === focusRunId)) return focusRunId;
+  return runs[0]?.run_id ?? "";
+}
+
 export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { client?: PatchbayClient; pollIntervalMs?: number }) {
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [runsInbox, setRunsInbox] = useState<RunsInbox | null>(null);
@@ -1607,13 +1613,17 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const loadRuns = async (preferredRunId?: string, options: { autoSelect?: boolean } = {}) => {
     const result = await client.listRuns();
     const nextRuns = result?.runs ?? [];
+    const nextInbox = result?.inbox ?? null;
     setRuns(nextRuns);
-    setRunsInbox(result?.inbox ?? null);
+    setRunsInbox(nextInbox);
     if (preferredRunId) {
       setSelectedRun(preferredRunId);
       return nextRuns;
     }
-    if (options.autoSelect !== false && !selectedRun && !newTaskMode && nextRuns[0]) setSelectedRun(nextRuns[0].run_id);
+    if (options.autoSelect !== false && !selectedRun && !newTaskMode) {
+      const nextSelected = inboxFocusRunId(nextRuns, nextInbox);
+      if (nextSelected) setSelectedRun(nextSelected);
+    }
     return nextRuns;
   };
 
@@ -1738,9 +1748,9 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       return;
     }
     if (!visibleRuns.some((run) => run.run_id === selectedRun)) {
-      setSelectedRun(visibleRuns[0].run_id);
+      setSelectedRun(inboxFocusRunId(visibleRuns, runsInbox));
     }
-  }, [visibleRuns, selectedRun, newTaskMode]);
+  }, [visibleRuns, selectedRun, newTaskMode, runsInbox]);
 
   const selectedSummary = useMemo(() => runs.find((run) => run.run_id === selectedRun), [runs, selectedRun]);
   const activeContext = context?.run_id === selectedRun ? context : null;

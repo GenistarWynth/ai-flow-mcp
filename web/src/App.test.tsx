@@ -1714,6 +1714,60 @@ describe("Workbench", () => {
     expect(within(fixRun).getByText("Continue run")).toBeVisible();
   });
 
+  it("auto-selects the inbox focus run instead of the first recent run", async () => {
+    const getContext = vi.fn().mockResolvedValue(readyContext);
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({
+        count: 2,
+        runs: [
+          {
+            run_id: "run-old",
+            task: "Already applied",
+            status: "APPLIED",
+            updated_at: "2026-05-24T11:00:00Z",
+            inbox: {
+              key: "applied",
+              label: "Applied",
+              priority: 20,
+              safe: true,
+              next_action: { id: "open_run", label: "Open run", kind: "open_run", run_id: "run-old", safe: true }
+            }
+          },
+          {
+            run_id: "run-ready",
+            task: "Ship dashboard",
+            status: "REVIEWED_PASS",
+            updated_at: "2026-05-24T10:00:00Z",
+            inbox: {
+              key: "ready_to_apply",
+              label: "Ready to apply",
+              priority: 80,
+              safe: false,
+              requires_confirmation: true,
+              next_action: { id: "apply", label: "Apply reviewed diff", kind: "local_agent", run_id: "run-ready", message: "apply", safe: false }
+            }
+          }
+        ],
+        inbox: {
+          total: 2,
+          focus_run_id: "run-ready",
+          confirmation_required_count: 1,
+          groups: [
+            { key: "ready_to_apply", label: "Ready to apply", count: 1, run_ids: ["run-ready"] },
+            { key: "applied", label: "Applied", count: 1, run_ids: ["run-old"] }
+          ]
+        }
+      }),
+      getContext
+    });
+
+    render(<Workbench client={client} />);
+
+    expect(await screen.findByRole("heading", { name: "Ship dashboard" })).toBeInTheDocument();
+    await waitFor(() => expect(getContext).toHaveBeenCalledWith("run-ready"));
+    expect(getContext).not.toHaveBeenCalledWith("run-old");
+  });
+
   it("creates a new plan run from the composer when no run is selected", async () => {
     const client = createClient({
       listRuns: vi
