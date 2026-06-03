@@ -57,6 +57,8 @@ If the user explicitly asks not to use MCP, says an MCP host keeps asking for co
 ```bash
 scripts/patchbay setup --no-mcp --json
 scripts/patchbay doctor --local-only --json
+scripts/patchbay runs --inbox
+scripts/patchbay runs --focus
 scripts/patchbay agent message "patchbay setup without MCP" --json
 scripts/patchbay agent message "readiness without MCP" --json
 scripts/patchbay agent message "走本地模式，不走 MCP" --json
@@ -85,7 +87,7 @@ Stateless `status` or `runs` responses may expose `runs.inbox`, per-run `inbox`,
 
 ## Runs Inbox
 
-`patchbay_runs`, `scripts/patchbay runs --json`, and stateless Agent `status` / `runs` replies return a structured Agent inbox for multi-run clients:
+`patchbay_runs`, `scripts/patchbay runs --json`, and stateless Agent `status` / `runs` replies return a structured Agent inbox for multi-run clients. The local non-JSON CLI consumes the same payload: `scripts/patchbay runs` prints the summary, groups, focus, and run list; `scripts/patchbay runs --inbox` prints only the queue view; `scripts/patchbay runs --focus` expands the highest-priority run with next-action and command hints.
 
 - Top-level `runs.inbox.total`, `groups`, `focus_run_id`, `active_count`, `confirmation_required_count`, `safe_action_count`, and `summary`.
 - Per-run `current_phase`, `next_commands`, `gate_state`, `background_job`, `inbox`, `actions[]`, and `action_groups[]`.
