@@ -80,6 +80,8 @@ Non-JSON `scripts/patchbay status <run_id>`, `scripts/patchbay context <run_id>`
 
 Non-JSON `scripts/patchbay events <run_id>`, `scripts/patchbay trace <run_id>`, `scripts/patchbay artifact <run_id> <path>`, and Agent diagnostic view replies should render timelines, artifact previews, requested diagnostic tabs, recovery hints, and grouped safe actions instead of dumping nested payloads. Use `--json` for automation or exact event/artifact data.
 
+Desktop/Web selected-run conversation views should show a compact run snapshot before the event stream, using the handoff/status payload to summarize phase/status, gate progress, economy routing health, and latest provider evidence.
+
 Desktop/Web Trace views should present selected-message, run-timeline, and provider-trace summaries before raw JSON. Keep raw JSON available behind an explicit debug/detail affordance for exact troubleshooting.
 
 Desktop/Web Log and Artifacts views should use `failure_recovery`, status errors, priority artifacts, and the loaded artifact preview to present a failure summary, suggested next step, highlighted error lines, and an artifact index before the raw preview.

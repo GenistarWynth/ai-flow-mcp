@@ -1541,6 +1541,107 @@ function ProvidersPanel({ status, context }: { status: RunStatus | null; context
   );
 }
 
+function gateSnapshot(context: HandoffContext | null, status: RunStatus | null) {
+  const gate = context?.gate_state ?? status?.gate_state ?? {};
+  const reviewResult = gate.review_result ?? status?.review_result;
+  const checks = [
+    { key: "approved", ok: Boolean(gate.approved), missing: "等待批准" },
+    { key: "tests", ok: Boolean(gate.tests_passed ?? status?.tests_passed), missing: "等待测试" },
+    { key: "review", ok: reviewResult === "PASS", missing: reviewResult ? statusLabel(reviewResult) : "等待审查" },
+    { key: "apply", ok: Boolean(gate.ready_to_apply), missing: "等待应用" }
+  ];
+  const done = checks.filter((check) => check.ok).length;
+  const missing = checks.find((check) => !check.ok)?.missing ?? "可以应用";
+  return {
+    label: `${done}/${checks.length} gates`,
+    detail: missing,
+    tone: done === checks.length ? "success" : reviewResult && reviewResult !== "PASS" ? "blocked" : "idle"
+  };
+}
+
+function latestProviderSnapshot(context: HandoffContext | null, metrics?: RunMetrics | null) {
+  const trail = context?.provider_trail ?? [];
+  const latest = trail[trail.length - 1];
+  if (latest) {
+    return {
+      label: `${phaseLabel(latest.phase)} · ${providerIdentity(latest)}`,
+      detail: providerTrailDetail(latest),
+      tone: traceStatusTone(latest.status)
+    };
+  }
+  const usage = (metrics?.provider_usage ?? []).filter((item) => item.provider || item.model || item.command_key);
+  const latestUsage = usage[usage.length - 1];
+  if (latestUsage) {
+    return {
+      label: `${phaseLabel(latestUsage.phase)} · ${providerIdentity(latestUsage)}`,
+      detail: providerUsageDetail(latestUsage),
+      tone: "idle"
+    };
+  }
+  return { label: "待观测", detail: "No provider evidence yet.", tone: "idle" };
+}
+
+function economySnapshot(routing?: RoutingEvidence | null, efficiency?: EfficiencySummary | null) {
+  const status = routing?.economy_health?.status ?? efficiency?.routing_status ?? efficiency?.status;
+  const health = economyHealthLabel(routing) || (status ? healthStatusLabel(status) : "待观测");
+  const coverage = routingCoverageLabel(routing);
+  const signals = efficiencyShareSignals(efficiency);
+  const detail = coverage || signals[0] || routing?.summary || efficiency?.summary || "等待 write/fix provider 证据";
+  const tone =
+    status === "healthy" || status === "verified_economy"
+      ? "success"
+      : status === "drift" || status === "command_not_ready" || status === "not_configured"
+        ? "blocked"
+        : "idle";
+  return { label: health, detail, tone };
+}
+
+function RunSnapshotCard({
+  status,
+  context,
+  activity
+}: {
+  status: RunStatus | null;
+  context: HandoffContext | null;
+  activity: AgentActivity;
+}) {
+  const currentPhase = context?.current_phase ?? status?.current_phase ?? activity.current_step?.phase;
+  const currentStatus = context?.status ?? status?.status ?? activity.current_step?.status;
+  const metrics = context?.run_metrics ?? status?.run_metrics;
+  const routing = context?.routing_evidence ?? metrics?.routing_evidence ?? status?.routing_evidence;
+  const efficiency = context?.efficiency_summary ?? metrics?.efficiency_summary;
+  const gate = gateSnapshot(context, status);
+  const provider = latestProviderSnapshot(context, metrics);
+  const economy = economySnapshot(routing, efficiency);
+  return (
+    <section className="run-snapshot-card" aria-label="运行概览">
+      <h2>运行概览</h2>
+      <div className="run-snapshot-grid">
+        <div className={`run-snapshot-item tone-${activity.tone ?? "idle"}`}>
+          <span>阶段</span>
+          <strong>{`${phaseLabel(currentPhase)} · ${statusLabel(currentStatus)}`}</strong>
+          {activity.current_step?.summary ? <small>{activity.current_step.summary}</small> : null}
+        </div>
+        <div className={`run-snapshot-item tone-${gate.tone}`}>
+          <span>门禁</span>
+          <strong>{gate.label}</strong>
+          <small>{gate.detail}</small>
+        </div>
+        <div className={`run-snapshot-item tone-${economy.tone}`}>
+          <span>经济路由</span>
+          <strong>{economy.label}</strong>
+          <small>{economy.detail}</small>
+        </div>
+        <div className={`run-snapshot-item tone-${provider.tone}`}>
+          <span>最近 provider</span>
+          <strong>{provider.label}</strong>
+          <small>{provider.detail}</small>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function asRecord(value: unknown): ConfigRecord | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as ConfigRecord : null;
 }
@@ -3400,6 +3501,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
           ) : (
             <>
               <ChatBubble role="user" title="任务" body={selectedTask || selectedRun} />
+              <RunSnapshotCard status={activeStatus} context={activeContext} activity={activity} />
               <ChatBubble
                 role="assistant"
                 title={activity.headline ?? "Patchbay Agent 正在跟踪这次运行。"}

@@ -889,6 +889,18 @@ describe("Workbench", () => {
     expect(screen.queryByLabelText("门禁状态")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "诊断" })).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText("reasonix_cli")).not.toBeInTheDocument();
+    const snapshot = screen.getByLabelText("运行概览");
+    expect(within(snapshot).getByRole("heading", { name: "运行概览" })).toBeVisible();
+    expect(within(snapshot).getByText("阶段")).toBeVisible();
+    expect(within(snapshot).getByText("应用 · 审查通过")).toBeVisible();
+    expect(within(snapshot).getByText("门禁")).toBeVisible();
+    expect(within(snapshot).getByText("4/4 gates")).toBeVisible();
+    expect(within(snapshot).getByText("可以应用")).toBeVisible();
+    expect(within(snapshot).getByText("经济路由")).toBeVisible();
+    expect(within(snapshot).getByText("等待 write/fix provider 证据")).toBeVisible();
+    expect(within(snapshot).getByText("最近 provider")).toBeVisible();
+    expect(within(snapshot).getByText("审查 · codex_cli / gpt-5")).toBeVisible();
+    expect(within(snapshot).getByText("通过 · 10:02:00")).toBeVisible();
 
     await userEvent.click(screen.getByRole("button", { name: "诊断" }));
     expect(screen.getByText("12s")).toBeVisible();
@@ -1222,13 +1234,13 @@ describe("Workbench", () => {
     const healthSection = screen.getByRole("heading", { name: "健康" }).closest("section")!;
     expect(within(healthSection).getByText("Economy route")).toBeVisible();
     expect(within(healthSection).getByText("100% economy observed")).toBeVisible();
-    expect(screen.getByText("经济覆盖")).toBeVisible();
-    expect(screen.getByText("50% · 1/2")).toBeVisible();
-    expect(screen.getByText("经济健康")).toBeVisible();
+    const metricsSection = screen.getByRole("heading", { name: "效率" }).closest("section")!;
+    expect(within(metricsSection).getByText("经济覆盖")).toBeVisible();
+    expect(within(metricsSection).getByText("50% · 1/2")).toBeVisible();
+    expect(within(metricsSection).getByText("经济健康")).toBeVisible();
     expect(screen.getAllByText("待观测").length).toBeGreaterThan(0);
     expect(screen.getByText("6")).toBeVisible();
     expect(screen.getByText("审查 2x")).toBeVisible();
-    const metricsSection = screen.getByRole("heading", { name: "效率" }).closest("section")!;
     await userEvent.click(within(metricsSection).getByRole("button", { name: "Inspect routing events" }));
     expect(screen.getByRole("tab", { name: "活动" })).toHaveAttribute("aria-selected", "true");
   });
@@ -1449,7 +1461,8 @@ describe("Workbench", () => {
 
     await screen.findByRole("heading", { name: "Ship dashboard" });
     await userEvent.click(screen.getByRole("button", { name: "诊断" }));
-    expect(screen.getByText("命令未就绪 · write/fix")).toBeVisible();
+    const metricsSection = screen.getByRole("heading", { name: "效率" }).closest("section")!;
+    expect(within(metricsSection).getByText("命令未就绪 · write/fix")).toBeVisible();
     expect(screen.getAllByText("命令未配置").length).toBeGreaterThan(0);
     await userEvent.click(screen.getAllByRole("button", { name: "Configure Reasonix" })[0]);
 
@@ -5474,7 +5487,8 @@ describe("Workbench", () => {
     await waitFor(() => {
       expect(client.getContext).toHaveBeenLastCalledWith("run-ready", { since_event: 1 });
     });
-    expect(screen.getAllByText("等待批准")).toHaveLength(2);
+    const thread = screen.getByLabelText("Patchbay Agent 对话线程");
+    expect(within(thread).getAllByText("等待批准")).toHaveLength(1);
   });
 
   it("sends free text through the conversational agent endpoint", async () => {
