@@ -68,12 +68,19 @@ describe("Patchbay API client", () => {
     const client = { fetch: fetchMock };
 
     await postRunAction("run-1", "write", client);
-    await applyRun("run-1", client);
+    await applyRun("run-1", "apply_approved", client);
     await cleanupRun("run-1", client);
 
     expect(fetchMock.mock.calls).toMatchObject([
       ["/api/runs/run-1/actions/write", { method: "POST" }],
-      ["/api/runs/run-1/actions/apply", { method: "POST" }],
+      [
+        "/api/runs/run-1/actions/apply",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ confirmation: "apply_approved" })
+        }
+      ],
       ["/api/runs/run-1/actions/cleanup", { method: "POST" }]
     ]);
   });

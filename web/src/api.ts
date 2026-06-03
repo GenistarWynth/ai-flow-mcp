@@ -672,7 +672,7 @@ export type PatchbayClient = {
   createProvider(payload: CreateProviderPayload): Promise<CreateProviderResult>;
   getDoctor(options?: { include_mcp?: boolean; skill_path?: string; host?: string; skip_mcp?: boolean }): Promise<DoctorReport>;
   runAction(runId: string, action: string): Promise<unknown>;
-  apply(runId: string): Promise<unknown>;
+  apply(runId: string, confirmation: "apply_approved"): Promise<unknown>;
   cleanup(runId: string): Promise<unknown>;
 };
 
@@ -802,8 +802,12 @@ export function postRunAction(runId: string, action: string, client?: ClientOpti
   return requestJson<unknown>(`/api/runs/${encodeURIComponent(runId)}/actions/${encodeURIComponent(action)}`, client, { method: "POST" });
 }
 
-export function applyRun(runId: string, client?: ClientOptions) {
-  return requestJson<unknown>(`/api/runs/${encodeURIComponent(runId)}/actions/apply`, client, { method: "POST" });
+export function applyRun(runId: string, confirmation: "apply_approved", client?: ClientOptions) {
+  return requestJson<unknown>(`/api/runs/${encodeURIComponent(runId)}/actions/apply`, client, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ confirmation })
+  });
 }
 
 export function cleanupRun(runId: string, client?: ClientOptions) {
@@ -826,7 +830,7 @@ export function createPatchbayClient(client?: ClientOptions): PatchbayClient {
     createProvider: (payload) => createProvider(payload, client),
     getDoctor: (options) => fetchDoctor(options, client),
     runAction: (runId, action) => postRunAction(runId, action, client),
-    apply: (runId) => applyRun(runId, client),
+    apply: (runId, confirmation) => applyRun(runId, confirmation, client),
     cleanup: (runId) => cleanupRun(runId, client)
   };
 }
