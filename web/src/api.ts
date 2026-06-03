@@ -1,12 +1,3 @@
-export type RunSummary = {
-  run_id: string;
-  status?: string;
-  task?: string;
-  updated_at?: string;
-  run_dir?: string;
-  background_job?: BackgroundJob | null;
-};
-
 export type GateState = {
   approved?: boolean;
   tests_passed?: boolean;
@@ -265,6 +256,55 @@ export type BackgroundJob = {
   trace_path?: string | null;
   error?: string | null;
   cancel_result?: Record<string, unknown> | null;
+  actions?: AgentHealthAction[];
+  action_groups?: ActionGroup[];
+};
+
+export type RunInboxState = {
+  key?: "running" | "needs_approval" | "ready_to_apply" | "failed" | "ready_to_continue" | "applied" | "inspect" | string;
+  label?: string;
+  priority?: number;
+  summary?: string;
+  next_action?: AgentHealthAction | null;
+  requires_confirmation?: boolean;
+  safe?: boolean;
+};
+
+export type RunsInboxGroup = {
+  key?: string;
+  label?: string;
+  count?: number;
+  run_ids?: string[];
+};
+
+export type RunsInbox = {
+  total?: number;
+  active_count?: number;
+  confirmation_required_count?: number;
+  safe_action_count?: number;
+  groups?: RunsInboxGroup[];
+  focus_run_id?: string | null;
+  focus?: RunSummary | null;
+  summary?: string;
+};
+
+export type RunsResult = {
+  count?: number;
+  runs: RunSummary[];
+  inbox?: RunsInbox;
+};
+
+export type RunSummary = {
+  run_id: string;
+  status?: string;
+  task?: string;
+  updated_at?: string;
+  run_dir?: string;
+  current_phase?: string;
+  next_commands?: string[];
+  gate_state?: GateState;
+  background_job?: BackgroundJob | null;
+  inbox?: RunInboxState;
   actions?: AgentHealthAction[];
   action_groups?: ActionGroup[];
 };
@@ -576,7 +616,7 @@ export type AgentResponse = {
   reply?: string;
   status?: RunStatus | null;
   context?: HandoffContext | null;
-  runs?: { count?: number; runs?: RunSummary[] };
+  runs?: RunsResult;
   recent_run?: RunSummary | null;
   run_reference?: (RunSummary & {
     suggested_message?: string;
@@ -663,7 +703,7 @@ export type HandoffContext = {
 export type PatchbayClient = {
   agentMessage(message: string, options?: AgentMessageOptions): Promise<AgentResponse>;
   createRun(task: string, options?: { background?: boolean }): Promise<{ run_id: string; [key: string]: unknown }>;
-  listRuns(): Promise<{ count?: number; runs: RunSummary[] }>;
+  listRuns(): Promise<RunsResult>;
   getStatus(runId: string): Promise<RunStatus>;
   getContext(runId: string, options?: { since_event?: number; since_trace?: number; include_trace?: boolean }): Promise<HandoffContext>;
   getTrace(runId: string, options?: { since?: number; phase?: string }): Promise<{ total?: number; trace?: TraceEntry[]; events?: TraceEntry[] }>;
@@ -707,7 +747,7 @@ function query(params: Record<string, string | number | boolean | undefined>): s
 }
 
 export function fetchRuns(client?: ClientOptions) {
-  return requestJson<{ count?: number; runs: RunSummary[] }>("/api/runs", client);
+  return requestJson<RunsResult>("/api/runs", client);
 }
 
 export function createRun(task: string, options: { background?: boolean } = {}, client?: ClientOptions) {

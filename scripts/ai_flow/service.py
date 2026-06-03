@@ -2845,6 +2845,200 @@ def _gate_state(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _run_queue_action(data: dict[str, Any]) -> dict[str, Any]:
+    run_id = str(data.get("run_id") or "")
+    status_value = str(data.get("status") or "")
+    background = data.get("background_job") if isinstance(data.get("background_job"), dict) else {}
+    if background.get("active"):
+        return {
+            "id": "poll_context",
+            "label": "Poll context",
+            "kind": "local_agent",
+            "run_id": run_id,
+            "message": "context",
+            "safe": True,
+            "reason": "Refresh the active background run without advancing any gate.",
+        }
+    if status_value == PLANNED:
+        return {
+            "id": "approve_and_run",
+            "label": "Approve plan",
+            "kind": "local_agent",
+            "run_id": run_id,
+            "message": "approve",
+            "safe": False,
+            "requires_confirmation": {
+                "type": "plan_approval",
+                "required_action": "approve_and_run",
+                "confirmation": "plan_approved",
+            },
+            "reason": "Plan approval is required before implementation starts.",
+        }
+    if _gate_state(data).get("ready_to_apply"):
+        return {
+            "id": "apply",
+            "label": "Apply reviewed diff",
+            "kind": "local_agent",
+            "run_id": run_id,
+            "message": "apply",
+            "safe": False,
+            "requires_confirmation": {
+                "type": "apply_approval",
+                "required_action": "apply",
+                "confirmation": "apply_approved",
+            },
+            "reason": "Tests and review passed; apply still requires explicit confirmation.",
+        }
+    if status_value in {APPROVED, IMPLEMENTED, TESTED, REVIEWED_CHANGES_REQUESTED}:
+        return {
+            "id": "continue",
+            "label": "Continue run",
+            "kind": "local_agent",
+            "run_id": run_id,
+            "message": "continue",
+            "safe": False,
+            "reason": "Run the next Patchbay phase for this selected run.",
+        }
+    if status_value == FAILED:
+        return {
+            "id": "inspect_failure",
+            "label": "Inspect failure",
+            "kind": "diagnostic_tab",
+            "run_id": run_id,
+            "tab": "Trace",
+            "safe": True,
+            "reason": "Inspect events and artifacts before retrying or starting a replacement task.",
+        }
+    return {
+        "id": "open_run",
+        "label": "Open run",
+        "kind": "open_run",
+        "run_id": run_id,
+        "tab": "Overview",
+        "safe": True,
+        "reason": "Open this run without advancing any gate.",
+    }
+
+
+def _run_queue_state(data: dict[str, Any]) -> dict[str, Any]:
+    status_value = str(data.get("status") or "")
+    background = data.get("background_job") if isinstance(data.get("background_job"), dict) else {}
+    if background.get("active"):
+        key = "running"
+        label = "Running"
+        priority = 100
+        summary = "Background Agent job is active; poll context/events or cancel it."
+    elif status_value == PLANNED:
+        key = "needs_approval"
+        label = "Needs plan approval"
+        priority = 90
+        summary = "Plan is ready and waiting for explicit approval."
+    elif _gate_state(data).get("ready_to_apply"):
+        key = "ready_to_apply"
+        label = "Ready to apply"
+        priority = 80
+        summary = "Tests and review passed; apply requires explicit confirmation."
+    elif status_value == FAILED:
+        key = "failed"
+        label = "Needs diagnosis"
+        priority = 70
+        summary = str(data.get("suggested_next_action") or data.get("error") or "Inspect diagnostics before retrying.")
+    elif status_value in {APPROVED, IMPLEMENTED, TESTED, REVIEWED_CHANGES_REQUESTED}:
+        key = "ready_to_continue"
+        label = "Ready to continue"
+        priority = 60
+        summary = "Run can advance to the next gated Patchbay phase."
+    elif status_value in {IMPLEMENTING, TESTING, REVIEWING, FIXING}:
+        key = "running"
+        label = "Phase running"
+        priority = 55
+        summary = "A foreground phase is in progress; poll status/events."
+    elif status_value == APPLIED:
+        key = "applied"
+        label = "Applied"
+        priority = 20
+        summary = "Run has already been applied."
+    else:
+        key = "inspect"
+        label = "Inspect"
+        priority = 30
+        summary = "Open this run to inspect status and events."
+
+    action = _run_queue_action(data)
+    return {
+        "key": key,
+        "label": label,
+        "priority": priority,
+        "summary": summary,
+        "next_action": action,
+        "requires_confirmation": bool(action.get("requires_confirmation")),
+        "safe": bool(action.get("safe", True)),
+    }
+
+
+def _build_runs_inbox(items: list[dict[str, Any]]) -> dict[str, Any]:
+    groups: dict[str, dict[str, Any]] = {}
+    active_count = 0
+    confirmation_count = 0
+    safe_action_count = 0
+    for item in items:
+        queue = item.get("inbox") if isinstance(item.get("inbox"), dict) else {}
+        key = str(queue.get("key") or "inspect")
+        group = groups.setdefault(
+            key,
+            {
+                "key": key,
+                "label": queue.get("label") or key,
+                "count": 0,
+                "run_ids": [],
+            },
+        )
+        group["count"] += 1
+        group["run_ids"].append(item.get("run_id"))
+        if key == "running":
+            active_count += 1
+        if queue.get("requires_confirmation"):
+            confirmation_count += 1
+        if queue.get("safe"):
+            safe_action_count += 1
+
+    priority_order = {
+        "running": 0,
+        "needs_approval": 1,
+        "ready_to_apply": 2,
+        "failed": 3,
+        "ready_to_continue": 4,
+        "inspect": 5,
+        "applied": 6,
+    }
+    ordered_groups = sorted(groups.values(), key=lambda group: priority_order.get(str(group.get("key")), 99))
+    focus = max(items, key=lambda item: int((item.get("inbox") or {}).get("priority") or 0), default=None)
+    return {
+        "total": len(items),
+        "active_count": active_count,
+        "confirmation_required_count": confirmation_count,
+        "safe_action_count": safe_action_count,
+        "groups": ordered_groups,
+        "focus_run_id": focus.get("run_id") if focus else None,
+        "focus": focus,
+        "summary": _runs_inbox_summary(len(items), active_count, confirmation_count, ordered_groups),
+    }
+
+
+def _runs_inbox_summary(total: int, active_count: int, confirmation_count: int, groups: list[dict[str, Any]]) -> str:
+    if total == 0:
+        return "No Patchbay runs yet."
+    group_text = ", ".join(f"{group['label']}: {group['count']}" for group in groups[:4])
+    parts = [f"{total} runs"]
+    if active_count:
+        parts.append(f"{active_count} active")
+    if confirmation_count:
+        parts.append(f"{confirmation_count} need confirmation")
+    if group_text:
+        parts.append(group_text)
+    return "; ".join(parts) + "."
+
+
 def context(
     cwd: Path,
     run_id: str,
@@ -2932,19 +3126,49 @@ def runs(cwd: Path, *, limit: int = 20) -> dict[str, Any]:
                 continue
         except Exception:
             continue
-        items.append(
+        job_path = candidate / "JOB.json"
+        if job_path.exists():
+            try:
+                job = read_json(job_path)
+                data["job"] = job
+                data["background_job"] = _background_job_summary(job)
+            except Exception:
+                pass
+        if "current_phase" not in data:
+            data["current_phase"] = data.get("stage") or _current_phase_from_status(str(data.get("status", "")))
+        if "gate_state" not in data:
+            data["gate_state"] = _gate_state(data)
+        if "next_commands" not in data:
+            data["next_commands"] = _next_commands(data)
+        summary = {
+            "run_id": data.get("run_id", candidate.name),
+            "status": data.get("status"),
+            "task": data.get("task"),
+            "updated_at": data.get("updated_at"),
+            "run_dir": str(candidate),
+            "current_phase": data.get("current_phase"),
+            "next_commands": data.get("next_commands"),
+            "gate_state": data.get("gate_state"),
+            "background_job": data.get("background_job"),
+        }
+        summary["inbox"] = _run_queue_state({**data, **summary})
+        summary["actions"] = _dedupe_actions([
             {
-                "run_id": data.get("run_id", candidate.name),
-                "status": data.get("status"),
-                "task": data.get("task"),
-                "updated_at": data.get("updated_at"),
-                "run_dir": str(candidate),
-                "background_job": data.get("background_job"),
-            }
-        )
+                "id": "open_run",
+                "label": "Open run",
+                "kind": "open_run",
+                "run_id": summary["run_id"],
+                "tab": "Overview",
+                "safe": True,
+                "reason": "Open this run without advancing any gate.",
+            },
+            summary["inbox"]["next_action"],
+        ])
+        summary["action_groups"] = group_actions(summary["actions"])
+        items.append(summary)
         if len(items) >= limit:
             break
-    return {"count": len(items), "runs": items}
+    return {"count": len(items), "runs": items, "inbox": _build_runs_inbox(items)}
 
 
 def artifact(cwd: Path, run_id: str, artifact_name: str, *, tail: int | None = None) -> dict[str, Any]:

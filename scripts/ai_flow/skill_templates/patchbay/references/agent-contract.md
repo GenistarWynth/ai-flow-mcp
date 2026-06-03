@@ -10,6 +10,7 @@ Read this reference when a host, desktop UI, or Skill-only workflow needs to han
 - `gate_diagnosis`: apply blockers and the next safe diagnostic or gated action.
 - `failure_recovery`: failed stage, suggested next action, priority artifacts, safe diagnostic/replacement actions, and grouped recovery controls.
 - `background_job`: active or completed background worker state, including safe polling/cancel actions and cancel metadata when present.
+- `runs.inbox`: structured multi-run work queue for stateless `status` / `runs`, `patchbay_runs`, and `scripts/patchbay runs --json`.
 - `requested_view`: read-only prompts such as diff, events, logs, artifact, or 查看失败原因 may request a diagnostic tab.
 
 ## Action Kinds
@@ -80,7 +81,20 @@ Next-step prompts return `action: "next_step"` plus the latest run handoff, `nex
 
 Gate-status prompts return `action: "gate_status"` plus `gate_diagnosis`, `gate_diagnosis.next_action`, blocker checks, and safe diagnostic/open-run `actions[]`. Do not treat a gate-status response as `approve`, `test`, `review`, or `apply`.
 
-Stateless `status` or `runs` responses may expose `open_run`, `focus_composer`, or readiness actions. Open the concrete run before taking gated actions.
+Stateless `status` or `runs` responses may expose `runs.inbox`, per-run `inbox`, `open_run`, `focus_composer`, or readiness actions. Open the concrete run before taking gated actions.
+
+## Runs Inbox
+
+`patchbay_runs`, `scripts/patchbay runs --json`, and stateless Agent `status` / `runs` replies return a structured Agent inbox for multi-run clients:
+
+- Top-level `runs.inbox.total`, `groups`, `focus_run_id`, `active_count`, `confirmation_required_count`, `safe_action_count`, and `summary`.
+- Per-run `current_phase`, `next_commands`, `gate_state`, `background_job`, `inbox`, `actions[]`, and `action_groups[]`.
+- `inbox.key` is one of `running`, `needs_approval`, `ready_to_apply`, `failed`, `ready_to_continue`, `inspect`, or `applied`.
+- `inbox.next_action` names the primary next action for that run.
+- Gated `approve_and_run` and `apply` actions must be rendered as confirmation-required controls because they carry `requires_confirmation` and `safe: false`.
+- Safe direct controls are limited to actions such as `open_run`, diagnostic tabs, polling, and failure inspection.
+
+Use `runs.inbox.focus_run_id` to highlight the most urgent run, but never auto-run its gated `next_action` from a stateless response.
 
 Direct `patchbay_apply`, `scripts/patchbay apply <run_id>`, and Web `POST /api/runs/<run_id>/actions/apply` also require explicit final confirmation (`confirmation: "apply_approved"` or `--confirmation apply_approved`) after reviewing `FINAL.diff`; missing confirmation must not call `service.apply`.
 

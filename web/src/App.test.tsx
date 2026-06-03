@@ -198,10 +198,74 @@ function createClient(overrides: Partial<PatchbayClient> = {}): PatchbayClient {
     agentMessage: vi.fn().mockResolvedValue({ run_id: "run-new", status: { run_id: "run-new", status: "PLANNED" } }),
     createRun: vi.fn().mockResolvedValue({ run_id: "run-new", status: "PLANNED" }),
     listRuns: vi.fn().mockResolvedValue({
+      count: 2,
       runs: [
-        { run_id: "run-ready", task: "Ship dashboard", status: "REVIEWED_PASS", updated_at: "2026-05-24T10:00:00Z" },
-        { run_id: "run-fix", task: "Needs fix", status: "REVIEWED_CHANGES_REQUESTED", updated_at: "2026-05-24T09:00:00Z" }
-      ]
+        {
+          run_id: "run-ready",
+          task: "Ship dashboard",
+          status: "REVIEWED_PASS",
+          updated_at: "2026-05-24T10:00:00Z",
+          current_phase: "apply",
+          next_commands: ["apply"],
+          gate_state: { approved: true, tests_passed: true, review_result: "PASS", ready_to_apply: true },
+          inbox: {
+            key: "ready_to_apply",
+            label: "Ready to apply",
+            summary: "Tests and review passed; apply requires explicit confirmation.",
+            priority: 80,
+            safe: false,
+            requires_confirmation: true,
+            next_action: {
+              id: "apply",
+              label: "Apply reviewed diff",
+              kind: "local_agent",
+              run_id: "run-ready",
+              message: "apply",
+              safe: false,
+              requires_confirmation: { type: "apply_approval", required_action: "apply", confirmation: "apply_approved" },
+              reason: "Tests and review passed; apply still requires explicit confirmation."
+            }
+          }
+        },
+        {
+          run_id: "run-fix",
+          task: "Needs fix",
+          status: "REVIEWED_CHANGES_REQUESTED",
+          updated_at: "2026-05-24T09:00:00Z",
+          current_phase: "fix",
+          next_commands: ["fix"],
+          gate_state: { approved: true, tests_passed: true, review_result: "CHANGES_REQUESTED", ready_to_apply: false },
+          inbox: {
+            key: "ready_to_continue",
+            label: "Ready to continue",
+            summary: "Run can advance to the next gated Patchbay phase.",
+            priority: 60,
+            safe: false,
+            requires_confirmation: false,
+            next_action: {
+              id: "continue",
+              label: "Continue run",
+              kind: "local_agent",
+              run_id: "run-fix",
+              message: "continue",
+              safe: false,
+              reason: "Run the next Patchbay phase for this selected run."
+            }
+          }
+        }
+      ],
+      inbox: {
+        total: 2,
+        active_count: 0,
+        confirmation_required_count: 1,
+        safe_action_count: 0,
+        focus_run_id: "run-ready",
+        summary: "2 runs; 1 need confirmation; Ready to apply: 1, Ready to continue: 1.",
+        groups: [
+          { key: "ready_to_apply", label: "Ready to apply", count: 1, run_ids: ["run-ready"] },
+          { key: "ready_to_continue", label: "Ready to continue", count: 1, run_ids: ["run-fix"] }
+        ]
+      }
     }),
     getStatus: vi.fn().mockResolvedValue({
       run_id: "run-ready",
@@ -1626,6 +1690,28 @@ describe("Workbench", () => {
 
     expect(screen.queryByRole("heading", { name: "Ship dashboard" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Needs fix" })).toBeInTheDocument();
+  });
+
+  it("renders structured runs inbox state in the sidebar", async () => {
+    const client = createClient();
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    const summary = screen.getByLabelText("Agent inbox summary");
+    expect(within(summary).getByText("Agent inbox")).toBeVisible();
+    expect(within(summary).getByText(/2 runs; 1 need confirmation/)).toBeVisible();
+    expect(within(summary).getByText("Ready to apply")).toBeVisible();
+    expect(within(summary).getByText("Ready to continue")).toBeVisible();
+
+    const runList = screen.getByLabelText("运行线程");
+    const readyRun = within(runList).getByRole("button", { name: /Ship dashboard/ });
+    expect(within(readyRun).getByText("Ready to apply")).toBeVisible();
+    expect(within(readyRun).getByText("Apply reviewed diff · needs confirmation")).toBeVisible();
+
+    const fixRun = within(runList).getByRole("button", { name: /Needs fix/ });
+    expect(within(fixRun).getByText("Ready to continue")).toBeVisible();
+    expect(within(fixRun).getByText("Continue run")).toBeVisible();
   });
 
   it("creates a new plan run from the composer when no run is selected", async () => {

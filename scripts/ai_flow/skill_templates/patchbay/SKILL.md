@@ -26,7 +26,7 @@ scripts/patchbay events <run_id>
 
 For MCP, the equivalent is `patchbay_agent` followed by `patchbay_context` or `patchbay_events`.
 
-Render structured `actions[]`, `action_groups[]`, `routing`, `routing_evidence`, `efficiency_summary`, `gate_diagnosis`, `failure_recovery`, and `background_job` when they are present. Prefer these fields over parsing prose. For simple high-volume implementation and repair work, confirm whether write/fix are using the cheaper economy route before approving long work.
+Render structured `runs.inbox`, `actions[]`, `action_groups[]`, `routing`, `routing_evidence`, `efficiency_summary`, `gate_diagnosis`, `failure_recovery`, and `background_job` when they are present. Prefer these fields over parsing prose. For simple high-volume implementation and repair work, confirm whether write/fix are using the cheaper economy route before approving long work.
 
 ## Required Gates
 

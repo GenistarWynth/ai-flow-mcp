@@ -67,9 +67,26 @@ class PublicVisibilityTest(unittest.TestCase):
         planned = self.cli_json("plan", "--task", "listable run", "--mock")
 
         result = self.cli_json("runs")
+        runs_by_id = {item["run_id"]: item for item in result["runs"]}
+        listed = runs_by_id[planned["run_id"]]
+        actions = {item["id"]: item for item in listed["actions"]}
+        groups = {item["key"]: item for item in result["inbox"]["groups"]}
 
-        self.assertTrue(any(item["run_id"] == planned["run_id"] for item in result["runs"]))
+        self.assertIn(planned["run_id"], runs_by_id)
         self.assertGreaterEqual(result["count"], 1)
+        self.assertEqual(listed["current_phase"], "approve")
+        self.assertEqual(listed["next_commands"], ["approve"])
+        self.assertFalse(listed["gate_state"]["approved"])
+        self.assertEqual(listed["inbox"]["key"], "needs_approval")
+        self.assertEqual(listed["inbox"]["next_action"]["id"], "approve_and_run")
+        self.assertFalse(listed["inbox"]["next_action"]["safe"])
+        self.assertEqual(listed["inbox"]["next_action"]["requires_confirmation"]["confirmation"], "plan_approved")
+        self.assertEqual(actions["open_run"]["kind"], "open_run")
+        self.assertEqual(actions["approve_and_run"]["requires_confirmation"]["type"], "plan_approval")
+        self.assertEqual(result["inbox"]["confirmation_required_count"], 1)
+        self.assertEqual(result["inbox"]["focus_run_id"], planned["run_id"])
+        self.assertIn("needs_approval", groups)
+        self.assertIn(planned["run_id"], groups["needs_approval"]["run_ids"])
 
     def test_artifact_reads_and_tails_run_file(self) -> None:
         planned = self.cli_json("plan", "--task", "artifact read", "--mock")

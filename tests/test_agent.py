@@ -1075,6 +1075,14 @@ test = []
         self.assertIsNone(response["run_id"])
         self.assertEqual(response["recent_run"]["run_id"], planned["run_id"])
         self.assertEqual(response["runs"]["count"], 1)
+        self.assertEqual(response["runs"]["inbox"]["focus_run_id"], planned["run_id"])
+        self.assertEqual(response["runs"]["inbox"]["confirmation_required_count"], 1)
+        latest = response["runs"]["runs"][0]
+        self.assertEqual(latest["run_id"], planned["run_id"])
+        self.assertEqual(latest["inbox"]["key"], "needs_approval")
+        self.assertEqual(latest["inbox"]["next_action"]["id"], "approve_and_run")
+        self.assertFalse(latest["inbox"]["next_action"]["safe"])
+        self.assertEqual(latest["inbox"]["next_action"]["requires_confirmation"]["confirmation"], PLAN_CONFIRMATION)
         actions = {item["id"]: item for item in response["actions"]}
         self.assertEqual(actions["open_latest_run"]["kind"], "open_run")
         self.assertEqual(actions["open_latest_run"]["run_id"], planned["run_id"])

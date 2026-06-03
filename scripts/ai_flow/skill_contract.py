@@ -22,6 +22,7 @@ def skill_contract_summary() -> dict[str, Any]:
             "patchbay skill print codex",
         ],
         "structured_fields": [
+            "runs.inbox",
             "actions[]",
             "action_groups[]",
             "gate_diagnosis",

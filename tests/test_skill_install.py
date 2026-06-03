@@ -74,6 +74,9 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("capabilities[]", contract)
         self.assertIn("Agent help surface", contract)
         self.assertIn("gate_diagnosis.next_action", contract)
+        self.assertIn("runs.inbox", contract)
+        self.assertIn("focus_run_id", contract)
+        self.assertIn("needs_approval", contract)
         self.assertIn("action_groups[]", contract)
         self.assertIn("background_polling", contract)
         self.assertIn("background_control", contract)
@@ -125,6 +128,7 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("configure_reasonix_command", install)
         self.assertEqual(contract_summary["kind"], "progressive-skill")
         self.assertEqual(contract_summary["entrypoint"], "skills/patchbay/SKILL.md")
+        self.assertIn("runs.inbox", contract_summary["structured_fields"])
         self.assertIn("patchbay skill doctor codex --json", contract_summary["commands"])
         self.assertIn("skills/patchbay/references/agent-contract.md", {item["path"] for item in contract_summary["references"]})
 

@@ -549,7 +549,7 @@ def _tool_schema(name: str) -> dict[str, Any]:
         "patchbay_skill_doctor": "Validate the bundled Patchbay Skill source and whether the installed Skill matches that source in the selected Codex skills root; reports outdated drift through installed_matches_source, missing_installed_files, changed_installed_files, and extra_installed_files, returning safe install_skill local_agent and refresh_skill_doctor actions plus action_groups[] when follow-up is needed. Host accepts Codex aliases such as Codex Desktop, Codex CLI, and Codex 桌面.",
         "patchbay_events": "Return the append-only event log (JSONL stream) for a run so any host can see what every phase/agent did.",
         "patchbay_trace": "Return the structured trace log (JSONL stream) for lower-level agent/tool activity with redacted raw payloads.",
-        "patchbay_runs": "List recent Patchbay runs.",
+        "patchbay_runs": "List recent Patchbay runs as a structured Agent inbox, including per-run inbox state, safe/open actions, gated next actions, action_groups[], and top-level focus/group counts for desktop/MCP work queues.",
         "patchbay_artifact": "Read a run artifact such as PLAN.md, TEST.log, REVIEW.md, or FINAL.diff.",
         "patchbay_config_show": "Show the effective Patchbay configuration.",
         "patchbay_config_phase_set": "Set a phase provider/model/command key without hand-editing TOML.",

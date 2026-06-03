@@ -45,6 +45,7 @@ import {
   RunMetrics,
   RunReferenceView,
   RunStatus,
+  RunsInbox,
   RunSummary,
   SuggestedAction,
   TierUsage,
@@ -778,6 +779,29 @@ function backgroundJobDetail(job?: BackgroundJob | null) {
     typeof job.exit_code === "number" ? `exit ${job.exit_code}` : null
   ].filter(Boolean);
   return details.join(" · ");
+}
+
+function inboxTone(key?: string) {
+  if (key === "running") return "running";
+  if (key === "needs_approval" || key === "ready_to_apply") return "blocked";
+  if (key === "failed") return "failed";
+  if (key === "ready_to_continue") return "ready";
+  if (key === "applied") return "success";
+  return "idle";
+}
+
+function inboxLabel(run: RunSummary) {
+  const label = run.inbox?.label;
+  if (label) return label;
+  if (run.background_job?.active) return "Running";
+  return statusLabel(run.status);
+}
+
+function inboxDetail(run: RunSummary) {
+  const action = run.inbox?.next_action;
+  const detail = action?.label || run.inbox?.summary || run.next_commands?.[0] || "";
+  if (run.inbox?.requires_confirmation) return `${detail} · needs confirmation`;
+  return detail;
 }
 
 function compactNumber(value?: number | null) {
@@ -1545,6 +1569,7 @@ function shouldAutopilot(action: string) {
 
 export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { client?: PatchbayClient; pollIntervalMs?: number }) {
   const [runs, setRuns] = useState<RunSummary[]>([]);
+  const [runsInbox, setRunsInbox] = useState<RunsInbox | null>(null);
   const [selectedRun, setSelectedRun] = useState("");
   const [newTaskMode, setNewTaskMode] = useState(false);
   const [status, setStatus] = useState<RunStatus | null>(null);
@@ -1583,6 +1608,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     const result = await client.listRuns();
     const nextRuns = result?.runs ?? [];
     setRuns(nextRuns);
+    setRunsInbox(result?.inbox ?? null);
     if (preferredRunId) {
       setSelectedRun(preferredRunId);
       return nextRuns;
@@ -2391,6 +2417,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
             <option value="FAILED">失败</option>
           </select>
         </label>
+        <RunInboxSummary inbox={runsInbox} />
         <div className="run-list" aria-label="运行线程">
           {visibleRuns.map((run) => (
             <button
@@ -2406,6 +2433,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                 <span>{statusLabel(run.status)}</span>
                 <span>{run.run_id}</span>
               </span>
+              <RunInboxBadge run={run} />
               <BackgroundJobBadge job={run.background_job} />
             </button>
           ))}
@@ -2694,6 +2722,40 @@ function AgentEventBubble({ message, selected, onSelect }: { message: AgentMessa
         <small>{message.status_label ?? statusLabel(message.status)}</small>
       </div>
     </button>
+  );
+}
+
+function RunInboxSummary({ inbox }: { inbox?: RunsInbox | null }) {
+  if (!inbox || !inbox.total) return null;
+  const groups = inbox.groups ?? [];
+  return (
+    <div className="run-inbox-summary" aria-label="Agent inbox summary">
+      <div>
+        <strong>Agent inbox</strong>
+        <span>{inbox.summary ?? `${inbox.total} runs`}</span>
+      </div>
+      {groups.length ? (
+        <div className="run-inbox-groups">
+          {groups.slice(0, 3).map((group) => (
+            <span className={`run-inbox-group tone-${inboxTone(group.key)}`} key={group.key ?? group.label}>
+              {group.label ?? group.key}
+              <strong>{group.count ?? 0}</strong>
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function RunInboxBadge({ run }: { run: RunSummary }) {
+  if (!run.inbox) return null;
+  const detail = inboxDetail(run);
+  return (
+    <span className={`run-inbox-badge tone-${inboxTone(run.inbox.key)}`} aria-label="Run inbox state" title={run.inbox.summary}>
+      <span>{inboxLabel(run)}</span>
+      {detail ? <small>{detail}</small> : null}
+    </span>
   );
 }
 
