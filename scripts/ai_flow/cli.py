@@ -494,6 +494,118 @@ def _print_metrics_result(data: dict[str, Any]) -> None:
         _print_grouped_actions(actions, groups if isinstance(groups, list) else [])
 
 
+def _short_text(value: Any, *, limit: int = 180) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 3)].rstrip() + "..."
+
+
+def _print_next_actions(data: dict[str, Any]) -> None:
+    next_actions = data.get("next_actions")
+    if not isinstance(next_actions, list) or not next_actions:
+        return
+    print("Next actions:")
+    for item in next_actions:
+        print(f"- {item}")
+
+
+def _run_reference_line(run: dict[str, Any]) -> str:
+    run_id = run.get("run_id") or "-"
+    status = run.get("status") or "-"
+    task = _short_text(run.get("task") or run.get("title") or "-", limit=90)
+    return f"{run_id} | {status} | {task}"
+
+
+def _print_run_reference(title: str, value: Any) -> None:
+    if not isinstance(value, dict) or not value:
+        return
+    print(f"{title}: {_run_reference_line(value)}")
+    action = value.get("next_action")
+    if not isinstance(action, dict):
+        inbox = value.get("inbox") if isinstance(value.get("inbox"), dict) else {}
+        action = inbox.get("next_action") if isinstance(inbox.get("next_action"), dict) else {}
+    if action:
+        print(f"{title.lower()} next_action: {_action_summary(action)}")
+
+
+def _print_capabilities(capabilities: Any) -> None:
+    if not isinstance(capabilities, list) or not capabilities:
+        return
+    print("Capabilities:")
+    for capability in capabilities:
+        if not isinstance(capability, dict):
+            continue
+        name = capability.get("name") or "-"
+        summary = _short_text(capability.get("summary"), limit=220)
+        print(f"- {name}: {summary}")
+
+
+def _print_gate_diagnosis(value: Any) -> None:
+    if not isinstance(value, dict) or not value:
+        return
+    print("Gate diagnosis:")
+    for key in ("status", "summary", "reason", "blocker", "message"):
+        item = value.get(key)
+        if item:
+            print(f"- {key}: {_short_text(item)}")
+    blockers = value.get("blockers") if isinstance(value.get("blockers"), list) else []
+    for blocker in blockers:
+        print(f"- blocker: {_short_text(blocker)}")
+    action = value.get("next_action") if isinstance(value.get("next_action"), dict) else {}
+    if action:
+        print(f"- next_action: {_action_summary(action)}")
+
+
+def _print_agent_guidance_result(data: dict[str, Any]) -> None:
+    reply = str(data.get("reply") or "").strip()
+    if reply:
+        print(reply)
+        print("")
+
+    action = str(data.get("action") or "agent")
+    labels = {
+        "help": "help",
+        "local_mode": "local mode",
+        "next_step": "next step",
+        "gate_status": "gate status",
+    }
+    print(f"Patchbay {labels.get(action, action.replace('_', ' '))}:")
+
+    local_mode = data.get("local_mode") if isinstance(data.get("local_mode"), dict) else {}
+    if local_mode:
+        print(f"- skip_mcp: {bool(local_mode.get('skip_mcp'))}")
+        print(f"- requires_run_for_unattended_approval: {bool(local_mode.get('requires_run_for_unattended_approval'))}")
+        print(f"- apply_requires_confirmation: {bool(local_mode.get('apply_requires_confirmation'))}")
+
+    _print_capabilities(data.get("capabilities"))
+    _print_run_reference("Run reference", data.get("run_reference"))
+    _print_run_reference("Recent run", data.get("recent_run"))
+
+    runs = data.get("runs") if isinstance(data.get("runs"), dict) else {}
+    if runs:
+        print("")
+        _print_runs_result(runs, inbox_only=True)
+
+    latest_status = data.get("latest_status") if isinstance(data.get("latest_status"), dict) else {}
+    failure = latest_status.get("failure_recovery") if isinstance(latest_status.get("failure_recovery"), dict) else {}
+    if failure.get("summary"):
+        print(f"Failure recovery: {_short_text(failure.get('summary'), limit=220)}")
+
+    _print_gate_diagnosis(data.get("gate_diagnosis"))
+
+    next_action = data.get("next_action") if isinstance(data.get("next_action"), dict) else {}
+    if next_action:
+        print(f"next_action: {_action_summary(next_action)}{_action_detail(next_action)}")
+    _print_next_actions(data)
+
+    actions = data.get("actions") if isinstance(data.get("actions"), list) else []
+    groups = data.get("action_groups") if isinstance(data.get("action_groups"), list) else []
+    if actions:
+        print("")
+        _print_grouped_actions(actions, groups)
+
+
 def _run_title(run: dict[str, Any]) -> str:
     task = str(run.get("task") or "").strip()
     run_id = str(run.get("run_id") or "").strip()
@@ -983,6 +1095,14 @@ def main(argv: list[str] | None = None) -> int:
         and isinstance(result.get("metrics"), dict)
     ):
         _print_metrics_result(result)
+    elif (
+        args.command == "agent"
+        and getattr(args, "agent_command", "") == "message"
+        and not as_json
+        and isinstance(result, dict)
+        and result.get("action") in {"help", "local_mode", "next_step", "gate_status"}
+    ):
+        _print_agent_guidance_result(result)
     else:
         _print_result(result, as_json=as_json)
     return 0

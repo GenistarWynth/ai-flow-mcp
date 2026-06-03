@@ -262,6 +262,38 @@ class PublicVisibilityTest(unittest.TestCase):
         self.assertIn("run_metrics", structured)
         self.assertIn("efficiency_summary", structured)
 
+    def test_agent_guidance_text_views_summarize_without_payload_dump(self) -> None:
+        planned = self.cli_json("plan", "--task", "guidance text view", "--mock")
+
+        help_view = run(["python", str(self.script), "agent", "message", "help"], self.repo)
+        local_mode = run(["python", str(self.script), "agent", "message", "不要用这个MCP"], self.repo)
+        next_step = run(["python", str(self.script), "agent", "message", "what should I do next"], self.repo)
+        gate_status = run(
+            ["python", str(self.script), "agent", "message", "why can't I apply", "--run-id", planned["run_id"]],
+            self.repo,
+        )
+        structured = self.cli_json("agent", "message", "help")
+
+        self.assertIn("Patchbay help:", help_view.stdout)
+        self.assertIn("Capabilities:", help_view.stdout)
+        self.assertIn("Patchbay local mode:", local_mode.stdout)
+        self.assertIn("skip_mcp:", local_mode.stdout)
+        self.assertIn("Patchbay next step:", next_step.stdout)
+        self.assertIn("Agent inbox:", next_step.stdout)
+        self.assertIn("Patchbay gate status:", gate_status.stdout)
+        self.assertIn("Gate diagnosis:", gate_status.stdout)
+
+        for completed in (help_view, local_mode, next_step, gate_status):
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertNotIn("capabilities: [{", completed.stdout)
+            self.assertNotIn("local_mode: {", completed.stdout)
+            self.assertNotIn("runs: {", completed.stdout)
+            self.assertNotIn("gate_diagnosis: {", completed.stdout)
+            self.assertNotIn("actions: [{", completed.stdout)
+
+        self.assertIn("capabilities", structured)
+        self.assertIn("actions", structured)
+
     def test_artifact_reads_and_tails_run_file(self) -> None:
         planned = self.cli_json("plan", "--task", "artifact read", "--mock")
 

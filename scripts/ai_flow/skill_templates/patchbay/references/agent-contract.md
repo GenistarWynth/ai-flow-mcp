@@ -74,6 +74,8 @@ Non-JSON `scripts/patchbay config profile show/apply` and Agent profile/routing 
 
 Non-JSON `scripts/patchbay metrics <run_id>` and Agent metrics replies should render efficiency summary, tier usage, provider usage, routing health, and grouped safe actions. Use `--json` for automation and exact evidence.
 
+Non-JSON Agent guidance replies (`help`, local/no-MCP mode, `next step`, and gate-status prompts) should render capabilities, selected/latest run references, gate diagnostics, next actions, and grouped safe actions instead of dumping nested payloads. Use `--json` for hosts that need every structured field.
+
 ## Setup And Skill Actions
 
 - `patchbay_setup` / `patchbay_install` initialize project files, local config, bundled Codex Skill installation, optional MCP registration, doctor summary, top-level `routing`, `recommendations`, `next_actions`, `actions[]`, and `action_groups[]`.
