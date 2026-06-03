@@ -192,7 +192,9 @@ The Skill host argument accepts Codex aliases such as `Codex Desktop`, `Codex CL
 
 `patchbay skill doctor` validates both the bundled Skill source and the installed copy. If the installed Skill is stale, missing files, or contains old extra files, it reports `status: "outdated"`, `installed_matches_source: false`, `missing_installed_files`, `changed_installed_files`, and `extra_installed_files`, then returns a safe reinstall action.
 
-By default the Skill installs to `$CODEX_HOME/skills` or `~/.codex/skills`. It triggers on phrases such as "走多模型流程" and "multi-agent workflow"; MCP tools still need MCP registration.
+The Skill is intentionally compact for lower context cost. `SKILL.md` keeps only the trigger, entry-choice, gate, local-only, economy, and background rules. Detailed setup guidance lives in `references/install.md`, and structured Agent/Desktop/MCP response handling lives in `references/agent-contract.md`. `patchbay skill print codex --json` returns all bundled files, while `patchbay skill doctor` treats both references as required source files and reports drift if the installed copy is missing or stale.
+
+By default the Skill installs to `$CODEX_HOME/skills` or `~/.codex/skills`. It triggers on phrases such as "走多模型流程", "multi-agent workflow", Patchbay setup/install, Codex Skill installation, and no-MCP/local-only Patchbay work; MCP tools still need MCP registration when the host wants tool calls.
 `patchbay skill doctor` / `patchbay_skill_doctor` also return safe structured `install_skill` and `refresh_skill_doctor` actions when the Skill is missing. With the default skills root, `install_skill` is a `local_agent` action with message `install Codex Skill` and a copyable `patchbay skill install codex` command fallback, so desktop and MCP hosts can install the Skill without invoking MCP registration. When a custom `--path` is supplied, the action remains a command so the selected destination is preserved.
 
 ## Configuration

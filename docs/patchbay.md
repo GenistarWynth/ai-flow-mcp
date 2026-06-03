@@ -227,6 +227,8 @@ Skill host 参数接受 `codex` 以及 `Codex Desktop`、`Codex CLI`、`Codex �
 
 Skill 默认安装到 `$CODEX_HOME/skills` 或 `~/.codex/skills`。它负责让 Codex 在“走多模型流程”/“multi-agent workflow”等场景自动遵守 Patchbay 流程。MCP server 可提供工具调用；当用户或 host 不想使用 MCP 时，Skill 也可以按本地 CLI 模式运行同一套门禁流程。
 
+Skill 采用渐进披露结构，避免每次触发都加载完整 Agent 契约：`SKILL.md` 只保留入口选择、门禁、本地-only、经济路由和后台运行规则；`references/install.md` 保存安装与 doctor 细节；`references/agent-contract.md` 保存结构化 `actions[]`、`action_groups[]`、`failure_recovery`、经济路由、后台轮询和桌面/MCP 渲染契约。`patchbay skill print codex --json` 会输出全部文件；`patchbay skill doctor` 会把这些 reference 作为必需源文件，并在安装副本缺失、过期或多出旧文件时返回 drift 和安全 reinstall 动作。
+
 ## 故障排查
 
 - Claude CLI 不存在：检查 `[commands].claude`，或用 `--mock` 验证流程。
