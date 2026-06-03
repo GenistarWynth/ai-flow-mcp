@@ -92,6 +92,8 @@ def _action_group_id(action: dict[str, Any]) -> str:
 
     if action_id.startswith("poll_"):
         return "background_polling"
+    if _is_copyable_provider_command(action_id, kind, command):
+        return "commands"
     if _has_any(haystack, ("economy", "routing", "route", "reasonix", "deepseek", "cheap_writer", "provider command")):
         return "routing"
     if _has_any(haystack, ("readiness", "doctor", "setup", "install", "skill", "mcp")):
@@ -102,9 +104,15 @@ def _action_group_id(action: dict[str, Any]) -> str:
         return "new_task"
     if _has_any(haystack, ("approve", "apply", "continue")):
         return "gate"
-    if kind == "command" or command:
+    if kind == "command" or (command and kind != "local_agent"):
         return "commands"
     return "local"
+
+
+def _is_copyable_provider_command(action_id: str, kind: str, command: str) -> bool:
+    if action_id == "configure_economy_provider_command":
+        return kind == "command"
+    return kind == "command" and "providers." in command and ".command" in command
 
 
 def _has_any(text: str, needles: tuple[str, ...]) -> bool:
