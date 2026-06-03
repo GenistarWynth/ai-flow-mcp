@@ -309,6 +309,82 @@ def _print_setup_result(data: dict[str, Any]) -> None:
         )
 
 
+def _phase_summary(name: str, phase: Any) -> str:
+    if not isinstance(phase, dict):
+        return f"{name}: -"
+    if phase.get("error"):
+        return f"{name}: error ({phase.get('error')})"
+    tier = str(phase.get("tier") or "-")
+    provider = str(phase.get("provider") or "-")
+    model = str(phase.get("model") or "-")
+    route = "economy route" if phase.get("economy_route") else "supervision route"
+    command = phase.get("command_status") if isinstance(phase.get("command_status"), dict) else {}
+    command_suffix = ""
+    if command.get("required"):
+        command_suffix = f"; command {_check_status(command)}"
+    return f"{name}: {tier} | {provider} / {model} | {route}{command_suffix}"
+
+
+def _print_profile_result(data: dict[str, Any]) -> None:
+    reply = str(data.get("reply") or "").strip()
+    if reply:
+        print(reply)
+        print("")
+
+    payload = data.get("profile") if isinstance(data.get("profile"), dict) else data
+    status = payload.get("status") if isinstance(payload.get("status"), dict) else payload
+    routing = data.get("routing") if isinstance(data.get("routing"), dict) else {}
+    if not routing and isinstance(payload.get("routing"), dict):
+        routing = payload["routing"]
+
+    profile_name = status.get("profile") or payload.get("profile") or data.get("profile") or "-"
+    print(f"Patchbay profile: {profile_name}")
+    config = payload.get("config") or data.get("config")
+    if config:
+        print(f"config: {config}")
+
+    summary = payload.get("summary") or routing.get("summary")
+    workload = routing.get("workload_policy") if isinstance(routing.get("workload_policy"), dict) else {}
+    if not summary:
+        summary = workload.get("summary")
+    economy = status.get("economy") if isinstance(status.get("economy"), dict) else {}
+    if not summary:
+        summary = economy.get("intent")
+    if summary:
+        print(f"summary: {summary}")
+
+    target = economy.get("target") if isinstance(economy.get("target"), dict) else {}
+    if target:
+        target_label = target.get("label") or target.get("provider") or "-"
+        print(f"target: {target_label} ({target.get('provider') or '-'} / {target.get('model') or '-'})")
+    if "command_ready" in economy:
+        print(f"economy command: {'ready' if economy.get('command_ready') else 'needs attention'}")
+
+    phases = status.get("phase_strategy") if isinstance(status.get("phase_strategy"), dict) else routing.get("phase_strategy")
+    if isinstance(phases, dict) and phases:
+        print("Phase routing:")
+        for phase in ("plan", "write", "fix", "review"):
+            if phase in phases:
+                print(f"- {_phase_summary(phase, phases[phase])}")
+
+    recommendation = status.get("recommendation") or payload.get("recommendation") or routing.get("recommendation")
+    if recommendation:
+        print(f"recommendation: {recommendation}")
+
+    next_actions = payload.get("next_actions") or data.get("next_actions") or []
+    if isinstance(next_actions, list) and next_actions:
+        print("Next actions:")
+        for item in next_actions:
+            print(f"- {item}")
+
+    actions = data.get("actions") if isinstance(data.get("actions"), list) else payload.get("actions")
+    groups = data.get("action_groups") if isinstance(data.get("action_groups"), list) else payload.get("action_groups")
+    if isinstance(actions, list):
+        if actions:
+            print("")
+        _print_grouped_actions(actions, groups if isinstance(groups, list) else [])
+
+
 def _run_title(run: dict[str, Any]) -> str:
     task = str(run.get("task") or "").strip()
     run_id = str(run.get("run_id") or "").strip()
@@ -746,6 +822,13 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command in {"setup", "install"} and not as_json and isinstance(result, dict):
         _print_setup_result(result)
     elif (
+        args.command == "config"
+        and getattr(args, "config_command", "") == "profile"
+        and not as_json
+        and isinstance(result, dict)
+    ):
+        _print_profile_result(result)
+    elif (
         args.command == "agent"
         and getattr(args, "agent_command", "") == "message"
         and not as_json
@@ -772,6 +855,14 @@ def main(argv: list[str] | None = None) -> int:
         and isinstance(result.get("setup"), dict)
     ):
         _print_setup_result(result)
+    elif (
+        args.command == "agent"
+        and getattr(args, "agent_command", "") == "message"
+        and not as_json
+        and isinstance(result, dict)
+        and result.get("action") in {"profile_show", "profile_apply"}
+    ):
+        _print_profile_result(result)
     else:
         _print_result(result, as_json=as_json)
     return 0

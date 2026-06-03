@@ -126,7 +126,7 @@ MCP 工具 `patchbay_agent` 是对话式入口，能启动、恢复和推进运�
 
 `patchbay_runs`、`scripts/patchbay runs --json` 和无 `run_id` 的 Agent `status` / `runs` 响应会返回同一份结构化 Agent inbox。顶层 `runs.inbox` 包含 `groups`、`focus_run_id`、`active_count`、`confirmation_required_count` 和摘要；每个 run 包含 `current_phase`、`next_commands`、`gate_state`、`background_job`、`inbox`、`actions[]` 和 `action_groups[]`。本地 CLI 的非 JSON 输出直接消费同一 payload：`scripts/patchbay runs` 打印摘要、分组、焦点和运行列表，`--inbox` 只显示队列视图，`--focus` 展开最高优先级 run 的详情、下一步动作和建议命令；非 JSON `scripts/patchbay agent message runs` / `status` 会先显示 Agent 回复，再渲染同一 inbox 和顶层安全动作。`inbox.key` 会把 run 归为 `running`、`needs_approval`、`ready_to_apply`、`failed`、`ready_to_continue`、`inspect` 或 `applied`，桌面/MCP/Skill 客户端可直接把它渲染成多任务工作队列。`inbox.next_action` 中的 `approve_and_run` 与 `apply` 始终带 `requires_confirmation` 且 `safe: false`；只读 `open_run`、诊断 tab、后台轮询和失败检查动作才应作为直接安全按钮。
 
-本地非 JSON `scripts/patchbay setup` / `install` 会把 setup payload 渲染为 dry-run/applied 状态、root/host、init/config/Skill/MCP 步骤、内嵌 readiness 摘要和按 `action_groups[]` 分组的安全动作；非 JSON `scripts/patchbay doctor` 和 `scripts/patchbay agent message readiness` 会把同一份 doctor/readiness payload 渲染为就绪状态、检查项、路由摘要、建议和安全动作，避免 no-MCP/Skill-only 路径把嵌套 JSON 直接暴露给用户；加 `--json` 时仍返回完整结构化契约。
+本地非 JSON `scripts/patchbay setup` / `install` 会把 setup payload 渲染为 dry-run/applied 状态、root/host、init/config/Skill/MCP 步骤、内嵌 readiness 摘要和按 `action_groups[]` 分组的安全动作；非 JSON `scripts/patchbay doctor`、`scripts/patchbay config profile show/apply`、`scripts/patchbay agent message readiness` 和 profile/routing Agent 消息会把同一份结构化 payload 渲染为就绪状态、检查项、write/fix 经济路由、建议和安全动作，避免 no-MCP/Skill-only 路径把嵌套 JSON 直接暴露给用户；加 `--json` 时仍返回完整结构化契约。
 
 ## 常用命令
 

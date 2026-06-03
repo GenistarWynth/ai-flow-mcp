@@ -70,6 +70,8 @@ For local no-MCP CLI use, non-JSON `scripts/patchbay doctor` and `scripts/patchb
 
 Non-JSON `scripts/patchbay setup` / `install` and Agent setup replies should render setup step summaries, then the same readiness/action summary. Use `--json` for automation.
 
+Non-JSON `scripts/patchbay config profile show/apply` and Agent profile/routing replies should render profile status, write/fix economy routing, command readiness, next actions, and grouped safe actions. Use `--json` when a host needs the full structured payload.
+
 ## Setup And Skill Actions
 
 - `patchbay_setup` / `patchbay_install` initialize project files, local config, bundled Codex Skill installation, optional MCP registration, doctor summary, top-level `routing`, `recommendations`, `next_actions`, `actions[]`, and `action_groups[]`.

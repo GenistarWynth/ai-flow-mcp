@@ -175,6 +175,27 @@ class PublicVisibilityTest(unittest.TestCase):
         self.assertIn("doctor", structured)
         self.assertIn("setup_host", structured)
 
+    def test_profile_text_views_summarize_routing_and_actions(self) -> None:
+        direct = run(["python", str(self.script), "config", "profile", "show"], self.repo)
+        agent = run(["python", str(self.script), "agent", "message", "show economy profile"], self.repo)
+        direct_apply = run(["python", str(self.script), "config", "profile", "apply", "economy"], self.repo)
+        agent_apply = run(["python", str(self.script), "agent", "message", "apply economy profile"], self.repo)
+        structured = self.cli_json("config", "profile", "show")
+
+        for completed in (direct, agent, direct_apply, agent_apply):
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("Patchbay profile:", completed.stdout)
+            self.assertIn("Phase routing:", completed.stdout)
+            self.assertIn("- write:", completed.stdout)
+            self.assertIn("- fix:", completed.stdout)
+            self.assertIn("Actions:", completed.stdout)
+            self.assertNotIn("economy: {", completed.stdout)
+            self.assertNotIn("phase_strategy: {", completed.stdout)
+            self.assertNotIn("actions: [{", completed.stdout)
+
+        self.assertIn("phase_strategy", structured)
+        self.assertIn("economy", structured)
+
     def test_artifact_reads_and_tails_run_file(self) -> None:
         planned = self.cli_json("plan", "--task", "artifact read", "--mock")
 
