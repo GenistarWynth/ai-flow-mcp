@@ -21,6 +21,21 @@ Read this reference when a host, desktop UI, or Skill-only workflow needs to han
 
 Never treat safe diagnostic or setup actions as `continue`, `approve`, or `apply`.
 
+## Action Groups
+
+Use `action_groups[]` as section hints for the already returned `actions[]`; do not infer sections from ids or prose. Known group ids are:
+
+- `gate`: confirmation-sensitive run actions.
+- `background_polling`: safe polling actions for active background jobs.
+- `routing`: economy routing inspection or repair.
+- `setup`: setup, readiness, Skill, or MCP follow-ups.
+- `diagnostics`: read-only run views and diagnostic tabs.
+- `new_task`: composer/new-run controls.
+- `commands`: copy-first CLI commands that do not have a stronger semantic section.
+- `local`: safe local Agent follow-ups.
+
+The group does not override the action kind. A `kind: "command"` action should still render as a copyable command row even when its group is `setup` or `routing`; use the `commands` group for copy-first actions such as provider command repair templates (`configure_economy_provider_command`) when clients should surface them apart from routing/setup controls.
+
 ## Conversational Prompts
 
 `patchbay_agent` handles setup, start, resume, advance, readiness, routing, help, status, next-step, and gate-status prompts without requiring the host to parse natural language. Examples include:
