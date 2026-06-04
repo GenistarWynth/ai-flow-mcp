@@ -432,6 +432,46 @@ class PublicVisibilityTest(unittest.TestCase):
         self.assertNotIn("background_job: {", cancel.stdout)
         self.assertNotIn("actions: [{", cancel.stdout)
 
+    def test_background_status_without_run_text_renders_latest_active_job(self) -> None:
+        from scripts.ai_flow import service
+
+        run_id = "20260604-background-status-latest"
+        run_path = self.repo / ".ai" / "runs" / run_id
+        run_path.mkdir(parents=True)
+        service._record_job(
+            run_path,
+            {
+                "background": True,
+                "kind": "agent",
+                "phase": "agent",
+                "action": "continue",
+                "pid": None,
+                "run_id": run_id,
+                "task": "background status latest",
+                "started_at": "2026-06-04T00:00:00+00:00",
+                "started_at_epoch": 0,
+                "root": str(self.repo),
+                "run_dir": str(run_path),
+                "events_path": str(run_path / "events.jsonl"),
+                "trace_path": str(run_path / "trace.jsonl"),
+                "actions": service.background_followup_actions(run_id),
+            },
+        )
+        (run_path / "events.jsonl").write_text("", encoding="utf-8")
+        (run_path / "trace.jsonl").write_text("", encoding="utf-8")
+
+        status = run(["python", str(self.script), "agent", "message", "background status"], self.repo)
+
+        self.assertEqual(status.returncode, 0, status.stderr)
+        self.assertIn("Patchbay background status:", status.stdout)
+        self.assertIn("Background job:", status.stdout)
+        self.assertIn("Background polling:", status.stdout)
+        self.assertIn("Background control:", status.stdout)
+        self.assertIn("Cancel background job (safe)", status.stdout)
+        self.assertNotIn("background_job: {", status.stdout)
+        self.assertNotIn("actions: [{", status.stdout)
+        self.assertNotIn("action_groups: [{", status.stdout)
+
     def test_diagnostic_view_text_views_summarize_events_trace_and_artifacts(self) -> None:
         planned = self.cli_json("plan", "--task", "diagnostic views text view", "--mock")
         run_id = planned["run_id"]

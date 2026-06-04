@@ -41,10 +41,10 @@ The group does not override the action kind. A `kind: "command"` action should s
 
 ## Conversational Prompts
 
-`patchbay_agent` handles setup, start, resume, advance, readiness, routing, help, status, next-step, and gate-status prompts without requiring the host to parse natural language. Examples include:
+`patchbay_agent` handles setup, start, resume, advance, readiness, routing, help, status, background status/control, next-step, and gate-status prompts without requiring the host to parse natural language. Examples include:
 
 - Setup/help: `patchbay setup`, `patchbay setup for Claude Desktop`, `install patchbay for Gemini CLI`, `install Codex Skill`, `register MCP for Claude Desktop`, `安装 Codex Skill`, `注册 MCP 到 Gemini 命令行`, `帮我配置 Patchbay`, `Patchbay 怎么用`, `使用说明`.
-- Run visibility: `status`, `runs`, `查看最近运行`, `任务列表`, `context`, `handoff context`, `events`, `trace`, `logs`, `artifact`, `diff`, `poll context`, `poll events`.
+- Run visibility: `status`, `runs`, `background status`, `查看最近运行`, `任务列表`, `后台状态`, `后台进度`, `context`, `handoff context`, `events`, `trace`, `logs`, `artifact`, `diff`, `poll context`, `poll events`.
 - Background control: `cancel background job`, `stop background job`, `取消后台任务`, `停止后台任务`.
 - Next-step and gates: `what should I do next`, `下一步是什么`, `why can't I apply`, `what is blocking apply`, `门禁状态`, `为什么不能应用`.
 - Readiness: `readiness`, `readiness for Claude Desktop`, `diagnose`, `patchbay doctor`, `检查环境`, `环境自检`, `检查 Gemini 命令行环境`.
@@ -74,9 +74,9 @@ Non-JSON `scripts/patchbay config profile show/apply` and Agent profile/routing 
 
 Non-JSON `scripts/patchbay metrics <run_id>` and Agent metrics replies should render efficiency summary, tier usage, provider usage, routing health, and grouped safe actions. Use `--json` for automation and exact evidence.
 
-Non-JSON Agent guidance replies (`help`, local/no-MCP mode, missing-run handoffs, `next step`, and gate-status prompts) should render capabilities, selected/latest run references, gate diagnostics, next actions, and grouped safe actions instead of dumping nested payloads. Use `--json` for hosts that need every structured field.
+Non-JSON Agent guidance replies (`help`, local/no-MCP mode, missing-run handoffs, `next step`, gate-status prompts, and stateless `background status`) should render capabilities, selected/latest run references, gate diagnostics, next actions, background job state, and grouped safe actions instead of dumping nested payloads. Use `--json` for hosts that need every structured field.
 
-Non-JSON `scripts/patchbay status <run_id>`, `scripts/patchbay context <run_id>`, and run-bound Agent status/context replies should render run state, gate state, failure recovery, background job summaries, Agent activity, health cards, routing/efficiency evidence, metrics, provider trail, artifacts, and grouped safe actions. Active background outputs should expose `Background polling` and `Background control` groups for poll/cancel controls instead of requiring users to inspect `JOB.json`. Non-JSON selected-run background cancellation should render a concise cancellation summary, background job state, failed `cancel_result` details, and safe follow-up actions. Use `--json` for exact handoff payloads.
+Non-JSON `scripts/patchbay status <run_id>`, `scripts/patchbay context <run_id>`, stateless Agent `background status` / `后台状态`, and run-bound Agent status/context replies should render run state, gate state, failure recovery, background job summaries, Agent activity, health cards, routing/efficiency evidence, metrics, provider trail, artifacts, and grouped safe actions. Active background outputs should expose `Background polling` and `Background control` groups for poll/cancel controls instead of requiring users to inspect `JOB.json`. Non-JSON selected-run background cancellation should render a concise cancellation summary, background job state, failed `cancel_result` details, and safe follow-up actions. Use `--json` for exact handoff payloads.
 
 Non-JSON `scripts/patchbay events <run_id>`, `scripts/patchbay trace <run_id>`, `scripts/patchbay artifact <run_id> <path>`, and Agent diagnostic view replies should render timelines, artifact previews, requested diagnostic tabs, recovery hints, and grouped safe actions instead of dumping nested payloads. Use `--json` for automation or exact event/artifact data.
 
@@ -163,7 +163,7 @@ scripts/patchbay events <run_id>
 
 Background responses write `JOB.json`, append agent events, and return safe polling actions: `poll_context`, `poll_status`, and `poll_events`, plus `cancel_background_job` when there is an active worker. Polling actions are grouped under `background_polling`; cancellation is grouped under `background_control`. If a job is already active, Patchbay returns `already_running: true` with the same polling/cancel actions instead of starting another worker.
 
-Use `scripts/patchbay cancel <run_id>`, `patchbay_cancel`, or selected-run Agent prompts such as `cancel background job` / `停止后台任务` only to stop the active worker. Cancellation marks `JOB.json` as canceled, releases background locks, appends a cancel event, and leaves plan/apply gates untouched. If cancellation fails, non-JSON Agent replies should render top-level `cancel_result` attempted/terminated/error details instead of requiring the raw JSON payload. Do not treat cancellation as approval, retry, or apply.
+Use `scripts/patchbay cancel <run_id>`, `patchbay_cancel`, selected-run Agent prompts such as `cancel background job` / `停止后台任务`, or stateless `stop background job` / `停止后台任务` only to stop an active worker. Stateless background status/control resolves only the latest active background job; if no active job exists, Patchbay returns safe local guidance instead of choosing a finished run or any gated action. Cancellation marks `JOB.json` as canceled, releases background locks, appends a cancel event, and leaves plan/apply gates untouched. If cancellation fails, non-JSON Agent replies should render top-level `cancel_result` attempted/terminated/error details instead of requiring the raw JSON payload. Do not treat cancellation as approval, retry, or apply.
 
 If a concrete `run_id` is already selected, explicit unattended phrases such as `don't ask me`, `assume yes`, `you have all permissions`, `full access`, `approve yourself`, `不要问我`, `不要询问我`, `别找我`, `别再询问我`, `所有权限给你`, `所有权限全都给你`, `全部权限给你`, `无需向我确认`, `完全访问权限`, `自己允许`, or `我根本不在身边` count as plan approval for that run and may start background write/test/review autopilot. Without a `run_id`, they must return `missing_run` guidance. They never authorize final apply.
 

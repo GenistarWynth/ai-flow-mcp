@@ -600,6 +600,7 @@ def _print_agent_guidance_result(data: dict[str, Any]) -> None:
         print(f"Failure recovery: {_short_text(failure.get('summary'), limit=220)}")
 
     _print_gate_diagnosis(data.get("gate_diagnosis"))
+    _print_background_job(data.get("background_job"), include_actions=False)
 
     next_action = data.get("next_action") if isinstance(data.get("next_action"), dict) else {}
     if next_action:
@@ -1471,6 +1472,14 @@ def main(argv: list[str] | None = None) -> int:
         and result.get("action") == "background_cancel"
     ):
         _print_agent_background_cancel_result(result)
+    elif (
+        args.command == "agent"
+        and getattr(args, "agent_command", "") == "message"
+        and not as_json
+        and isinstance(result, dict)
+        and result.get("action") == "background_status"
+    ):
+        _print_agent_guidance_result(result)
     elif (
         args.command == "agent"
         and getattr(args, "agent_command", "") == "message"

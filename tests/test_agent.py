@@ -160,6 +160,21 @@ test = []
         with config_path.open("a", encoding="utf-8", newline="\n") as handle:
             handle.write(f'\n[commands]\nreasonix = "{escaped}"\n')
 
+    def _create_status_fixture(self, run_id: str, task: str, status: str = "PLANNED") -> Path:
+        from scripts.ai_flow.state import create_status, set_status
+
+        run_path = self.repo / ".ai" / "runs" / run_id
+        run_path.mkdir(parents=True, exist_ok=True)
+        create_status(
+            run_path,
+            run_id=run_id,
+            task=task,
+            repo_root=self.repo,
+            config_path=self.repo / ".ai" / "patchbay.toml",
+        )
+        set_status(run_path, status)
+        return run_path
+
 
 class AgentWorkflowTests(AgentTestCase):
     def test_cli_helper_times_out_subprocesses_with_diagnostic(self) -> None:
@@ -2686,6 +2701,180 @@ model = "cheap-model"
         self.assertNotIn("approve", {item.get("message") for item in second["actions"]})
         self.assertNotIn("apply", {item.get("message") for item in second["actions"]})
         self.assertNotIn("continue", {item.get("message") for item in second["actions"]})
+
+    def test_agent_background_status_without_run_uses_latest_active_job(self) -> None:
+        from scripts.ai_flow import agent as agent_module
+
+        older = agent_message(self.repo, "background older inactive")
+        newer = agent_message(self.repo, "background latest active")
+        older_run_id = older["run_id"]
+        newer_run_id = newer["run_id"]
+
+        class FakeProcess:
+            pid = 6789
+
+            def poll(self):
+                return None
+
+        with (
+            mock.patch.object(agent_module.service, "resolve_root", return_value=self.repo),
+            mock.patch.object(agent_module.subprocess, "Popen", return_value=FakeProcess()),
+        ):
+            agent_message(
+                self.repo,
+                "approve",
+                run_id=newer_run_id,
+                confirmation=PLAN_CONFIRMATION,
+                background=True,
+            )
+
+        response = agent_message(self.repo, "background status")
+
+        self.assertEqual(response["action"], "background_status")
+        self.assertEqual(response["run_id"], newer_run_id)
+        self.assertEqual(response["recent_run"]["run_id"], newer_run_id)
+        self.assertEqual(response["run_reference"]["run_id"], newer_run_id)
+        self.assertTrue(response["background"])
+        self.assertTrue(response["background_job"]["active"])
+        self.assertEqual(response["background_job"]["pid"], 6789)
+        self.assertEqual(response["next_actions"], ["status", "context", "events"])
+        actions = {item["id"]: item for item in response["actions"]}
+        self.assertEqual(actions["open_background_run"]["run_id"], newer_run_id)
+        self.assertEqual(actions["poll_context"]["message"], "context")
+        self.assertEqual(actions["cancel_background_job"]["message"], "cancel background job")
+        action_groups = {item["id"]: item for item in response["action_groups"]}
+        self.assertEqual(action_groups["background_polling"]["action_ids"], ["poll_status", "poll_context", "poll_events"])
+        self.assertEqual(action_groups["background_control"]["action_ids"], ["cancel_background_job"])
+        self.assertFalse((self.repo / ".ai" / "runs" / older_run_id / "AGENT.lock").exists())
+
+    def test_agent_background_status_without_run_scans_past_recent_runs(self) -> None:
+        from scripts.ai_flow import service
+
+        run_id = "20260604-000000-active-outside-recent"
+        run_path = self._create_status_fixture(run_id, "background active outside recent list")
+        service._record_job(
+            run_path,
+            {
+                "background": True,
+                "kind": "agent",
+                "phase": "agent",
+                "action": "continue",
+                "pid": 13579,
+                "run_id": run_id,
+                "task": "background active outside recent list",
+                "started_at": "2026-06-04T00:00:00+00:00",
+                "started_at_epoch": 0,
+                "actions": service.background_followup_actions(run_id),
+            },
+        )
+        os.utime(run_path, (1, 1))
+        for index in range(25):
+            filler_path = self._create_status_fixture(
+                f"20260604-0001{index:02d}-recent-filler-{index}",
+                f"recent filler task {index}",
+            )
+            os.utime(filler_path, (100 + index, 100 + index))
+
+        recent_ids = {item["run_id"] for item in service.runs(self.repo, limit=20)["runs"]}
+        self.assertNotIn(run_id, recent_ids)
+
+        response = agent_message(self.repo, "background status")
+
+        self.assertEqual(response["action"], "background_status")
+        self.assertEqual(response["run_id"], run_id)
+        self.assertEqual(response["recent_run"]["run_id"], run_id)
+        self.assertTrue(response["background_job"]["active"])
+        self.assertEqual(response["background_job"]["pid"], 13579)
+
+    def test_agent_background_cancel_without_run_cancels_latest_active_job(self) -> None:
+        from scripts.ai_flow import service
+
+        planned = agent_message(self.repo, "background latest control target")
+        run_id = planned["run_id"]
+        run_path = self.repo / ".ai" / "runs" / run_id
+        (run_path / "AGENT.lock").write_text("agent\ncancel-token\n", encoding="utf-8")
+        service._record_job(
+            run_path,
+            {
+                "background": True,
+                "kind": "agent",
+                "phase": "agent",
+                "action": "continue",
+                "pid": 24680,
+                "run_id": run_id,
+                "started_at": "2026-06-04T00:00:00+00:00",
+                "started_at_epoch": 0,
+                "actions": service.background_followup_actions(run_id),
+            },
+        )
+
+        with mock.patch.object(service, "_terminate_background_process", return_value={"attempted": True, "terminated": True}) as terminate:
+            response = agent_message(self.repo, "stop background job")
+
+        terminate.assert_called_once_with(24680)
+        self.assertEqual(response["action"], "background_cancel")
+        self.assertEqual(response["run_id"], run_id)
+        self.assertEqual(response["resolved_run_id"], run_id)
+        self.assertTrue(response["ok"])
+        self.assertTrue(response["canceled"])
+        self.assertEqual(response["background_job"]["status"], "canceled")
+        self.assertFalse(response["background_job"]["active"])
+        self.assertFalse((run_path / "AGENT.lock").exists())
+        self.assertEqual(service.status(self.repo, run_id)["background_job"]["status"], "canceled")
+
+    def test_agent_background_cancel_without_run_failure_does_not_expose_gated_actions(self) -> None:
+        from scripts.ai_flow import service
+
+        run_id = "20260604-000000-cancel-failure-safe"
+        run_path = self._create_status_fixture(run_id, "background cancel failure stays safe")
+        service._record_job(
+            run_path,
+            {
+                "background": True,
+                "kind": "agent",
+                "phase": "agent",
+                "action": "continue",
+                "pid": 24681,
+                "run_id": run_id,
+                "started_at": "2026-06-04T00:00:00+00:00",
+                "started_at_epoch": 0,
+                "actions": service.background_followup_actions(run_id),
+            },
+        )
+
+        with mock.patch.object(
+            service,
+            "_terminate_background_process",
+            return_value={"attempted": True, "terminated": False, "error": "access denied"},
+        ):
+            response = agent_message(self.repo, "stop background job")
+
+        self.assertEqual(response["action"], "background_cancel")
+        self.assertFalse(response["ok"])
+        self.assertEqual(response["run_id"], run_id)
+        self.assertIsNone(response["requires_confirmation"])
+        self.assertEqual(response["next_actions"], ["status", "context", "events"])
+        self.assertEqual(response["cancel_result"]["error"], "access denied")
+        self.assertTrue(response["background_job"]["active"])
+        self.assertEqual(response["error"], "access denied")
+        action_messages = {item.get("message") for item in response["actions"]}
+        self.assertIn("cancel background job", action_messages)
+        self.assertNotIn("approve", action_messages)
+        self.assertNotIn("apply", action_messages)
+        self.assertNotIn("continue", action_messages)
+        action_groups = {item["id"]: item for item in response["action_groups"]}
+        self.assertEqual(action_groups["background_control"]["action_ids"], ["cancel_background_job"])
+
+    def test_agent_background_cancel_without_active_job_stays_local(self) -> None:
+        response = agent_message(self.repo, "stop background job")
+
+        self.assertEqual(response["action"], "background_cancel")
+        self.assertFalse(response["ok"])
+        self.assertIsNone(response["run_id"])
+        self.assertIsNone(response["background_job"])
+        self.assertIn("active background job not found", response["error"])
+        action_ids = {item["id"] for item in response["actions"]}
+        self.assertIn("start_new_task", action_ids)
 
     def test_cli_background_agent_approval_completes_in_child_process(self) -> None:
         from scripts.ai_flow import service

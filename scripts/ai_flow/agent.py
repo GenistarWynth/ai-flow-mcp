@@ -11,7 +11,7 @@ from typing import Any
 
 from . import service
 from .action_contract import group_actions
-from .artifacts import now_iso, read_text
+from .artifacts import now_iso, read_json, read_text, runs_dir
 from .config import economy_target, load_config
 from .config_wizard import run_config_wizard
 from .doctor import run_doctor
@@ -203,6 +203,8 @@ def agent_message(
     if intent == "metrics":
         assert run_id is not None
         return _metrics_response(root, run_id)
+    if intent == "background_status":
+        return _background_status_response(root, include=include)
     if background:
         return _start_background_agent(
             root,
@@ -213,6 +215,8 @@ def agent_message(
             max_fix_rounds=max_fix_rounds,
             intent=intent,
         )
+    if intent == "background_cancel" and not run_id:
+        return _latest_background_cancel_response(root, include=include)
     if not run_id and intent == "start":
         if not text:
             return _error_response("Tell Patchbay what task to plan.", action="start")
@@ -897,7 +901,9 @@ def _classify_intent(message: str, *, has_run: bool, confirmation: str) -> str:
     if _is_local_mode_intent(text):
         return "local_mode"
     if _is_background_cancel_intent(text):
-        return "background_cancel" if has_run else "missing_run"
+        return "background_cancel"
+    if _is_background_status_intent(text):
+        return "background_status" if not has_run else "status"
     if _is_next_step_query(text):
         return "next_step"
     if _is_gate_status_query(text):
@@ -1622,7 +1628,7 @@ def _is_chinese_run_bound_request(text: str) -> bool:
 def _is_background_cancel_intent(text: str) -> bool:
     if not text:
         return False
-    if text in {"cancel", "cancel job", "cancel background job", "stop job", "stop background job"}:
+    if text in {"cancel job", "cancel background job", "stop job", "stop background job"}:
         return True
     words = _words(text)
     if _has_task_intent(text, words):
@@ -1630,6 +1636,38 @@ def _is_background_cancel_intent(text: str) -> bool:
     if bool(words & {"abort", "cancel", "stop", "terminate"}) and bool(words & {"background", "job", "run", "worker"}):
         return True
     return _has_any(text, ("取消后台", "停止后台", "中止后台", "取消任务", "停止任务", "中止任务"))
+
+
+def _is_background_status_intent(text: str) -> bool:
+    if not text:
+        return False
+    if text in {
+        "background",
+        "background job",
+        "background jobs",
+        "background status",
+        "background task",
+        "background tasks",
+        "job status",
+        "worker status",
+        "后台",
+        "后台任务",
+        "后台状态",
+        "后台进度",
+    }:
+        return True
+    words = _words(text)
+    if _has_task_intent(text, words):
+        return False
+    if "background" in words and bool(words & {"current", "progress", "running", "show", "status", "what"}):
+        return True
+    if bool(words & {"job", "jobs", "worker", "workers"}) and bool(
+        words & {"background", "current", "latest", "progress", "running", "show", "status", "what"}
+    ):
+        return True
+    return _has_any(text, ("后台任务", "后台状态", "后台进度", "后台跑", "后台还在", "后台有没有", "后台怎么样")) and _has_any(
+        text, ("看", "查看", "显示", "状态", "进度", "跑", "还在", "有没有", "怎么样", "如何")
+    )
 
 
 def _is_gate_changing_run_request(text: str) -> bool:
@@ -2190,6 +2228,215 @@ def _runs_response(root: Path) -> dict[str, Any]:
         next_actions=next_actions,
         extra={"runs": report, "recent_run": recent[0] if recent else None, "actions": actions},
     )
+
+
+def _latest_active_background_run(root: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]] | None:
+    report = service.runs(root, limit=20)
+    found = _latest_active_background_run_anywhere(root)
+    if found:
+        run, current = found
+        return report, run, current
+    return None
+
+
+def _latest_active_background_run_anywhere(root: Path) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    latest: tuple[float, str, dict[str, Any], dict[str, Any]] | None = None
+    try:
+        candidates = list(runs_dir(root).iterdir())
+    except FileNotFoundError:
+        return None
+    for candidate in candidates:
+        if not candidate.is_dir():
+            continue
+        job_path = candidate / "JOB.json"
+        if not job_path.exists():
+            continue
+        try:
+            job = read_json(job_path)
+        except Exception:
+            continue
+        background_job = service.summarize_background_job(job)
+        if not background_job.get("active"):
+            continue
+        run_id = str(job.get("run_id") or candidate.name)
+        if not run_id:
+            continue
+        started_epoch = job.get("started_at_epoch")
+        if isinstance(started_epoch, (int, float)):
+            order = float(started_epoch)
+        else:
+            try:
+                order = job_path.stat().st_mtime
+            except OSError:
+                order = candidate.stat().st_mtime
+        try:
+            current = service.status(root, run_id)
+        except Exception:
+            continue
+        current_job = current.get("background_job") if isinstance(current.get("background_job"), dict) else background_job
+        if not current_job.get("active"):
+            continue
+        run = {
+            "run_id": run_id,
+            "status": current.get("status"),
+            "task": current.get("task") or job.get("task"),
+            "updated_at": current.get("updated_at") or job.get("started_at"),
+            "run_dir": str(candidate),
+            "current_phase": current.get("current_phase"),
+            "tests_passed": current.get("tests_passed"),
+            "review_result": current.get("review_result"),
+            "next_commands": current.get("next_commands"),
+            "gate_state": current.get("gate_state"),
+            "background_job": current_job,
+        }
+        if latest is None or order > latest[0]:
+            latest = (order, run_id, run, current)
+    if not latest:
+        return None
+    return latest[2], latest[3]
+
+
+def _background_no_active_response(root: Path, *, action: str) -> dict[str, Any]:
+    report = service.runs(root, limit=5)
+    recent = list(report.get("runs") or [])
+    actions: list[dict[str, Any]] = []
+    run_reference = None
+    if recent:
+        latest = recent[0]
+        run_reference = {
+            "run_id": latest.get("run_id"),
+            "status": latest.get("status"),
+            "task": latest.get("task"),
+            "updated_at": latest.get("updated_at"),
+            "suggested_message": "open latest run",
+            "safe_actions": ["open_run", "status", "events"],
+        }
+        actions.append(
+            {
+                "id": "open_latest_run",
+                "label": "Open latest run",
+                "kind": "open_run",
+                "run_id": latest.get("run_id"),
+                "safe": True,
+                "reason": "Open the latest Patchbay run without advancing any gate.",
+            }
+        )
+    else:
+        actions.append(
+            {
+                "id": "start_new_task",
+                "label": "Start new task",
+                "kind": "focus_composer",
+                "safe": True,
+                "reason": "Focus the composer so a new Patchbay plan can be started.",
+            }
+        )
+    actions.append(
+        {
+            "id": "open_readiness",
+            "label": "Open readiness",
+            "kind": "local_agent",
+            "message": "readiness",
+            "safe": True,
+            "reason": "Run read-only setup diagnostics before starting or resuming work.",
+        }
+    )
+    reply = "No active Patchbay background job was found."
+    if recent:
+        reply += f" Latest run is {recent[0].get('run_id')} ({recent[0].get('status') or 'unknown'})."
+    else:
+        reply += " Send a task to start with a plan, or send readiness to check setup."
+    return _stateless_response(
+        action=action,
+        reply=reply,
+        ok=False,
+        error="active background job not found",
+        next_actions=["open latest run", "runs", "readiness"] if recent else ["start", "readiness"],
+        extra={
+            "runs": report,
+            "recent_run": recent[0] if recent else None,
+            "run_reference": run_reference,
+            "background_job": None,
+            "actions": actions,
+        },
+    )
+
+
+def _background_status_response(root: Path, *, include: dict[str, Any] | None = None) -> dict[str, Any]:
+    latest = _latest_active_background_run(root)
+    if not latest:
+        return _background_no_active_response(root, action="background_status")
+    report, run, current = latest
+    run_id = str(run.get("run_id") or current.get("run_id") or "")
+    background_job = current.get("background_job") if isinstance(current.get("background_job"), dict) else run.get("background_job")
+    response = _agent_response(
+        root,
+        run_id,
+        action="background_status",
+        reply=f"Latest active background job belongs to run {run_id}. Poll status, context, or events for progress.",
+        include=_merge_include(include, {"events_since": 0}),
+        status_data=current,
+        extra={
+            "background": True,
+            "recent_run": run,
+            "run_reference": {
+                "run_id": run_id,
+                "status": run.get("status") or current.get("status"),
+                "task": run.get("task") or current.get("task"),
+                "updated_at": run.get("updated_at") or current.get("updated_at"),
+                "suggested_message": "open latest run",
+                "safe_actions": ["open_run", "status", "context", "events", "cancel_background_job"],
+            },
+            "runs": report,
+            "background_job": background_job,
+            "actions": service.background_followup_actions(run_id),
+        },
+    )
+    response["requires_confirmation"] = None
+    response["next_actions"] = _background_next_actions()
+    return _with_action_groups(response)
+
+
+def _latest_background_cancel_response(root: Path, *, include: dict[str, Any] | None = None) -> dict[str, Any]:
+    latest = _latest_active_background_run(root)
+    if not latest:
+        return _background_no_active_response(root, action="background_cancel")
+    report, run, current = latest
+    run_id = str(run.get("run_id") or current.get("run_id") or "")
+    result = service.cancel_background_job(root, run_id)
+    background_job = result.get("background_job")
+    actions = service.background_followup_actions(run_id)
+    if isinstance(background_job, dict) and not background_job.get("active"):
+        actions = [action for action in actions if action.get("id") != "cancel_background_job"]
+    response = _agent_response(
+        root,
+        run_id,
+        action="background_cancel",
+        reply=str(result.get("reply") or "Background cancellation requested."),
+        include=include,
+        extra={
+            "ok": bool(result.get("ok")),
+            "canceled": bool(result.get("canceled")),
+            "resolved_run_id": run_id,
+            "recent_run": run,
+            "run_reference": {
+                "run_id": run_id,
+                "status": run.get("status") or current.get("status"),
+                "task": run.get("task") or current.get("task"),
+                "updated_at": run.get("updated_at") or current.get("updated_at"),
+                "suggested_message": "open latest run",
+                "safe_actions": ["open_run", "status", "events"],
+            },
+            "runs": report,
+            "background_job": background_job,
+            "cancel_result": result.get("cancel_result"),
+            "error": result.get("error"),
+            "actions": actions,
+        },
+    )
+    response["requires_confirmation"] = None
+    response["next_actions"] = _background_next_actions()
+    return response
 
 
 def _next_step_response(root: Path, *, run_id: str | None, include: dict[str, Any] | None = None) -> dict[str, Any]:
