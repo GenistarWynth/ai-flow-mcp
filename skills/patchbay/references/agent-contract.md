@@ -94,6 +94,8 @@ Desktop/Web phase-advance controls should catch failed gated/autopilot actions, 
 
 Desktop/Web safe diagnostic controls such as `open_run`, `poll_context`, `poll_status`, `poll_events`, and readiness refresh should use the same accessible top-level error path when their read/refresh calls fail.
 
+Desktop/Web local Agent reply action buttons, including `open-latest-run`, setup/readiness, routing, and runs/status follow-ups, should also surface asynchronous failures through the same named accessible error path.
+
 Desktop/Web Trace views should present selected-message, run-timeline, and provider-trace summaries before raw JSON. Keep raw JSON available behind an explicit debug/detail affordance for exact troubleshooting.
 
 Desktop/Web Log and Artifacts views should use `failure_recovery`, status errors, priority artifacts, and the loaded artifact preview to present a failure summary, suggested next step, highlighted error lines, and an artifact index before the raw preview.

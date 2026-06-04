@@ -3752,6 +3752,47 @@ describe("Workbench", () => {
     expect(client.apply).not.toHaveBeenCalled();
   });
 
+  it("shows a visible error when a local reply action fails", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "next_step",
+      ok: true,
+      reply: "Run run-ready is waiting for explicit plan approval. Open that run before taking any gated action from a stateless client.",
+      recent_run: { run_id: "run-ready", task: "Approve a plan", status: "PLANNED" },
+      actions: [
+        {
+          id: "open_latest_run",
+          label: "Open latest run",
+          kind: "open_run",
+          run_id: "run-ready",
+          safe: true,
+          reason: "Open the latest Patchbay run before choosing any gated action."
+        }
+      ]
+    });
+    const client = createClient({
+      listRuns: vi
+        .fn()
+        .mockResolvedValueOnce({ runs: [] })
+        .mockResolvedValueOnce({ runs: [] })
+        .mockRejectedValueOnce(new Error("run list unavailable")),
+      agentMessage
+    });
+
+    render(<Workbench client={client} pollIntervalMs={0} />);
+
+    await waitFor(() => expect(client.listRuns).toHaveBeenCalledTimes(1));
+    const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(composer, "what should I do next?{enter}");
+
+    expect(await screen.findByText(/waiting for explicit plan approval/i)).toBeVisible();
+    await userEvent.click(await screen.findByRole("button", { name: /open latest run/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Open latest run失败：run list unavailable");
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
   it("renders selected-run next_action as a confirmable local reply action", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: "run-ready",

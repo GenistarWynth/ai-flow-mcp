@@ -566,6 +566,11 @@ function healthActionFailureMessage(action: Pick<AgentHealthAction, "label" | "m
   return `${label}失败：${errorDetail(error)}`;
 }
 
+function localReplyActionFailureMessage(action: Pick<LocalReplyAction, "label" | "message" | "id">, error: unknown) {
+  const label = action.label || action.message || action.id || "Action";
+  return `${label}失败：${errorDetail(error)}`;
+}
+
 function commandReason(command: string, safe: boolean) {
   if (command === "approve") return "Plan is ready for human approval before implementation.";
   if (command === "apply") return safe ? "Tests passed and review returned PASS; human confirmation is still required." : "Apply is blocked until tests pass and review returns PASS.";
@@ -3913,6 +3918,15 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   };
 
   const runLocalReplyAction = async (action: LocalReplyAction) => {
+    setError("");
+    try {
+      await runLocalReplyActionInner(action);
+    } catch (err) {
+      setError(localReplyActionFailureMessage(action, err));
+    }
+  };
+
+  const runLocalReplyActionInner = async (action: LocalReplyAction) => {
     if (action.phaseAction) {
       handleAction({
         id: action.id,
@@ -3972,23 +3986,18 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       return;
     }
     if (action.id === "runs") {
-      setError("");
-      try {
-        if (selectedRun) {
-          const response = await client.agentMessage(action.message || "status", {
-            runId: selectedRun,
-            include: { diff: true, review: true },
-            background: true
-          });
-          appendLocalAgentReply(response);
-          await refreshRun(selectedRun, response);
-        } else {
-          const response = await client.agentMessage(action.message || "status");
-          setPersistentNewTaskReply(response);
-          await loadRuns();
-        }
-      } catch (err) {
-        setError(String(err));
+      if (selectedRun) {
+        const response = await client.agentMessage(action.message || "status", {
+          runId: selectedRun,
+          include: { diff: true, review: true },
+          background: true
+        });
+        appendLocalAgentReply(response);
+        await refreshRun(selectedRun, response);
+      } else {
+        const response = await client.agentMessage(action.message || "status");
+        setPersistentNewTaskReply(response);
+        await loadRuns();
       }
       return;
     }
