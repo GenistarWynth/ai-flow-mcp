@@ -561,6 +561,11 @@ function actionFailureMessage(action: string, error: unknown) {
   return `${commandLabel(action)}失败：${errorDetail(error)}`;
 }
 
+function healthActionFailureMessage(action: Pick<AgentHealthAction, "label" | "message" | "id">, error: unknown) {
+  const label = action.label || action.message || action.id || "Action";
+  return `${label}失败：${errorDetail(error)}`;
+}
+
 function commandReason(command: string, safe: boolean) {
   if (command === "approve") return "Plan is ready for human approval before implementation.";
   if (command === "apply") return safe ? "Tests passed and review returned PASS; human confirmation is still required." : "Apply is blocked until tests pass and review returns PASS.";
@@ -3759,8 +3764,16 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
 
   const runHealthAction = async (action: AgentHealthAction) => {
     if (action.safe === false) return;
+    setError("");
+    try {
+      await runHealthActionInner(action);
+    } catch (err) {
+      setError(healthActionFailureMessage(action, err));
+    }
+  };
+
+  const runHealthActionInner = async (action: AgentHealthAction) => {
     if (action.kind === "open_run" && action.run_id) {
-      setError("");
       setPersistentNewTaskMode(false);
       setPersistentNewTaskReply(null);
       if (action.tab && diagnosticTabs.has(action.tab as TabName)) {
@@ -3833,9 +3846,17 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
 
   const runDoctorAction = async (action: AgentHealthAction) => {
     if (action.safe === false) return;
+    setError("");
+    try {
+      await runDoctorActionInner(action);
+    } catch (err) {
+      setError(healthActionFailureMessage(action, err));
+    }
+  };
+
+  const runDoctorActionInner = async (action: AgentHealthAction) => {
     const actionHost = setupHostFromAction(action, readinessHost);
     if (action.kind === "open_run" && action.run_id) {
-      setError("");
       setPersistentNewTaskMode(false);
       setPersistentNewTaskReply(null);
       if (action.tab && diagnosticTabs.has(action.tab as TabName)) {

@@ -6547,6 +6547,58 @@ describe("Workbench", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /^确认$/ })).toBeEnabled());
   });
 
+  it("shows a visible error when a safe diagnostic action fails", async () => {
+    const listRuns = vi
+      .fn()
+      .mockResolvedValueOnce({
+        runs: [
+          { run_id: "run-ready", task: "Ship dashboard", status: "REVIEWED_PASS" },
+          {
+            run_id: "run-failed",
+            task: "Failed run",
+            status: "FAILED",
+            inbox: {
+              key: "failed",
+              label: "Failed",
+              summary: "Open the failed run for diagnostics.",
+              priority: 70,
+              safe: true,
+              requires_confirmation: false,
+              next_action: {
+                id: "open_failed_run",
+                label: "Open failed run",
+                kind: "open_run",
+                run_id: "run-failed",
+                tab: "Log",
+                safe: true,
+                reason: "Open the failed run without advancing gates."
+              }
+            }
+          }
+        ],
+        inbox: {
+          total: 2,
+          active_count: 0,
+          confirmation_required_count: 0,
+          safe_action_count: 1,
+          focus_run_id: "run-ready",
+          summary: "2 runs; 1 failed run can be inspected.",
+          groups: [{ key: "failed", label: "Failed", count: 1, run_ids: ["run-failed"] }]
+        }
+      })
+      .mockRejectedValueOnce(new Error("run list unavailable"));
+    const client = createClient({ listRuns });
+
+    render(<Workbench client={client} pollIntervalMs={0} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await userEvent.click(screen.getByRole("button", { name: "Run inbox action: Open failed run" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Open failed run失败：run list unavailable");
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
   it("uses the alternative setup action when the next phase is blocked", async () => {
     const alternativeAction = {
       id: "configure_reasonix_command",
