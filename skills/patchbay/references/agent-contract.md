@@ -86,6 +86,8 @@ Desktop/Web run inbox lists should render compact per-run quick signals for phas
 
 Desktop/Web clients should persist the selected run, diagnostics drawer open state, active diagnostics tab, selected Trace message keyed by run id, sidebar search/status/inbox filters, composer drafts keyed by run id plus a dedicated new-task draft, and a lightweight local conversation transcript across refresh/reopen. The transcript should keep recent selected-run local notes, compact local Agent replies, and the latest new-task Agent reply, while remaining bounded and omitting bulky `context`, `status`, `runs`, `diff`, and background job payloads. If the stored run is no longer present, restore the current `runs.inbox.focus_run_id` or first visible run instead of requesting a stale run. Clear stale inbox filters when the current `runs.inbox.groups` and run summaries no longer expose that group. Clear only the submitted draft after a successful submit; preserve selected-run free-text drafts if send fails.
 
+Desktop/Web topbar refresh controls should refresh the selected run's status, context, provider trace, diff, and artifact preview together. When no run is selected, refresh should remain a run-list refresh.
+
 Desktop/Web Trace views should present selected-message, run-timeline, and provider-trace summaries before raw JSON. Keep raw JSON available behind an explicit debug/detail affordance for exact troubleshooting.
 
 Desktop/Web Log and Artifacts views should use `failure_recovery`, status errors, priority artifacts, and the loaded artifact preview to present a failure summary, suggested next step, highlighted error lines, and an artifact index before the raw preview.

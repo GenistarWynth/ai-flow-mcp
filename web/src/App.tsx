@@ -3047,6 +3047,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const [actionInFlight, setActionInFlight] = useState(false);
   const [setupInFlight, setSetupInFlight] = useState(false);
   const [profileInFlight, setProfileInFlight] = useState(false);
+  const [refreshInFlight, setRefreshInFlight] = useState(false);
   const [localMessages, setLocalMessages] = useState(readLocalMessagesPreference);
   const [newTaskReply, setNewTaskReply] = useState(readNewTaskReplyPreference);
   const [localOnlyMode, setLocalOnlyMode] = useState(readLocalOnlyPreference);
@@ -3329,6 +3330,20 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     setPersistentComposer("", targetRunKey);
   };
 
+  const refreshCurrentView = async () => {
+    if (refreshInFlight) return;
+    setError("");
+    setRefreshInFlight(true);
+    try {
+      if (selectedRun) await refreshRun(selectedRun);
+      else await loadRuns(undefined, { autoSelect: !newTaskMode });
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setRefreshInFlight(false);
+    }
+  };
+
   const loadContextNow = async (runId = selectedRun) => {
     if (!runId) return;
     const nextContext = await client.getContext(runId);
@@ -3351,6 +3366,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     } else {
       await loadContextNow(runId);
     }
+    const nextTrace = await client.getTrace(runId);
+    setRawTrace(nextTrace.trace ?? nextTrace.events ?? []);
     const nextDiff = await client.getDiff(runId);
     setDiff(nextDiff.text ?? nextDiff.diff ?? "");
     const firstArtifact = previewArtifactName(nextStatus);
@@ -4043,7 +4060,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
             <p>{selectedRun ? `${statusLabel(currentStatus)} · ${activity.current_step?.label ?? phaseLabel(currentPhase)}` : "用一条消息开始新的 Patchbay 运行"}</p>
           </div>
           <div className="topbar-actions">
-            <button className="icon-button" onClick={() => void loadRuns()} aria-label="刷新运行">
+            <button className="icon-button" onClick={() => void refreshCurrentView()} aria-label="刷新运行" disabled={refreshInFlight}>
               <RefreshCw size={17} />
             </button>
             <button className="detail-button" onClick={() => setPersistentDiagnosticsOpen(!diagnosticsOpen)} aria-expanded={diagnosticsOpen}>

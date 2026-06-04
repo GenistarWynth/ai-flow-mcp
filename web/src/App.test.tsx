@@ -1968,6 +1968,106 @@ describe("Workbench", () => {
     await waitFor(() => expect(getContext).toHaveBeenCalledWith("run-fix"));
   });
 
+  it("refreshes the selected run details from the topbar", async () => {
+    const initialContext = {
+      ...readyContext,
+      timeline: [
+        {
+          source: "event",
+          index: 0,
+          timestamp: "2026-05-24T10:02:00Z",
+          phase: "review",
+          action: "success",
+          status: "PASS",
+          detail: "initial timeline detail"
+        }
+      ],
+      agent_activity: {
+        ...readyContext.agent_activity!,
+        messages: [
+          {
+            id: "initial-event",
+            kind: "event",
+            timestamp: "2026-05-24T10:02:00Z",
+            phase: "review",
+            title: "Initial event",
+            body: "initial context body",
+            status: "PASS",
+            status_label: "pass",
+            tone: "success"
+          }
+        ]
+      },
+      cursors: { event: 1, trace: 0 }
+    };
+    const refreshedContext = {
+      ...initialContext,
+      timeline: [
+        {
+          source: "event",
+          index: 1,
+          timestamp: "2026-05-24T10:03:00Z",
+          phase: "review",
+          action: "success",
+          status: "PASS",
+          detail: "refreshed timeline detail"
+        }
+      ],
+      agent_activity: {
+        ...initialContext.agent_activity,
+        messages: [
+          {
+            id: "refreshed-event",
+            kind: "event",
+            timestamp: "2026-05-24T10:03:00Z",
+            phase: "review",
+            title: "Refreshed event",
+            body: "refreshed context body",
+            status: "PASS",
+            status_label: "pass",
+            tone: "success"
+          }
+        ]
+      },
+      cursors: { event: 2, trace: 0 }
+    };
+    const status = {
+      run_id: "run-ready",
+      task: "Ship dashboard",
+      status: "REVIEWED_PASS",
+      current_phase: "apply",
+      gate_state: { approved: true, tests_passed: true, review_result: "PASS", ready_to_apply: true },
+      artifacts: []
+    };
+    const getStatus = vi.fn().mockResolvedValue(status);
+    const getContext = vi.fn().mockResolvedValueOnce(initialContext).mockResolvedValue(refreshedContext);
+    const getTrace = vi
+      .fn()
+      .mockResolvedValueOnce({ events: [{ seq: 1, phase: "plan", action: "start", detail: "initial provider trace" }] })
+      .mockResolvedValue({ events: [{ seq: 2, phase: "review", action: "success", detail: "refreshed provider trace" }] });
+    const getDiff = vi.fn().mockResolvedValueOnce({ diff: "diff --git a/old b/old" }).mockResolvedValue({ diff: "diff --git a/fresh b/fresh" });
+    const client = createClient({ getStatus, getContext, getTrace, getDiff });
+
+    render(<Workbench client={client} pollIntervalMs={0} />);
+
+    expect(await screen.findByText("initial context body")).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "刷新运行" }));
+
+    await waitFor(() => expect(getContext).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("refreshed context body")).toBeVisible();
+    expect(screen.queryByText("initial context body")).not.toBeInTheDocument();
+    expect(getStatus).toHaveBeenCalledTimes(2);
+    expect(getTrace).toHaveBeenCalledTimes(2);
+    expect(getDiff).toHaveBeenCalledTimes(2);
+
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "活动" }));
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    const providerSection = within(details).getByRole("heading", { name: "Provider trace" }).closest("section")!;
+    expect(within(providerSection).getByText("refreshed provider trace")).toBeVisible();
+    expect(within(providerSection).queryByText("initial provider trace")).not.toBeInTheDocument();
+  });
+
   it("falls back to the inbox focus when the restored run no longer exists", async () => {
     window.localStorage.setItem("patchbay.selectedRun", "run-gone");
     const getStatus = vi.fn().mockResolvedValue({

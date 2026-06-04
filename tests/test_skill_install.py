@@ -145,6 +145,8 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("lightweight local conversation transcript", contract)
         self.assertIn("compact local Agent replies", contract)
         self.assertIn("omitting bulky `context`, `status`, `runs`, `diff`", contract)
+        self.assertIn("topbar refresh controls", contract)
+        self.assertIn("provider trace, diff, and artifact preview", contract)
         self.assertIn("preserve selected-run free-text drafts if send fails", contract)
         self.assertIn("patchbay setup without MCP for claude-desktop", contract)
         self.assertIn("MCP setup", contract)
