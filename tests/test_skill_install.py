@@ -124,6 +124,7 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("configure economy provider command to <path>", contract)
         self.assertIn("fallback copy path", contract)
         self.assertIn("visible failed-copy state", contract)
+        self.assertIn("reset copy status", contract)
         self.assertIn("简单 writer/fix 用 DeepSeek 省钱", contract)
         self.assertIn("降本，让简单 writer/fix 走低价模型", contract)
         self.assertIn("guarded economy-provider form", contract)

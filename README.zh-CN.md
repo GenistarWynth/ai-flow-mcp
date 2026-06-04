@@ -160,6 +160,8 @@ Web workbench 使用同一套对话式流程，并在诊断抽屉里提供“就
 
 Workbench 还会在刷新或重新打开后恢复当前显示的是选中运行还是新任务视图、诊断抽屉开关状态、当前诊断 tab、按 run 记住的 Trace/活动页选中消息、侧栏搜索/状态/inbox 筛选，以及按 run 隔离的新任务/运行 composer 草稿。顶部刷新按钮在选中 run 时会一起刷新该 run 的 status、context、provider trace、diff 和产物预览，而不只是刷新侧栏列表；刷新失败会显示命名的可访问错误提示，并恢复按钮可用状态。Initial run-list loading、startup readiness loading、selected-run detail loading 和 selected-run polling failures 也会显示命名的可访问错误，而不是裸异常字符串。选中 run 的轮询会在窗口隐藏时暂停空闲的增量 context 刷新，回到可见时立即补一次刷新；活跃后台 job 仍会在隐藏时继续轮询，保证长任务能完成并更新 inbox。阶段推进按钮会捕获 gated/autopilot 动作失败，显示命名失败动作的可访问顶部错误提示，并恢复按钮可用状态，同时不放宽 final apply 的单独确认门禁。打开 run、轮询 context/status/events、刷新 readiness，以及打开最近 run 这类本地 Agent 回复动作如果刷新调用失败，也会走同一条可见错误通道；缺少 run reference 的 `open-latest-run` 回复也会显示命名错误；setup/readiness/economy/provider configuration failures 也会显示失败动作或选中 host，并恢复触发它的 setup/profile/readiness 控件。它也会保留轻量、有界的本地对话 transcript：最近的选中 run 本地备注、压缩后的本地 Agent 回复，以及最新的新任务 Agent 回复都会跨刷新/重开恢复，但会刻意丢弃体积大的 `context`、`status`、`runs`、`diff` 和后台 job payload。如果保存的运行已经不存在，会自动回退到当前 inbox 焦点运行，而不是请求一个过期 run；如果当前 run inbox 不再包含保存的分组，过期 inbox 筛选会自动清除。草稿在成功提交后清除；选中 run 的自由文本发送失败时会显示命名的可访问错误提示，并保留输入。
 
+可复制命令控件会在 readiness 或 Agent 响应替换底层命令时重置 copied/unavailable 状态，避免新的 provider 修复命令继承上一条命令的复制反馈。
+
 当 doctor 返回结构化 `configure_deepseek_provider` 动作时，就绪页可以渲染受保护的 economy provider 表单，用于创建自定义 DeepSeek CLI writer/fix provider 并激活经济路由。健康就绪状态下不应展示这个可变更配置的表单，避免用户没有 setup 缺口时意外修改 provider 配置。
 
 启动 `patchbay web --port 8765` 后，打开 `http://127.0.0.1:8765`。

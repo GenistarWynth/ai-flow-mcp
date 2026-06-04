@@ -1062,6 +1062,73 @@ describe("Workbench", () => {
     expect(document.querySelector("textarea[readonly]")).toBeNull();
   });
 
+  it("resets provider command copy state when readiness returns a new command", async () => {
+    const firstCommand = "patchbay config --set-key providers.cheap_writer.command --set-value deepseek-writer";
+    const nextCommand = "patchbay config --set-key providers.cheap_writer.command --set-value reasonix";
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    const providerAction = (command: string) => ({
+      id: "configure_economy_provider_command",
+      label: "Copy provider command",
+      kind: "command",
+      command,
+      safe: true,
+      reason: "Copy the active economy provider command into .ai/patchbay.toml."
+    });
+    const getDoctor = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        root: "C:/repo",
+        checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true } },
+        actions: [
+          providerAction(firstCommand),
+          {
+            id: "refresh_readiness",
+            label: "Refresh readiness",
+            kind: "local_agent",
+            message: "readiness",
+            safe: true,
+            reason: "Re-run read-only readiness checks."
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        root: "C:/repo",
+        checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true } },
+        actions: [providerAction(nextCommand)]
+      });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      getDoctor
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    const firstButton = within(details).getByRole("button", { name: "Copy command Copy provider command" });
+    await userEvent.click(firstButton);
+
+    expect(writeText).toHaveBeenCalledWith(firstCommand);
+    expect(firstButton).toHaveTextContent("Copied");
+
+    await userEvent.click(within(details).getByRole("button", { name: "Refresh readiness" }));
+    await waitFor(() => expect(getDoctor).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(within(details).getByRole("button", { name: "Copy command Copy provider command" })).toHaveTextContent(/^Copy$/)
+    );
+    await userEvent.click(within(details).getByRole("button", { name: "Copy command Copy provider command" }));
+
+    expect(writeText).toHaveBeenLastCalledWith(nextCommand);
+  });
+
   it("renders a Codex-style thread and keeps orchestration details in the closed diagnostics drawer", async () => {
     const client = createClient();
 

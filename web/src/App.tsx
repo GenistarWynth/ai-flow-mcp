@@ -5326,6 +5326,9 @@ function RoutingEvidenceCard({ routing }: { routing: RoutingEvidence }) {
 
 function CommandActionRow({ command, label }: { command: string; label: string }) {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  useEffect(() => {
+    setCopyState("idle");
+  }, [command]);
   if (!command) return null;
   const copyCommand = async () => {
     const copied = await copyTextToClipboard(command);
@@ -5420,6 +5423,9 @@ function ProviderCommandAction({
 }) {
   const [path, setPath] = useState("");
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  useEffect(() => {
+    setCopyState("idle");
+  }, [action.command]);
   const submit = (event: FormEvent) => {
     event.preventDefault();
     onAction?.({ ...action, message: providerCommandMessage(action, path) });
