@@ -2030,6 +2030,191 @@ describe("Workbench", () => {
     expect(screen.getByLabelText("给 Patchbay Agent 输入消息")).toHaveValue("keep this note");
   });
 
+  it("restores compact new-task local Agent replies after remount", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "setup",
+      ok: true,
+      reply: "Patchbay setup completed with follow-up steps.",
+      status: { run_id: "ignored-heavy-status", status: "PLANNED" },
+      context: readyContext,
+      diff: "diff --git a/large b/large",
+      job: { transcript: "large worker payload" },
+      setup_host: "claude-desktop",
+      setup: {
+        ok: true,
+        root: "C:/repo",
+        mcp: {
+          host: "claude-desktop",
+          command: "claude mcp add patchbay -- python scripts/patchbay_mcp_server.py",
+          executed: false
+        },
+        doctor: {
+          ok: true,
+          root: "C:/repo",
+          checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true }, mcp: { ok: true } },
+          next_actions: []
+        }
+      },
+      actions: [
+        {
+          id: "register_mcp",
+          label: "Register MCP",
+          kind: "command",
+          command: "claude mcp add patchbay -- python scripts/patchbay_mcp_server.py",
+          safe: true
+        }
+      ],
+      action_groups: [{ id: "commands", label: "Commands", action_ids: ["register_mcp"] }]
+    });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      agentMessage
+    });
+    const { unmount } = render(<Workbench client={client} pollIntervalMs={0} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.click(screen.getByRole("button", { name: "Setup Claude Desktop" }));
+
+    await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("patchbay setup for claude-desktop"));
+    expect(await screen.findByText("Patchbay setup completed with follow-up steps.")).toBeVisible();
+    expect(within(screen.getByLabelText("Setup result")).getByText("claude mcp add patchbay -- python scripts/patchbay_mcp_server.py")).toBeVisible();
+    expect(within(screen.getByLabelText("Agent command actions")).getByRole("button", { name: "Copy command Register MCP" })).toBeVisible();
+
+    const stored = JSON.parse(window.localStorage.getItem("patchbay.newTaskReply") ?? "{}");
+    expect(stored.reply).toBe("Patchbay setup completed with follow-up steps.");
+    expect(stored.setup?.mcp?.command).toBe("claude mcp add patchbay -- python scripts/patchbay_mcp_server.py");
+    expect(stored.actions).toHaveLength(1);
+    expect(stored.context).toBeUndefined();
+    expect(stored.status).toBeUndefined();
+    expect(stored.diff).toBeUndefined();
+    expect(stored.job).toBeUndefined();
+    unmount();
+
+    render(<Workbench client={createClient({ listRuns: vi.fn().mockResolvedValue({ runs: [] }) })} pollIntervalMs={0} />);
+
+    expect(await screen.findByText("Patchbay setup completed with follow-up steps.")).toBeVisible();
+    expect(within(screen.getByLabelText("Setup result")).getByText("Claude Desktop")).toBeVisible();
+    expect(within(screen.getByLabelText("Agent command actions")).getByRole("button", { name: "Copy command Register MCP" })).toBeVisible();
+  });
+
+  it("restores selected-run local messages and compact Agent replies after remount", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: "run-ready",
+      action: "profile_show",
+      ok: true,
+      reply: "Writer/fix economy route is verified.",
+      context: readyContext,
+      status: {
+        run_id: "run-ready",
+        task: "Ship dashboard",
+        status: "REVIEWED_PASS",
+        current_phase: "apply",
+        gate_state: { approved: true, tests_passed: true, review_result: "PASS", ready_to_apply: true },
+        artifacts: []
+      },
+      metrics: {
+        routing_evidence: {
+          economy_configured: true,
+          economy_health: {
+            status: "healthy",
+            severity: "ok",
+            summary: "Economy write/fix provider was observed.",
+            target: { provider: "reasonix_cli", model: "deepseek-v4-pro", label: "Reasonix/DeepSeek" }
+          },
+          phases: {
+            write: { configured_economy: true, observed_economy: true },
+            fix: { configured_economy: true, observed_economy: true }
+          }
+        },
+        efficiency_summary: {
+          status: "verified_economy",
+          routing_status: "healthy",
+          usage_known: { duration: true },
+          economy_share: { duration_percent: 72, duration_ms: 9000 },
+          summary: "Cheap writer/fix work handled most simple implementation time."
+        }
+      }
+    });
+    const client = createClient({ agentMessage });
+    const { unmount } = render(<Workbench client={client} pollIntervalMs={0} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await userEvent.type(screen.getByLabelText("给 Patchbay Agent 输入消息"), "is writer using cheap model?");
+    await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith("is writer using cheap model?", {
+        runId: "run-ready",
+        include: { diff: true, review: true },
+        background: true
+      })
+    );
+    expect(await screen.findByText("is writer using cheap model?")).toBeVisible();
+    expect(await screen.findByText("Writer/fix economy route is verified.")).toBeVisible();
+    expect(screen.getByLabelText("Routing result")).toBeVisible();
+
+    const stored = JSON.parse(window.localStorage.getItem("patchbay.localMessages") ?? "{}");
+    expect(stored["run-ready"]).toHaveLength(2);
+    expect(stored["run-ready"][1].response.reply).toBe("Writer/fix economy route is verified.");
+    expect(stored["run-ready"][1].response.metrics.efficiency_summary.status).toBe("verified_economy");
+    expect(stored["run-ready"][1].response.context).toBeUndefined();
+    expect(stored["run-ready"][1].response.status).toBeUndefined();
+    unmount();
+
+    render(<Workbench client={createClient()} pollIntervalMs={0} />);
+
+    expect(await screen.findByRole("heading", { name: "Ship dashboard" })).toBeInTheDocument();
+    expect(await screen.findByText("is writer using cheap model?")).toBeVisible();
+    expect(await screen.findByText("Writer/fix economy route is verified.")).toBeVisible();
+    expect(screen.getByLabelText("Routing result")).toBeVisible();
+  });
+
+  it("keeps persisted local transcript caches bounded", async () => {
+    const oldMessages = Array.from({ length: 10 }, (_, index) => ({
+      id: `old-${index}`,
+      body: `persisted note ${index}`,
+      timestamp: `2026-05-24T10:${String(index).padStart(2, "0")}:00Z`
+    }));
+    window.localStorage.setItem("patchbay.localMessages", JSON.stringify({ "run-ready": oldMessages }));
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: "run-ready",
+      ok: true,
+      reply: "Pruning reply.",
+      context: readyContext,
+      status: {
+        run_id: "run-ready",
+        task: "Ship dashboard",
+        status: "REVIEWED_PASS",
+        current_phase: "apply",
+        gate_state: { approved: true, tests_passed: true, review_result: "PASS", ready_to_apply: true },
+        artifacts: []
+      }
+    });
+    const client = createClient({ agentMessage });
+
+    render(<Workbench client={client} pollIntervalMs={0} />);
+
+    expect(await screen.findByText("persisted note 2")).toBeVisible();
+    expect(screen.queryByText("persisted note 0")).not.toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("给 Patchbay Agent 输入消息"), "fresh pruning note");
+    await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await waitFor(() => expect(agentMessage).toHaveBeenCalled());
+    const stored = JSON.parse(window.localStorage.getItem("patchbay.localMessages") ?? "{}");
+    expect(stored["run-ready"]).toHaveLength(8);
+    expect(stored["run-ready"].map((message: { body: string }) => message.body)).toEqual([
+      "persisted note 4",
+      "persisted note 5",
+      "persisted note 6",
+      "persisted note 7",
+      "persisted note 8",
+      "persisted note 9",
+      "fresh pruning note",
+      "Pruning reply."
+    ]);
+  });
+
   it("renders structured runs inbox state in the sidebar", async () => {
     const client = createClient();
 

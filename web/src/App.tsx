@@ -176,9 +176,14 @@ const diagnosticsTabPreferenceKey = "patchbay.diagnosticsTab";
 const runSearchPreferenceKey = "patchbay.runSearch";
 const statusFilterPreferenceKey = "patchbay.statusFilter";
 const inboxFilterPreferenceKey = "patchbay.inboxFilter";
+const localMessagesPreferenceKey = "patchbay.localMessages";
+const newTaskReplyPreferenceKey = "patchbay.newTaskReply";
 const composerDraftPreferencePrefix = "patchbay.composerDraft.";
 const newTaskRunKey = "__new__";
 const statusFilterValues = new Set(["PLANNED", "IMPLEMENTING", "REVIEWED_PASS", "REVIEWED_CHANGES_REQUESTED", "FAILED"]);
+const localTranscriptRunLimit = 20;
+const localTranscriptMessageLimit = 8;
+const localTranscriptTextLimit = 6000;
 const setupHostLabels = new Map(setupHostOptions.map((host) => [host.id, host.label]));
 const setupHostAliases: Record<string, string[]> = {
   codex: ["codex desktop", "codex 桌面"],
@@ -243,6 +248,37 @@ function writeStringPreference(key: string, value: string) {
   } catch {
     // Storage can be unavailable in locked-down browser contexts; keep the in-memory state working.
   }
+}
+
+function readJsonPreference(key: string): unknown {
+  const raw = readStringPreference(key);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function writeJsonPreference(key: string, value: unknown) {
+  try {
+    writeStringPreference(key, JSON.stringify(value));
+  } catch {
+    // Storage quotas can be tight; keep the live session working if persistence fails.
+  }
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function trimLocalTranscriptText(value?: string | null) {
+  if (typeof value !== "string") return value ?? undefined;
+  return value.length > localTranscriptTextLimit ? `${value.slice(0, localTranscriptTextLimit)}...` : value;
+}
+
+function compactStringList(values?: string[] | null) {
+  return Array.isArray(values) ? values.filter((value) => typeof value === "string").slice(0, 8) : undefined;
 }
 
 function readLocalOnlyPreference() {
@@ -348,6 +384,108 @@ function readComposerDraft(runKey: string) {
 
 function writeComposerDraft(runKey: string, value: string) {
   writeStringPreference(composerDraftPreferenceKey(runKey), value);
+}
+
+function compactAgentResponseForTranscript(response?: AgentResponse | null): AgentResponse | undefined {
+  if (!response) return undefined;
+  return {
+    run_id: typeof response.run_id === "string" ? response.run_id : null,
+    action: response.action,
+    ok: response.ok,
+    reply: trimLocalTranscriptText(response.reply),
+    recent_run: response.recent_run,
+    run_reference: response.run_reference,
+    requested_view: response.requested_view,
+    next_action: response.next_action,
+    gate_diagnosis: response.gate_diagnosis,
+    doctor: response.doctor,
+    setup: response.setup,
+    setup_host: response.setup_host,
+    local_mode: response.local_mode,
+    recovery: response.recovery,
+    profile: response.profile,
+    routing: response.routing,
+    routing_evidence: response.routing_evidence,
+    efficiency_summary: response.efficiency_summary,
+    metrics: response.metrics
+      ? {
+          routing_evidence: response.metrics.routing_evidence,
+          efficiency_summary: response.metrics.efficiency_summary,
+          actions: Array.isArray(response.metrics.actions) ? response.metrics.actions : undefined,
+          action_groups: Array.isArray(response.metrics.action_groups) ? response.metrics.action_groups : undefined
+        }
+      : undefined,
+    capabilities: Array.isArray(response.capabilities) ? response.capabilities : undefined,
+    actions: Array.isArray(response.actions) ? response.actions : undefined,
+    action_groups: Array.isArray(response.action_groups) ? response.action_groups : undefined,
+    next_actions: compactStringList(response.next_actions),
+    recommendations: compactStringList(response.recommendations),
+    background: response.background,
+    background_job: response.background_job,
+    requires_confirmation: response.requires_confirmation,
+    error: trimLocalTranscriptText(response.error)
+  };
+}
+
+function normalizeStoredLocalMessage(value: unknown): LocalMessage | null {
+  if (!isPlainRecord(value) || typeof value.body !== "string" || typeof value.timestamp !== "string") return null;
+  const role = value.role === "assistant" || value.role === "user" ? value.role : undefined;
+  return {
+    id: typeof value.id === "string" ? value.id : `local-${value.timestamp}`,
+    body: trimLocalTranscriptText(value.body) ?? "",
+    timestamp: value.timestamp,
+    role,
+    response: compactAgentResponseForTranscript(isPlainRecord(value.response) ? (value.response as AgentResponse) : undefined)
+  };
+}
+
+function pruneLocalMessages(messages: LocalMessage[]) {
+  return messages
+    .map((message) => normalizeStoredLocalMessage(message))
+    .filter(Boolean)
+    .slice(-localTranscriptMessageLimit) as LocalMessage[];
+}
+
+function pruneLocalMessageTranscript(transcript: Record<string, LocalMessage[]>) {
+  const entries = Object.entries(transcript)
+    .map(([key, messages]) => [key, pruneLocalMessages(messages)] as const)
+    .filter(([, messages]) => messages.length)
+    .sort(([, left], [, right]) => {
+      const leftTime = left.at(-1)?.timestamp ?? "";
+      const rightTime = right.at(-1)?.timestamp ?? "";
+      return rightTime.localeCompare(leftTime);
+    })
+    .slice(0, localTranscriptRunLimit);
+  return Object.fromEntries(entries);
+}
+
+function readLocalMessagesPreference() {
+  const value = readJsonPreference(localMessagesPreferenceKey);
+  if (!isPlainRecord(value)) return {};
+  const result: Record<string, LocalMessage[]> = {};
+  for (const [key, messages] of Object.entries(value)) {
+    if (!Array.isArray(messages)) continue;
+    const normalized = pruneLocalMessages(messages);
+    if (normalized.length) result[key] = normalized;
+  }
+  return pruneLocalMessageTranscript(result);
+}
+
+function writeLocalMessagesPreference(messages: Record<string, LocalMessage[]>) {
+  const pruned = pruneLocalMessageTranscript(messages);
+  if (Object.keys(pruned).length) writeJsonPreference(localMessagesPreferenceKey, pruned);
+  else writeStringPreference(localMessagesPreferenceKey, "");
+}
+
+function readNewTaskReplyPreference() {
+  const value = readJsonPreference(newTaskReplyPreferenceKey);
+  return compactAgentResponseForTranscript(isPlainRecord(value) ? (value as AgentResponse) : undefined) ?? null;
+}
+
+function writeNewTaskReplyPreference(response: AgentResponse | null) {
+  const compact = compactAgentResponseForTranscript(response);
+  if (compact) writeJsonPreference(newTaskReplyPreferenceKey, compact);
+  else writeStringPreference(newTaskReplyPreferenceKey, "");
 }
 
 function setupMessageForMode(host: SetupHostOption, message: string, localOnlyMode: boolean) {
@@ -2895,8 +3033,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const [actionInFlight, setActionInFlight] = useState(false);
   const [setupInFlight, setSetupInFlight] = useState(false);
   const [profileInFlight, setProfileInFlight] = useState(false);
-  const [localMessages, setLocalMessages] = useState<Record<string, LocalMessage[]>>({});
-  const [newTaskReply, setNewTaskReply] = useState<AgentResponse | null>(null);
+  const [localMessages, setLocalMessages] = useState(readLocalMessagesPreference);
+  const [newTaskReply, setNewTaskReply] = useState(readNewTaskReplyPreference);
   const [localOnlyMode, setLocalOnlyMode] = useState(readLocalOnlyPreference);
   const [runsLoaded, setRunsLoaded] = useState(false);
   const refreshSeq = useRef(0);
@@ -2941,6 +3079,20 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const setPersistentInboxFilter = (key: string) => {
     setInboxFilter(key);
     writeInboxFilterPreference(key);
+  };
+
+  const setPersistentLocalMessages = (updater: (current: Record<string, LocalMessage[]>) => Record<string, LocalMessage[]>) => {
+    setLocalMessages((current) => {
+      const next = pruneLocalMessageTranscript(updater(current));
+      writeLocalMessagesPreference(next);
+      return next;
+    });
+  };
+
+  const setPersistentNewTaskReply = (response: AgentResponse | null) => {
+    const compact = compactAgentResponseForTranscript(response) ?? null;
+    setNewTaskReply(compact);
+    writeNewTaskReplyPreference(compact);
   };
 
   const doctorOptions = (host: SetupHostOption = readinessHost, skipMcp = localOnlyMode) => ({
@@ -3291,7 +3443,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
 
   const appendLocalMessage = (body: string, targetRunKey = runKey) => {
     const timestamp = new Date().toISOString();
-    setLocalMessages((current) => ({
+    setPersistentLocalMessages((current) => ({
       ...current,
       [targetRunKey]: [...(current[targetRunKey] ?? []), { id: `local-${Date.now()}`, body, timestamp }]
     }));
@@ -3300,11 +3452,11 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const appendLocalAgentReply = (response: AgentResponse, targetRunKey = runKey) => {
     const body = response.reply || response.action || "Patchbay Agent returned a local response.";
     const timestamp = new Date().toISOString();
-    setLocalMessages((current) => ({
+    setPersistentLocalMessages((current) => ({
       ...current,
       [targetRunKey]: [
         ...(current[targetRunKey] ?? []),
-        { id: `local-agent-${Date.now()}`, role: "assistant", body, timestamp, response }
+        { id: `local-agent-${Date.now()}`, role: "assistant", body, timestamp, response: compactAgentResponseForTranscript(response) }
       ]
     }));
   };
@@ -3328,7 +3480,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       const setupDoctor = response.setup?.doctor ?? response.doctor;
       setPersistentReadinessHost(responseHost);
       if (selectedRun) appendLocalAgentReply(response);
-      else setNewTaskReply(response);
+      else setPersistentNewTaskReply(response);
       if (setupDoctor) {
         setDoctor(setupDoctor);
       } else {
@@ -3361,7 +3513,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         action_groups: profile.action_groups ?? []
       };
       if (selectedRun) appendLocalAgentReply(response);
-      else setNewTaskReply(response);
+      else setPersistentNewTaskReply(response);
       const [nextDoctor, nextConfig] = await Promise.all([client.getDoctor(doctorOptions()), client.getConfig()]);
       setDoctor(nextDoctor);
       setConfig(nextConfig);
@@ -3381,7 +3533,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     try {
       const response = await client.agentMessage(message);
       if (selectedRun) appendLocalAgentReply(response);
-      else setNewTaskReply(response);
+      else setPersistentNewTaskReply(response);
       const [nextDoctor, nextConfig] = await Promise.all([client.getDoctor(doctorOptions()), client.getConfig()]);
       setDoctor(nextDoctor);
       setConfig(nextConfig);
@@ -3401,7 +3553,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     try {
       const response = await client.agentMessage(message);
       if (selectedRun) appendLocalAgentReply(response);
-      else setNewTaskReply(response);
+      else setPersistentNewTaskReply(response);
       const [nextDoctor, nextConfig] = await Promise.all([client.getDoctor(doctorOptions()), client.getConfig()]);
       setDoctor(nextDoctor);
       setConfig(nextConfig);
@@ -3443,7 +3595,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         next_actions: result.next_actions ?? ["readiness", "start"]
       };
       if (selectedRun) appendLocalAgentReply(response);
-      else setNewTaskReply(response);
+      else setPersistentNewTaskReply(response);
       const [nextDoctor, nextConfig] = await Promise.all([client.getDoctor(doctorOptions()), client.getConfig()]);
       setDoctor(nextDoctor);
       setConfig(nextConfig);
@@ -3464,7 +3616,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       const response = await client.agentMessage(message, { include: { plan: true }, background: true });
       if (selectsLocalOnlyMode(response)) setPersistentLocalOnlyMode(true);
       if (selectedRun) appendLocalAgentReply(response);
-      else setNewTaskReply(response);
+      else setPersistentNewTaskReply(response);
       if (response.run_id && isLatestRunReadOnlyResponse(response)) {
         await refreshRun(response.run_id, response);
       } else {
@@ -3501,7 +3653,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     if (action.kind === "open_run" && action.run_id) {
       setError("");
       setNewTaskMode(false);
-      setNewTaskReply(null);
+      setPersistentNewTaskReply(null);
       if (action.tab && diagnosticTabs.has(action.tab as TabName)) {
         setPersistentDiagnosticsOpen(true);
         setPersistentActiveTab(action.tab as TabName);
@@ -3576,7 +3728,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     if (action.kind === "open_run" && action.run_id) {
       setError("");
       setNewTaskMode(false);
-      setNewTaskReply(null);
+      setPersistentNewTaskReply(null);
       if (action.tab && diagnosticTabs.has(action.tab as TabName)) {
         setPersistentDiagnosticsOpen(true);
         setPersistentActiveTab(action.tab as TabName);
@@ -3671,7 +3823,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       const requestedTab = action.tab ?? newTaskReply?.run_reference?.requested_view?.tab ?? newTaskReply?.requested_view?.tab;
       setError("");
       setNewTaskMode(false);
-      setNewTaskReply(null);
+      setPersistentNewTaskReply(null);
       if (requestedTab && diagnosticTabs.has(requestedTab as TabName)) {
         setPersistentDiagnosticsOpen(true);
         setPersistentActiveTab(requestedTab as TabName);
@@ -3702,7 +3854,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
           await refreshRun(selectedRun, response);
         } else {
           const response = await client.agentMessage(action.message || "status");
-          setNewTaskReply(response);
+          setPersistentNewTaskReply(response);
           await loadRuns();
         }
       } catch (err) {
@@ -3727,7 +3879,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         const created = await client.agentMessage(text, { include: { plan: true }, background: true });
         if (selectsLocalOnlyMode(created)) setPersistentLocalOnlyMode(true);
         clearComposerDraft(submittedRunKey);
-        setNewTaskReply(null);
+        setPersistentNewTaskReply(null);
         if (isLatestRunReadOnlyResponse(created)) {
           appendLocalMessage(text, created.run_id);
           appendLocalAgentReply(created, created.run_id);
@@ -3738,7 +3890,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         if (!created.run_id) {
           appendLocalMessage(text);
           setNewTaskMode(true);
-          setNewTaskReply(created);
+          setPersistentNewTaskReply(created);
           const responseHost = hostFromAgentResponse(created);
           const responseDoctor = created.setup?.doctor ?? created.doctor;
           if (responseHost) setPersistentReadinessHost(setupHostById(responseHost));
@@ -3786,7 +3938,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     setNewTaskMode(true);
     setPersistentSelectedRun("");
     setError("");
-    setNewTaskReply(null);
+    setPersistentNewTaskReply(null);
   };
 
   const selectInboxGroup = (key: string) => {
