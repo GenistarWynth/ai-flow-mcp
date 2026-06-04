@@ -5583,6 +5583,61 @@ describe("Workbench", () => {
     expect(within(details).getByRole("combobox", { name: "Setup host" })).toHaveValue("codex");
   });
 
+  it("persists Chrome Skill preference and refreshes local-only readiness from the new-task composer", async () => {
+    const agentMessage = vi.fn().mockResolvedValueOnce({
+      run_id: null,
+      action: "local_mode",
+      ok: true,
+      reply: "Local browser Skill mode selected.",
+      local_mode: { skip_mcp: true },
+      actions: []
+    });
+    const getDoctor = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        host: "codex",
+        root: "C:/repo",
+        checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true }, mcp: { ok: true } },
+        next_actions: []
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        host: "codex",
+        root: "C:/repo",
+        checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true }, mcp: { ok: true, skipped: true } },
+        next_actions: []
+      });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      agentMessage,
+      getDoctor
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(composer, "use Chrome Skill{enter}");
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith("use Chrome Skill", {
+        include: { plan: true },
+        background: true
+      })
+    );
+    await waitFor(() => expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "codex", skip_mcp: true }));
+    expect(window.localStorage.getItem("patchbay.localOnlyMode")).toBe("true");
+    const startContext = await screen.findByLabelText("启动上下文");
+    expect(within(startContext).getByText("本地模式 / No MCP")).toBeVisible();
+
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    expect(within(details).queryByRole("combobox", { name: "MCP host" })).not.toBeInTheDocument();
+    expect(within(details).getByRole("combobox", { name: "Setup host" })).toHaveValue("codex");
+  });
+
   it("restores the persisted setup host on startup", async () => {
     window.localStorage.setItem("patchbay.setupHost", "claude-desktop");
     const getDoctor = vi.fn().mockResolvedValue({

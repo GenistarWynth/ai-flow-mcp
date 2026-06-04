@@ -4022,7 +4022,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     try {
       if (!selectedRun) {
         const created = await client.agentMessage(text, { include: { plan: true }, background: true });
-        if (selectsLocalOnlyMode(created)) setPersistentLocalOnlyMode(true);
+        const createdLocalOnly = selectsLocalOnlyMode(created);
+        if (createdLocalOnly) setPersistentLocalOnlyMode(true);
         clearComposerDraft(submittedRunKey);
         setPersistentNewTaskReply(null);
         if (isLatestRunReadOnlyResponse(created)) {
@@ -4036,10 +4037,12 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
           appendLocalMessage(text);
           setPersistentNewTaskMode(true);
           setPersistentNewTaskReply(created);
-          const responseHost = hostFromAgentResponse(created);
+          const responseHostId = hostFromAgentResponse(created);
+          const responseHost = setupHostById(responseHostId ?? readinessHost.id);
           const responseDoctor = created.setup?.doctor ?? created.doctor;
-          if (responseHost) setPersistentReadinessHost(setupHostById(responseHost));
+          if (responseHostId || createdLocalOnly) setPersistentReadinessHost(responseHost);
           if (responseDoctor) setDoctor(responseDoctor);
+          else if (createdLocalOnly) setDoctor(await client.getDoctor(doctorOptions(responseHost, true)));
           await loadRuns(undefined, { autoSelect: false });
           return;
         }
