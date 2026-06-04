@@ -169,6 +169,7 @@ const setupHostOptions: SetupHostOption[] = [
   { id: "gemini", label: "Gemini", message: "install patchbay for gemini" }
 ];
 const localOnlyPreferenceKey = "patchbay.localOnlyMode";
+const setupHostPreferenceKey = "patchbay.setupHost";
 const setupHostLabels = new Map(setupHostOptions.map((host) => [host.id, host.label]));
 const setupHostAliases: Record<string, string[]> = {
   codex: ["codex desktop", "codex 桌面"],
@@ -230,6 +231,24 @@ function writeLocalOnlyPreference(enabled: boolean) {
     }
   } catch {
     // Storage can be unavailable in locked-down browser contexts; keep the in-memory state working.
+  }
+}
+
+function readSetupHostPreference() {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return setupHostOptions[0];
+    return setupHostById(window.localStorage.getItem(setupHostPreferenceKey));
+  } catch {
+    return setupHostOptions[0];
+  }
+}
+
+function writeSetupHostPreference(host: SetupHostOption) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return;
+    window.localStorage.setItem(setupHostPreferenceKey, host.id);
+  } catch {
+    // Keep the in-memory selected host usable when browser storage is unavailable.
   }
 }
 
@@ -2773,7 +2792,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const [confirm, setConfirm] = useState<ConfirmState>(null);
   const [error, setError] = useState("");
   const [composer, setComposer] = useState("");
-  const [readinessHost, setReadinessHost] = useState<SetupHostOption>(setupHostOptions[0]);
+  const [readinessHost, setReadinessHost] = useState(readSetupHostPreference);
   const [submitting, setSubmitting] = useState(false);
   const [actionInFlight, setActionInFlight] = useState(false);
   const [setupInFlight, setSetupInFlight] = useState(false);
@@ -2786,6 +2805,11 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const setPersistentLocalOnlyMode = (enabled: boolean) => {
     setLocalOnlyMode(enabled);
     writeLocalOnlyPreference(enabled);
+  };
+
+  const setPersistentReadinessHost = (host: SetupHostOption) => {
+    setReadinessHost(host);
+    writeSetupHostPreference(host);
   };
 
   const doctorOptions = (host: SetupHostOption = readinessHost, skipMcp = localOnlyMode) => ({
@@ -2817,7 +2841,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
 
   useEffect(() => {
     void loadRuns().catch((err) => setError(String(err)));
-    void client.getDoctor(doctorOptions(setupHostOptions[0], localOnlyMode)).then(setDoctor).catch((err) => setError(String(err)));
+    void client.getDoctor(doctorOptions(readinessHost, localOnlyMode)).then(setDoctor).catch((err) => setError(String(err)));
   }, []);
 
   useEffect(() => {
@@ -3139,7 +3163,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     if (skipMcp) setPersistentLocalOnlyMode(true);
     if (mcpOnly) setPersistentLocalOnlyMode(false);
     setError("");
-    setReadinessHost(host);
+    setPersistentReadinessHost(host);
     setSetupInFlight(true);
     try {
       const response = await client.agentMessage(setupMessage);
@@ -3148,7 +3172,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       else if (mcpOnly) setPersistentLocalOnlyMode(false);
       const responseHost = setupHostById(hostFromAgentResponse(response) ?? host.id);
       const setupDoctor = response.setup?.doctor ?? response.doctor;
-      setReadinessHost(responseHost);
+      setPersistentReadinessHost(responseHost);
       if (selectedRun) appendLocalAgentReply(response);
       else setNewTaskReply(response);
       if (setupDoctor) {
@@ -3302,8 +3326,10 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const openReadinessAction = async (force = false, host: SetupHostOption = readinessHost, skipMcp = localOnlyMode) => {
     if (skipMcp) setPersistentLocalOnlyMode(true);
     if (host.id !== readinessHost.id) {
-      setReadinessHost(host);
+      setPersistentReadinessHost(host);
       force = true;
+    } else {
+      setPersistentReadinessHost(host);
     }
     setDiagnosticsOpen(true);
     setActiveTab("Readiness");
@@ -3560,7 +3586,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
           setNewTaskReply(created);
           const responseHost = hostFromAgentResponse(created);
           const responseDoctor = created.setup?.doctor ?? created.doctor;
-          if (responseHost) setReadinessHost(setupHostById(responseHost));
+          if (responseHost) setPersistentReadinessHost(setupHostById(responseHost));
           if (responseDoctor) setDoctor(responseDoctor);
           await loadRuns(undefined, { autoSelect: false });
           return;
@@ -3725,7 +3751,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                     就绪
                   </button>
                 </div>
-                <SetupHostButtons onRunSetup={runSetupAction} setupBusy={setupInFlight} selectedHost={readinessHost} onSelectHost={setReadinessHost} />
+                <SetupHostButtons onRunSetup={runSetupAction} setupBusy={setupInFlight} selectedHost={readinessHost} onSelectHost={setPersistentReadinessHost} />
               </div>
               {localRunMessages.map((message) => (
                 <Fragment key={message.id}>

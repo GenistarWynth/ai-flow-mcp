@@ -4573,6 +4573,32 @@ describe("Workbench", () => {
     expect(within(details).getByRole("combobox", { name: "Setup host" })).toHaveValue("codex");
   });
 
+  it("restores the persisted setup host on startup", async () => {
+    window.localStorage.setItem("patchbay.setupHost", "claude-desktop");
+    const getDoctor = vi.fn().mockResolvedValue({
+      ok: true,
+      host: "claude-desktop",
+      root: "C:/repo",
+      checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true }, mcp: { ok: true } },
+      next_actions: []
+    });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      getDoctor
+    });
+
+    render(<Workbench client={client} />);
+
+    await waitFor(() => expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "claude-desktop" }));
+    const startContext = await screen.findByLabelText("启动上下文");
+    expect(within(startContext).getByText("Claude Desktop setup")).toBeVisible();
+
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    expect(within(details).getByRole("combobox", { name: "MCP host" })).toHaveValue("claude-desktop");
+  });
+
   it("persists local-only setup and reuses it after remount", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: null,
@@ -4617,6 +4643,62 @@ describe("Workbench", () => {
     render(<Workbench client={nextClient} />);
 
     await waitFor(() => expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "codex", skip_mcp: true }));
+  });
+
+  it("persists setup host choices across remounts", async () => {
+    const getDoctor = vi.fn().mockResolvedValue({
+      ok: true,
+      host: "gemini",
+      root: "C:/repo",
+      checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true }, mcp: { ok: true } },
+      next_actions: []
+    });
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "setup",
+      ok: true,
+      reply: "Patchbay setup completed for Gemini.",
+      setup_host: "gemini",
+      setup: {
+        doctor: {
+          ok: true,
+          host: "gemini",
+          root: "C:/repo",
+          checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true }, mcp: { ok: true } },
+          next_actions: []
+        }
+      }
+    });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      getDoctor,
+      agentMessage
+    });
+
+    const { unmount } = render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.click(screen.getByRole("button", { name: "Setup Gemini" }));
+    await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("install patchbay for gemini"));
+    expect(window.localStorage.getItem("patchbay.setupHost")).toBe("gemini");
+    unmount();
+
+    const nextGetDoctor = vi.fn().mockResolvedValue({
+      ok: true,
+      host: "gemini",
+      root: "C:/repo",
+      checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true }, mcp: { ok: true } },
+      next_actions: []
+    });
+    const nextClient = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      getDoctor: nextGetDoctor
+    });
+    render(<Workbench client={nextClient} />);
+
+    await waitFor(() => expect(nextGetDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "gemini" }));
+    const startContext = await screen.findByLabelText("启动上下文");
+    expect(within(startContext).getByText("Gemini setup")).toBeVisible();
   });
 
   it("rewrites persisted host setup actions to no-MCP setup", async () => {
