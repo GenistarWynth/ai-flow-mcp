@@ -148,6 +148,7 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("omitting bulky `context`, `status`, `runs`, `diff`", contract)
         self.assertIn("topbar refresh controls", contract)
         self.assertIn("provider trace, diff, and artifact preview", contract)
+        self.assertIn("topbar refresh failures", contract)
         self.assertIn("pause idle incremental context refreshes", contract)
         self.assertIn("continue polling active background jobs", contract)
         self.assertIn("accessible top-level error naming the failed action", contract)

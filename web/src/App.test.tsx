@@ -2180,6 +2180,20 @@ describe("Workbench", () => {
     expect(within(providerSection).queryByText("initial provider trace")).not.toBeInTheDocument();
   });
 
+  it("shows a visible error when topbar refresh fails", async () => {
+    const getContext = vi.fn().mockResolvedValueOnce(readyContext).mockRejectedValueOnce(new Error("context unavailable"));
+    const client = createClient({ getContext });
+
+    render(<Workbench client={client} pollIntervalMs={0} />);
+
+    expect(await screen.findByRole("heading", { name: "Ship dashboard" })).toBeInTheDocument();
+    const refresh = screen.getByRole("button", { name: "刷新运行" });
+    await userEvent.click(refresh);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("刷新运行失败：context unavailable");
+    await waitFor(() => expect(refresh).toBeEnabled());
+  });
+
   it("falls back to the inbox focus when the restored run no longer exists", async () => {
     window.localStorage.setItem("patchbay.selectedRun", "run-gone");
     const getStatus = vi.fn().mockResolvedValue({

@@ -3408,7 +3408,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       if (selectedRun) await refreshRun(selectedRun);
       else await loadRuns(undefined, { autoSelect: !newTaskMode });
     } catch (err) {
-      setError(String(err));
+      setError(`刷新运行失败：${errorDetail(err)}`);
     } finally {
       setRefreshInFlight(false);
     }

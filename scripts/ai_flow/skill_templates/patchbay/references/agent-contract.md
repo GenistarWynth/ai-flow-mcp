@@ -88,6 +88,8 @@ Desktop/Web clients should persist whether the surface is showing the selected r
 
 Desktop/Web topbar refresh controls should refresh the selected run's status, context, provider trace, diff, and artifact preview together. When no run is selected, refresh should remain a run-list refresh.
 
+Desktop/Web topbar refresh failures should show a named accessible top-level error and re-enable the refresh control.
+
 Desktop/Web selected-run polling should pause idle incremental context refreshes while the document/window is hidden, resume with one immediate refresh when it becomes visible again, and continue polling active background jobs even while hidden so long-running work can still complete and update the run inbox.
 
 Desktop/Web phase-advance controls should catch failed gated/autopilot actions, show an accessible top-level error naming the failed action, and re-enable the controls without relaxing the separate final apply confirmation gate.
