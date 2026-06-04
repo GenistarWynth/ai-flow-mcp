@@ -134,7 +134,7 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("restore both after refresh/reopen", contract)
         self.assertIn("selected setup/readiness host", contract)
         self.assertIn("stored host", contract)
-        self.assertIn("selected run", contract)
+        self.assertIn("selected run or the new-task view", contract)
         self.assertIn("diagnostics drawer open state", contract)
         self.assertIn("active diagnostics tab", contract)
         self.assertIn("selected Trace message keyed by run id", contract)

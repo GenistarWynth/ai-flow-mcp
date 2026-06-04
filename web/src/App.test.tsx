@@ -2132,6 +2132,33 @@ describe("Workbench", () => {
     expect(screen.getByLabelText("给 Patchbay Agent 输入消息")).toHaveValue("Build offline workbench mode");
   });
 
+  it("restores the new-task view and draft even when existing runs are available", async () => {
+    const client = createClient();
+    const { unmount } = render(<Workbench client={client} pollIntervalMs={0} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await userEvent.click(screen.getByRole("button", { name: "新任务" }));
+
+    expect(await screen.findByRole("heading", { name: "新任务" })).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("给 Patchbay Agent 输入消息"), "Build persistent new task view");
+
+    expect(window.localStorage.getItem("patchbay.newTaskMode")).toBe("true");
+    expect(window.localStorage.getItem("patchbay.composerDraft.__new__")).toBe("Build persistent new task view");
+    unmount();
+
+    render(<Workbench client={createClient()} pollIntervalMs={0} />);
+
+    expect(await screen.findByRole("heading", { name: "新任务" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Ship dashboard" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("给 Patchbay Agent 输入消息")).toHaveValue("Build persistent new task view");
+
+    const runList = screen.getByLabelText("运行线程");
+    await userEvent.click(within(runList).getByRole("button", { name: /Ship dashboard/ }));
+
+    expect(await screen.findByRole("heading", { name: "Ship dashboard" })).toBeInTheDocument();
+    expect(window.localStorage.getItem("patchbay.newTaskMode")).toBeNull();
+  });
+
   it("clears the matching composer draft after a successful submit", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: "run-ready",

@@ -178,6 +178,7 @@ const statusFilterPreferenceKey = "patchbay.statusFilter";
 const inboxFilterPreferenceKey = "patchbay.inboxFilter";
 const localMessagesPreferenceKey = "patchbay.localMessages";
 const newTaskReplyPreferenceKey = "patchbay.newTaskReply";
+const newTaskModePreferenceKey = "patchbay.newTaskMode";
 const composerDraftPreferencePrefix = "patchbay.composerDraft.";
 const selectedMessagePreferencePrefix = "patchbay.selectedMessage.";
 const newTaskRunKey = "__new__";
@@ -327,6 +328,14 @@ function readSelectedRunPreference() {
 
 function writeSelectedRunPreference(runId: string) {
   writeStringPreference(selectedRunPreferenceKey, runId);
+}
+
+function readNewTaskModePreference() {
+  return readStringPreference(newTaskModePreferenceKey) === "true";
+}
+
+function writeNewTaskModePreference(enabled: boolean) {
+  writeStringPreference(newTaskModePreferenceKey, enabled ? "true" : "");
 }
 
 function selectedMessagePreferenceKey(runId: string) {
@@ -3022,7 +3031,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [runsInbox, setRunsInbox] = useState<RunsInbox | null>(null);
   const [selectedRun, setSelectedRun] = useState("");
-  const [newTaskMode, setNewTaskMode] = useState(false);
+  const [newTaskMode, setNewTaskMode] = useState(readNewTaskModePreference);
   const [status, setStatus] = useState<RunStatus | null>(null);
   const [context, setContext] = useState<HandoffContext | null>(null);
   const [trace, setTrace] = useState<TraceEntry[]>([]);
@@ -3068,6 +3077,11 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const setPersistentSelectedRun = (runId: string) => {
     setSelectedRun(runId);
     writeSelectedRunPreference(runId);
+  };
+
+  const setPersistentNewTaskMode = (enabled: boolean) => {
+    setNewTaskMode(enabled);
+    writeNewTaskModePreference(enabled);
   };
 
   const setPersistentActiveTab = (tab: TabName) => {
@@ -3420,7 +3434,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     const targetReadyToApply = targetSummary ? readyToApplyRun(targetSummary) : readyToApply;
     const phaseAction = isPhaseAction(action.action);
     if (targetRun && targetRun !== selectedRun) {
-      setNewTaskMode(false);
+      setPersistentNewTaskMode(false);
       setPersistentSelectedRun(targetRun);
     }
     if (!phaseAction) {
@@ -3662,6 +3676,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       if (selectedRun) appendLocalAgentReply(response);
       else setPersistentNewTaskReply(response);
       if (response.run_id && isLatestRunReadOnlyResponse(response)) {
+        setPersistentNewTaskMode(false);
         await refreshRun(response.run_id, response);
       } else {
         await loadRuns(selectedRun || undefined, { autoSelect: false });
@@ -3696,7 +3711,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     if (action.safe === false) return;
     if (action.kind === "open_run" && action.run_id) {
       setError("");
-      setNewTaskMode(false);
+      setPersistentNewTaskMode(false);
       setPersistentNewTaskReply(null);
       if (action.tab && diagnosticTabs.has(action.tab as TabName)) {
         setPersistentDiagnosticsOpen(true);
@@ -3771,7 +3786,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     const actionHost = setupHostFromAction(action, readinessHost);
     if (action.kind === "open_run" && action.run_id) {
       setError("");
-      setNewTaskMode(false);
+      setPersistentNewTaskMode(false);
       setPersistentNewTaskReply(null);
       if (action.tab && diagnosticTabs.has(action.tab as TabName)) {
         setPersistentDiagnosticsOpen(true);
@@ -3866,7 +3881,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       }
       const requestedTab = action.tab ?? newTaskReply?.run_reference?.requested_view?.tab ?? newTaskReply?.requested_view?.tab;
       setError("");
-      setNewTaskMode(false);
+      setPersistentNewTaskMode(false);
       setPersistentNewTaskReply(null);
       if (requestedTab && diagnosticTabs.has(requestedTab as TabName)) {
         setPersistentDiagnosticsOpen(true);
@@ -3927,13 +3942,13 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         if (isLatestRunReadOnlyResponse(created)) {
           appendLocalMessage(text, created.run_id);
           appendLocalAgentReply(created, created.run_id);
-          setNewTaskMode(false);
+          setPersistentNewTaskMode(false);
           await refreshRun(created.run_id, created);
           return;
         }
         if (!created.run_id) {
           appendLocalMessage(text);
-          setNewTaskMode(true);
+          setPersistentNewTaskMode(true);
           setPersistentNewTaskReply(created);
           const responseHost = hostFromAgentResponse(created);
           const responseDoctor = created.setup?.doctor ?? created.doctor;
@@ -3942,7 +3957,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
           await loadRuns(undefined, { autoSelect: false });
           return;
         }
-        setNewTaskMode(false);
+        setPersistentNewTaskMode(false);
         appendLocalMessage(text, created.run_id);
         appendLocalAgentReply(created, created.run_id);
         await loadRuns(created.run_id);
@@ -3979,7 +3994,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   };
 
   const startNewTask = () => {
-    setNewTaskMode(true);
+    setPersistentNewTaskMode(true);
     setPersistentSelectedRun("");
     setError("");
     setPersistentNewTaskReply(null);
@@ -4029,7 +4044,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                 className="run-select"
                 type="button"
                 onClick={() => {
-                  setNewTaskMode(false);
+                  setPersistentNewTaskMode(false);
                   setPersistentSelectedRun(run.run_id);
                 }}
               >
