@@ -3968,8 +3968,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     if (action.id === "open-latest-run") {
       const runId = action.runId ?? newTaskReply?.run_reference?.run_id ?? newTaskReply?.recent_run?.run_id;
       if (!runId) {
-        setError("No recent run was returned by Patchbay Agent.");
-        return;
+        throw new Error("No recent run was returned by Patchbay Agent.");
       }
       const requestedTab = action.tab ?? newTaskReply?.run_reference?.requested_view?.tab ?? newTaskReply?.requested_view?.tab;
       setError("");

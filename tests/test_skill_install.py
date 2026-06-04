@@ -160,6 +160,7 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("poll_context", contract)
         self.assertIn("local Agent reply action buttons", contract)
         self.assertIn("open-latest-run", contract)
+        self.assertIn("no `run_id`, `recent_run`, or `run_reference`", contract)
         self.assertIn("setup/readiness/economy/provider configuration failures", contract)
         self.assertIn("re-enable the triggering setup/profile/readiness controls", contract)
         self.assertIn("selected-run free-text send failures", contract)

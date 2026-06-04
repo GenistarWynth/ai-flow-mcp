@@ -100,6 +100,8 @@ Desktop/Web safe diagnostic controls such as `open_run`, `poll_context`, `poll_s
 
 Desktop/Web local Agent reply action buttons, including `open-latest-run`, setup/readiness, routing, and runs/status follow-ups, should also surface asynchronous failures through the same named accessible error path.
 
+Desktop/Web `open-latest-run` local Agent reply actions with no `run_id`, `recent_run`, or `run_reference` should report a named accessible error instead of a raw missing-reference message.
+
 Desktop/Web setup/readiness/economy/provider configuration failures should name the failed action or selected host in the accessible top-level error and re-enable the triggering setup/profile/readiness controls.
 
 Desktop/Web Trace views should present selected-message, run-timeline, and provider-trace summaries before raw JSON. Keep raw JSON available behind an explicit debug/detail affordance for exact troubleshooting.

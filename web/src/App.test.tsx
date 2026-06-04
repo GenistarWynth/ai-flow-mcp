@@ -3829,6 +3829,41 @@ describe("Workbench", () => {
     expect(client.apply).not.toHaveBeenCalled();
   });
 
+  it("shows a named error when a local reply open-latest action has no run reference", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "next_step",
+      ok: true,
+      reply: "No run is currently selected.",
+      actions: [
+        {
+          id: "open_latest_run",
+          label: "Open latest run",
+          kind: "open_run",
+          safe: true,
+          reason: "Open the latest Patchbay run before choosing any gated action."
+        }
+      ]
+    });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      agentMessage
+    });
+
+    render(<Workbench client={client} pollIntervalMs={0} />);
+
+    await waitFor(() => expect(client.listRuns).toHaveBeenCalledTimes(1));
+    const composer = screen.getAllByRole("textbox").find((element) => element.tagName.toLowerCase() === "textarea")!;
+    await userEvent.type(composer, "what should I do next?{enter}");
+
+    expect(await screen.findByText("No run is currently selected.")).toBeVisible();
+    await userEvent.click(await screen.findByRole("button", { name: /open latest run/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Open latest run失败：No recent run was returned by Patchbay Agent.");
+    expect(client.runAction).not.toHaveBeenCalled();
+    expect(client.apply).not.toHaveBeenCalled();
+  });
+
   it("renders selected-run next_action as a confirmable local reply action", async () => {
     const agentMessage = vi.fn().mockResolvedValue({
       run_id: "run-ready",
