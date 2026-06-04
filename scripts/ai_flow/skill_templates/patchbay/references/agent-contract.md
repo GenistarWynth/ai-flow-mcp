@@ -84,6 +84,8 @@ Desktop/Web selected-run conversation views should show a compact run snapshot b
 
 Desktop/Web run inbox lists should render compact per-run quick signals for phase, gate progress, economy routing health, and latest provider evidence when those fields are present on `RunSummary`, so operators can triage multiple runs before opening details.
 
+Desktop/Web clients should persist the selected run, diagnostics drawer open state, and active diagnostics tab across refresh/reopen. If the stored run is no longer present, restore the current `runs.inbox.focus_run_id` or first visible run instead of requesting a stale run.
+
 Desktop/Web Trace views should present selected-message, run-timeline, and provider-trace summaries before raw JSON. Keep raw JSON available behind an explicit debug/detail affordance for exact troubleshooting.
 
 Desktop/Web Log and Artifacts views should use `failure_recovery`, status errors, priority artifacts, and the loaded artifact preview to present a failure summary, suggested next step, highlighted error lines, and an artifact index before the raw preview.

@@ -1823,6 +1823,75 @@ describe("Workbench", () => {
     expect(screen.getByRole("heading", { name: "Needs fix" })).toBeInTheDocument();
   });
 
+  it("restores the selected run and diagnostics view after remount", async () => {
+    const { unmount } = render(<Workbench client={createClient()} pollIntervalMs={0} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    const runList = screen.getByLabelText("运行线程");
+    await userEvent.click(within(runList).getByRole("button", { name: /Needs fix/ }));
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "日志" }));
+
+    expect(window.localStorage.getItem("patchbay.selectedRun")).toBe("run-fix");
+    expect(window.localStorage.getItem("patchbay.diagnosticsOpen")).toBe("true");
+    expect(window.localStorage.getItem("patchbay.diagnosticsTab")).toBe("Log");
+    unmount();
+
+    const getStatus = vi.fn().mockResolvedValue({
+      run_id: "run-fix",
+      task: "Needs fix",
+      status: "REVIEWED_CHANGES_REQUESTED",
+      current_phase: "fix",
+      gate_state: { approved: true, tests_passed: true, review_result: "CHANGES_REQUESTED", ready_to_apply: false },
+      artifacts: []
+    });
+    const getContext = vi.fn().mockResolvedValue({
+      ...plannedContext,
+      run_id: "run-fix",
+      status: "REVIEWED_CHANGES_REQUESTED",
+      current_phase: "fix",
+      agent_activity: {
+        ...plannedContext.agent_activity!,
+        conversation_state: {
+          ...plannedContext.agent_activity!.conversation_state!,
+          task: "Needs fix",
+          status: "REVIEWED_CHANGES_REQUESTED",
+          phase: "fix",
+          phase_label: "修复"
+        }
+      }
+    });
+    render(<Workbench client={createClient({ getStatus, getContext })} pollIntervalMs={0} />);
+
+    expect(await screen.findByRole("heading", { name: "Needs fix" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "诊断" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("tab", { name: "日志" })).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(getStatus).toHaveBeenCalledWith("run-fix"));
+    await waitFor(() => expect(getContext).toHaveBeenCalledWith("run-fix"));
+  });
+
+  it("falls back to the inbox focus when the restored run no longer exists", async () => {
+    window.localStorage.setItem("patchbay.selectedRun", "run-gone");
+    const getStatus = vi.fn().mockResolvedValue({
+      run_id: "run-ready",
+      task: "Ship dashboard",
+      status: "REVIEWED_PASS",
+      current_phase: "apply",
+      gate_state: { approved: true, tests_passed: true, review_result: "PASS", ready_to_apply: true },
+      artifacts: []
+    });
+    const getContext = vi.fn().mockResolvedValue(readyContext);
+    const client = createClient({ getStatus, getContext });
+
+    render(<Workbench client={client} pollIntervalMs={0} />);
+
+    expect(await screen.findByRole("heading", { name: "Ship dashboard" })).toBeInTheDocument();
+    await waitFor(() => expect(getStatus).toHaveBeenCalledWith("run-ready"));
+    expect(getStatus).not.toHaveBeenCalledWith("run-gone");
+    expect(getContext).not.toHaveBeenCalledWith("run-gone");
+    expect(window.localStorage.getItem("patchbay.selectedRun")).toBe("run-ready");
+  });
+
   it("renders structured runs inbox state in the sidebar", async () => {
     const client = createClient();
 

@@ -170,6 +170,9 @@ const setupHostOptions: SetupHostOption[] = [
 ];
 const localOnlyPreferenceKey = "patchbay.localOnlyMode";
 const setupHostPreferenceKey = "patchbay.setupHost";
+const selectedRunPreferenceKey = "patchbay.selectedRun";
+const diagnosticsOpenPreferenceKey = "patchbay.diagnosticsOpen";
+const diagnosticsTabPreferenceKey = "patchbay.diagnosticsTab";
 const setupHostLabels = new Map(setupHostOptions.map((host) => [host.id, host.label]));
 const setupHostAliases: Record<string, string[]> = {
   codex: ["codex desktop", "codex 桌面"],
@@ -213,6 +216,29 @@ function setupMcpOnlyMessage(host?: SetupHostOption) {
   return host ? `register MCP for ${host.label}` : "register MCP";
 }
 
+function isTabName(value?: string | null): value is TabName {
+  return Boolean(value && value in tabLabels);
+}
+
+function readStringPreference(key: string) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return "";
+    return window.localStorage.getItem(key) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeStringPreference(key: string, value: string) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return;
+    if (value) window.localStorage.setItem(key, value);
+    else window.localStorage.removeItem(key);
+  } catch {
+    // Storage can be unavailable in locked-down browser contexts; keep the in-memory state working.
+  }
+}
+
 function readLocalOnlyPreference() {
   try {
     return typeof window !== "undefined" && window.localStorage?.getItem(localOnlyPreferenceKey) === "true";
@@ -250,6 +276,35 @@ function writeSetupHostPreference(host: SetupHostOption) {
   } catch {
     // Keep the in-memory selected host usable when browser storage is unavailable.
   }
+}
+
+function readSelectedRunPreference() {
+  return readStringPreference(selectedRunPreferenceKey);
+}
+
+function writeSelectedRunPreference(runId: string) {
+  writeStringPreference(selectedRunPreferenceKey, runId);
+}
+
+function readDiagnosticsOpenPreference() {
+  try {
+    return typeof window !== "undefined" && window.localStorage?.getItem(diagnosticsOpenPreferenceKey) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function writeDiagnosticsOpenPreference(open: boolean) {
+  writeStringPreference(diagnosticsOpenPreferenceKey, open ? "true" : "");
+}
+
+function readDiagnosticsTabPreference() {
+  const tab = readStringPreference(diagnosticsTabPreferenceKey);
+  return isTabName(tab) ? tab : "Overview";
+}
+
+function writeDiagnosticsTabPreference(tab: TabName) {
+  writeStringPreference(diagnosticsTabPreferenceKey, tab);
 }
 
 function setupMessageForMode(host: SetupHostOption, message: string, localOnlyMode: boolean) {
@@ -2784,11 +2839,11 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const [artifactText, setArtifactText] = useState("");
   const [config, setConfig] = useState<unknown>(null);
   const [doctor, setDoctor] = useState<DoctorReport | null>(null);
-  const [activeTab, setActiveTab] = useState<TabName>("Overview");
+  const [activeTab, setActiveTab] = useState<TabName>(readDiagnosticsTabPreference);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [inboxFilter, setInboxFilter] = useState("");
-  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(readDiagnosticsOpenPreference);
   const [confirm, setConfirm] = useState<ConfirmState>(null);
   const [error, setError] = useState("");
   const [composer, setComposer] = useState("");
@@ -2801,6 +2856,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const [newTaskReply, setNewTaskReply] = useState<AgentResponse | null>(null);
   const [localOnlyMode, setLocalOnlyMode] = useState(readLocalOnlyPreference);
   const refreshSeq = useRef(0);
+  const selectedRunPreferenceRestored = useRef(false);
 
   const setPersistentLocalOnlyMode = (enabled: boolean) => {
     setLocalOnlyMode(enabled);
@@ -2810,6 +2866,21 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const setPersistentReadinessHost = (host: SetupHostOption) => {
     setReadinessHost(host);
     writeSetupHostPreference(host);
+  };
+
+  const setPersistentSelectedRun = (runId: string) => {
+    setSelectedRun(runId);
+    writeSelectedRunPreference(runId);
+  };
+
+  const setPersistentActiveTab = (tab: TabName) => {
+    setActiveTab(tab);
+    writeDiagnosticsTabPreference(tab);
+  };
+
+  const setPersistentDiagnosticsOpen = (open: boolean) => {
+    setDiagnosticsOpen(open);
+    writeDiagnosticsOpenPreference(open);
   };
 
   const doctorOptions = (host: SetupHostOption = readinessHost, skipMcp = localOnlyMode) => ({
@@ -2829,12 +2900,14 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     setRuns(nextRuns);
     setRunsInbox(nextInbox);
     if (preferredRunId) {
-      setSelectedRun(preferredRunId);
+      setPersistentSelectedRun(preferredRunId);
       return nextRuns;
     }
     if (options.autoSelect !== false && !selectedRun && !newTaskMode) {
-      const nextSelected = inboxFocusRunId(nextRuns, nextInbox);
-      if (nextSelected) setSelectedRun(nextSelected);
+      const storedRunId = selectedRunPreferenceRestored.current ? "" : readSelectedRunPreference();
+      selectedRunPreferenceRestored.current = true;
+      const nextSelected = storedRunId && nextRuns.some((run) => run.run_id === storedRunId) ? storedRunId : inboxFocusRunId(nextRuns, nextInbox);
+      if (nextSelected) setPersistentSelectedRun(nextSelected);
     }
     return nextRuns;
   };
@@ -2957,11 +3030,11 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   useEffect(() => {
     if (newTaskMode) return;
     if (!visibleRuns.length) {
-      if (selectedRun) setSelectedRun("");
+      if (selectedRun) setPersistentSelectedRun("");
       return;
     }
     if (!visibleRuns.some((run) => run.run_id === selectedRun)) {
-      setSelectedRun(inboxFocusRunId(visibleRuns, runsInbox));
+      setPersistentSelectedRun(inboxFocusRunId(visibleRuns, runsInbox));
     }
   }, [visibleRuns, selectedRun, newTaskMode, runsInbox]);
 
@@ -3033,8 +3106,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       background_job: agentResponse?.context?.background_job ?? agentResponse?.context?.agent_activity?.background_job ?? nextStatus.background_job
     });
     if (requestedTab) {
-      setDiagnosticsOpen(true);
-      setActiveTab(requestedTab);
+      setPersistentDiagnosticsOpen(true);
+      setPersistentActiveTab(requestedTab);
     }
   };
 
@@ -3071,7 +3144,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     const phaseAction = isPhaseAction(action.action);
     if (targetRun && targetRun !== selectedRun) {
       setNewTaskMode(false);
-      setSelectedRun(targetRun);
+      setPersistentSelectedRun(targetRun);
     }
     if (!phaseAction) {
       const healthAction = healthActionFromSuggestion(action);
@@ -3331,8 +3404,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     } else {
       setPersistentReadinessHost(host);
     }
-    setDiagnosticsOpen(true);
-    setActiveTab("Readiness");
+    setPersistentDiagnosticsOpen(true);
+    setPersistentActiveTab("Readiness");
     if (doctor && !force) return;
     try {
       const localOnly = skipMcp || localOnlyMode;
@@ -3349,8 +3422,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       setNewTaskMode(false);
       setNewTaskReply(null);
       if (action.tab && diagnosticTabs.has(action.tab as TabName)) {
-        setDiagnosticsOpen(true);
-        setActiveTab(action.tab as TabName);
+        setPersistentDiagnosticsOpen(true);
+        setPersistentActiveTab(action.tab as TabName);
       }
       await loadRuns(action.run_id);
       return;
@@ -3363,8 +3436,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         return;
       }
       if (action.message === "events") {
-        setDiagnosticsOpen(true);
-        setActiveTab("Trace");
+        setPersistentDiagnosticsOpen(true);
+        setPersistentActiveTab("Trace");
       }
       await refreshRun(targetRun);
       return;
@@ -3396,15 +3469,15 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       return;
     }
     if (action.kind === "focus_composer" || action.id === "start_new_task") {
-      setDiagnosticsOpen(true);
-      setActiveTab("Trace");
+      setPersistentDiagnosticsOpen(true);
+      setPersistentActiveTab("Trace");
       startNewTask();
       composerRef.current?.focus();
       return;
     }
     if (action.kind === "diagnostic_tab" && action.tab && diagnosticTabs.has(action.tab as TabName)) {
-      setDiagnosticsOpen(true);
-      setActiveTab(action.tab as TabName);
+      setPersistentDiagnosticsOpen(true);
+      setPersistentActiveTab(action.tab as TabName);
       return;
     }
     if (action.id === "refresh_readiness" || action.message === "readiness") {
@@ -3424,22 +3497,22 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       setNewTaskMode(false);
       setNewTaskReply(null);
       if (action.tab && diagnosticTabs.has(action.tab as TabName)) {
-        setDiagnosticsOpen(true);
-        setActiveTab(action.tab as TabName);
+        setPersistentDiagnosticsOpen(true);
+        setPersistentActiveTab(action.tab as TabName);
       }
       await loadRuns(action.run_id);
       return;
     }
     if (action.kind === "focus_composer" || action.id === "start_new_task") {
-      setDiagnosticsOpen(true);
-      setActiveTab("Trace");
+      setPersistentDiagnosticsOpen(true);
+      setPersistentActiveTab("Trace");
       startNewTask();
       composerRef.current?.focus();
       return;
     }
     if (action.kind === "diagnostic_tab" && action.tab && diagnosticTabs.has(action.tab as TabName)) {
-      setDiagnosticsOpen(true);
-      setActiveTab(action.tab as TabName);
+      setPersistentDiagnosticsOpen(true);
+      setPersistentActiveTab(action.tab as TabName);
       return;
     }
     if (isConfigureReasonixAction(action)) {
@@ -3519,15 +3592,15 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       setNewTaskMode(false);
       setNewTaskReply(null);
       if (requestedTab && diagnosticTabs.has(requestedTab as TabName)) {
-        setDiagnosticsOpen(true);
-        setActiveTab(requestedTab as TabName);
+        setPersistentDiagnosticsOpen(true);
+        setPersistentActiveTab(requestedTab as TabName);
       }
       await loadRuns(runId);
       return;
     }
     if (action.tab && diagnosticTabs.has(action.tab as TabName)) {
-      setDiagnosticsOpen(true);
-      setActiveTab(action.tab as TabName);
+      setPersistentDiagnosticsOpen(true);
+      setPersistentActiveTab(action.tab as TabName);
       return;
     }
     if (action.id === "start") {
@@ -3628,7 +3701,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
 
   const startNewTask = () => {
     setNewTaskMode(true);
-    setSelectedRun("");
+    setPersistentSelectedRun("");
     setComposer("");
     setError("");
     setNewTaskReply(null);
@@ -3679,7 +3752,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                 type="button"
                 onClick={() => {
                   setNewTaskMode(false);
-                  setSelectedRun(run.run_id);
+                  setPersistentSelectedRun(run.run_id);
                 }}
               >
                 <span className="run-task">{run.task || run.run_id}</span>
@@ -3712,7 +3785,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
             <button className="icon-button" onClick={() => void loadRuns()} aria-label="刷新运行">
               <RefreshCw size={17} />
             </button>
-            <button className="detail-button" onClick={() => setDiagnosticsOpen((open) => !open)} aria-expanded={diagnosticsOpen}>
+            <button className="detail-button" onClick={() => setPersistentDiagnosticsOpen(!diagnosticsOpen)} aria-expanded={diagnosticsOpen}>
               <ChevronRight size={16} />
               诊断
             </button>
@@ -3823,8 +3896,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                 failureGuidance={failureGuidance}
                 failureRecovery={failureRecovery}
                 onInspectDiagnostics={() => {
-                  setDiagnosticsOpen(true);
-                  setActiveTab("Trace");
+                  setPersistentDiagnosticsOpen(true);
+                  setPersistentActiveTab("Trace");
                 }}
                 onRecoveryAction={(action) => void runHealthAction(action)}
                 onAction={handleAction}
@@ -3893,13 +3966,13 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
           <>
             <div className="details-head">
               <strong>诊断</strong>
-              <button className="icon-button" onClick={() => setDiagnosticsOpen(false)} aria-label="关闭诊断">
+              <button className="icon-button" onClick={() => setPersistentDiagnosticsOpen(false)} aria-label="关闭诊断">
                 <ChevronRight size={16} />
               </button>
             </div>
             <div className="tabs" role="tablist">
               {(["Overview", "Readiness", "Trace", "Log", "Diff", "Artifacts", "Config", "Providers"] as TabName[]).map((tab) => (
-                <button role="tab" aria-selected={activeTab === tab} className={activeTab === tab ? "active" : ""} key={tab} onClick={() => setActiveTab(tab)}>
+                <button role="tab" aria-selected={activeTab === tab} className={activeTab === tab ? "active" : ""} key={tab} onClick={() => setPersistentActiveTab(tab)}>
                   {tabLabels[tab]}
                 </button>
               ))}
