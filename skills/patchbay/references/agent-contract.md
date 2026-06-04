@@ -90,6 +90,8 @@ Desktop/Web topbar refresh controls should refresh the selected run's status, co
 
 Desktop/Web selected-run polling should pause idle incremental context refreshes while the document/window is hidden, resume with one immediate refresh when it becomes visible again, and continue polling active background jobs even while hidden so long-running work can still complete and update the run inbox.
 
+Desktop/Web phase-advance controls should catch failed gated/autopilot actions, show an accessible top-level error naming the failed action, and re-enable the controls without relaxing the separate final apply confirmation gate.
+
 Desktop/Web Trace views should present selected-message, run-timeline, and provider-trace summaries before raw JSON. Keep raw JSON available behind an explicit debug/detail affordance for exact troubleshooting.
 
 Desktop/Web Log and Artifacts views should use `failure_recovery`, status errors, priority artifacts, and the loaded artifact preview to present a failure summary, suggested next step, highlighted error lines, and an artifact index before the raw preview.

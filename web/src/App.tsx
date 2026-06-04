@@ -551,6 +551,16 @@ function commandLabel(command?: string) {
   return actionLabels[command] ?? phaseLabel(command);
 }
 
+function errorDetail(error: unknown) {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string") return error;
+  return String(error);
+}
+
+function actionFailureMessage(action: string, error: unknown) {
+  return `${commandLabel(action)}失败：${errorDetail(error)}`;
+}
+
 function commandReason(command: string, safe: boolean) {
   if (command === "approve") return "Plan is ready for human approval before implementation.";
   if (command === "apply") return safe ? "Tests passed and review returned PASS; human confirmation is still required." : "Apply is blocked until tests pass and review returns PASS.";
@@ -3454,6 +3464,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       }
       await client.runAction(targetRun, action);
       await refreshRun(targetRun);
+    } catch (err) {
+      setError(actionFailureMessage(action, err));
     } finally {
       setActionInFlight(false);
     }
@@ -3530,6 +3542,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         await client.runAction(targetRun, action);
         await refreshRun(targetRun);
       }
+    } catch (err) {
+      setError(actionFailureMessage(action, err));
     } finally {
       setActionInFlight(false);
     }
@@ -4121,7 +4135,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
           </div>
         </header>
 
-        {error ? <div className="error">{error}</div> : null}
+        {error ? <div className="error" role="alert">{error}</div> : null}
 
         <section className="thread" aria-label="Patchbay Agent 对话线程">
           {!selectedRun ? (
