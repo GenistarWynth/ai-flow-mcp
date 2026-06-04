@@ -64,7 +64,7 @@ scripts/patchbay agent message "readiness without MCP" --json
 scripts/patchbay agent message "走本地模式，不走 MCP" --json
 ```
 
-`readiness without MCP`, `patchbay doctor --local-only`, and `patchbay_doctor(skip_mcp=true)` suppress MCP probe/register follow-up actions in both top-level and nested doctor payloads. Desktop/Web clients should persist a selected local-only/no-MCP preference, restore it after refresh/reopen, start doctor with `skip_mcp=true`, and rewrite ordinary host setup actions such as `patchbay setup for claude-desktop` into `patchbay setup without MCP for claude-desktop`.
+`readiness without MCP`, `patchbay doctor --local-only`, and `patchbay_doctor(skip_mcp=true)` suppress MCP probe/register follow-up actions in both top-level and nested doctor payloads. Desktop/Web clients should persist a selected local-only/no-MCP preference, restore it after refresh/reopen, start doctor with `skip_mcp=true`, and rewrite ordinary host setup actions such as `patchbay setup for claude-desktop` into `patchbay setup without MCP for claude-desktop`. In local-only mode, expose an explicit `MCP setup` escape hatch that clears the stored preference and sends host-aware MCP-only setup such as `register MCP for Claude Desktop`.
 
 For local no-MCP CLI use, non-JSON `scripts/patchbay doctor` and `scripts/patchbay agent message readiness` should render the readiness summary, checks, routing summary, recommendations, and grouped safe actions. Use `--json` when a host needs the full structured payload.
 

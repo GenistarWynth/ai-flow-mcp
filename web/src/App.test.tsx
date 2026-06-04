@@ -4651,6 +4651,42 @@ describe("Workbench", () => {
     expect(agentMessage).not.toHaveBeenCalledWith("patchbay setup for claude-desktop");
   });
 
+  it("lets the start context leave persisted local-only mode with explicit MCP setup", async () => {
+    window.localStorage.setItem("patchbay.localOnlyMode", "true");
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "setup",
+      ok: true,
+      reply: "Patchbay MCP setup completed.",
+      setup_host: "codex",
+      setup: {
+        doctor: {
+          ok: true,
+          host: "codex",
+          root: "C:/repo",
+          checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true }, mcp: { ok: true } },
+          next_actions: []
+        }
+      }
+    });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      agentMessage
+    });
+
+    render(<Workbench client={client} />);
+
+    let startContext = await screen.findByLabelText("启动上下文");
+    expect(within(startContext).getByText("本地模式 / No MCP")).toBeVisible();
+    await userEvent.click(within(startContext).getByRole("button", { name: "MCP setup" }));
+
+    await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("register MCP for Codex"));
+    expect(window.localStorage.getItem("patchbay.localOnlyMode")).toBeNull();
+    startContext = await screen.findByLabelText("启动上下文");
+    expect(within(startContext).getByText("Codex setup")).toBeVisible();
+    expect(within(startContext).queryByRole("button", { name: "MCP setup" })).not.toBeInTheDocument();
+  });
+
   it("applies the economy profile from the start context before creating a run", async () => {
     const applyConfigProfile = vi.fn().mockResolvedValue({
       profile: "economy",
@@ -4934,6 +4970,51 @@ describe("Workbench", () => {
     await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("patchbay setup without MCP for claude-desktop"));
     expect(agentMessage).not.toHaveBeenCalledWith("patchbay setup for claude-desktop");
     expect(within(details).getByText("环境就绪")).toBeVisible();
+  });
+
+  it("lets the readiness panel leave persisted local-only mode with explicit MCP setup", async () => {
+    window.localStorage.setItem("patchbay.localOnlyMode", "true");
+    const getDoctor = vi.fn().mockResolvedValue({
+      ok: true,
+      host: "codex",
+      root: "C:/repo",
+      checks: { repo: { ok: true }, mcp: { ok: true, skipped: true } },
+      next_actions: []
+    });
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "setup",
+      ok: true,
+      reply: "Patchbay MCP setup completed for Claude Desktop.",
+      setup_host: "claude-desktop",
+      setup: {
+        doctor: {
+          ok: true,
+          host: "claude-desktop",
+          root: "C:/repo",
+          checks: { repo: { ok: true }, mcp: { ok: true } },
+          next_actions: []
+        }
+      }
+    });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      getDoctor,
+      agentMessage
+    });
+
+    render(<Workbench client={client} />);
+
+    await waitFor(() => expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "codex", skip_mcp: true }));
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    await userEvent.selectOptions(within(details).getByRole("combobox", { name: "Setup host" }), "claude-desktop");
+    await userEvent.click(within(details).getByRole("button", { name: "MCP setup" }));
+
+    await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("register MCP for Claude Desktop"));
+    expect(window.localStorage.getItem("patchbay.localOnlyMode")).toBeNull();
+    expect(within(details).getByRole("combobox", { name: "MCP host" })).toHaveValue("claude-desktop");
   });
 
   it("runs host-aware setup from the readiness panel without creating a run", async () => {

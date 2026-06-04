@@ -208,6 +208,10 @@ function setupWithoutMcpMessage(host?: SetupHostOption) {
   return host && host.id !== "codex" ? `patchbay setup without MCP for ${host.id}` : "patchbay setup without MCP";
 }
 
+function setupMcpOnlyMessage(host?: SetupHostOption) {
+  return host ? `register MCP for ${host.label}` : "register MCP";
+}
+
 function readLocalOnlyPreference() {
   try {
     return typeof window !== "undefined" && window.localStorage?.getItem(localOnlyPreferenceKey) === "true";
@@ -1710,6 +1714,7 @@ function StartContextCard({
   profileBusy,
   onOpenReadiness,
   onLocalSetup,
+  onMcpSetup,
   onApplyEconomy
 }: {
   report?: DoctorReport | null;
@@ -1720,6 +1725,7 @@ function StartContextCard({
   profileBusy?: boolean;
   onOpenReadiness?: () => void;
   onLocalSetup?: () => void;
+  onMcpSetup?: () => void;
   onApplyEconomy?: () => void;
 }) {
   const readiness = readinessSnapshot(report);
@@ -1766,6 +1772,12 @@ function StartContextCard({
           {setupBusy ? <RefreshCw size={13} /> : <ShieldCheck size={13} />}
           {setupBusy ? "本地 setup 中" : "无 MCP setup"}
         </button>
+        {localOnlyMode ? (
+          <button type="button" onClick={onMcpSetup} disabled={!onMcpSetup || setupBusy}>
+            {setupBusy ? <RefreshCw size={13} /> : <Settings size={13} />}
+            MCP setup
+          </button>
+        ) : null}
         {shouldOfferStartEconomyAction(routing) ? (
           <button className="primary" type="button" onClick={onApplyEconomy} disabled={!onApplyEconomy || profileBusy}>
             {profileBusy ? <RefreshCw size={13} /> : <Play size={13} />}
@@ -3123,14 +3135,17 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     if (setupInFlight) return;
     const setupMessage = setupMessageForMode(host, message, localOnlyMode);
     const skipMcp = isNoMcpSetupText(setupMessage);
+    const mcpOnly = isMcpOnlySetupText(setupMessage);
     if (skipMcp) setPersistentLocalOnlyMode(true);
+    if (mcpOnly) setPersistentLocalOnlyMode(false);
     setError("");
     setReadinessHost(host);
     setSetupInFlight(true);
     try {
       const response = await client.agentMessage(setupMessage);
-      const responseLocalOnly = skipMcp || localOnlyMode || selectsLocalOnlyMode(response);
+      const responseLocalOnly = skipMcp || (!mcpOnly && localOnlyMode) || selectsLocalOnlyMode(response);
       if (responseLocalOnly) setPersistentLocalOnlyMode(true);
+      else if (mcpOnly) setPersistentLocalOnlyMode(false);
       const responseHost = setupHostById(hostFromAgentResponse(response) ?? host.id);
       const setupDoctor = response.setup?.doctor ?? response.doctor;
       setReadinessHost(responseHost);
@@ -3803,6 +3818,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
               profileBusy={profileInFlight}
               onOpenReadiness={() => void openReadinessAction(true, readinessHost, localOnlyMode)}
               onLocalSetup={() => void runSetupAction(readinessHost, setupWithoutMcpMessage(readinessHost))}
+              onMcpSetup={() => void runSetupAction(readinessHost, setupMcpOnlyMessage(readinessHost))}
               onApplyEconomy={() => void applyEconomyProfileAction()}
             />
           ) : selectedRun && suggestions.length ? (
@@ -5124,6 +5140,17 @@ function DoctorPanel({
             {setupBusy ? <RefreshCw size={14} /> : <ShieldCheck size={14} />}
             本地 setup
           </button>
+          {localOnlyMode ? (
+            <button
+              className="doctor-setup-button secondary"
+              type="button"
+              onClick={() => onRunSetup(selectedHost, setupMcpOnlyMessage(selectedHost))}
+              disabled={setupBusy}
+            >
+              {setupBusy ? <RefreshCw size={14} /> : <Settings size={14} />}
+              MCP setup
+            </button>
+          ) : null}
           <SetupHostButtons onRunSetup={onRunSetup} setupBusy={setupBusy} selectedHost={selectedHost} compact />
         </div>
       ) : null}
