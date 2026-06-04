@@ -79,6 +79,23 @@ CHINESE_TASK_INTENT_WORDS = (
     "写个",
 )
 
+IMPLICIT_LOCAL_TOOL_PREFERENCE_PHRASES = (
+    "use browser skill",
+    "use chrome skill",
+    "use the browser skill",
+    "use the chrome skill",
+    "use built-in browser",
+    "use the built-in browser",
+    "use your built-in browser",
+    "built-in browser",
+    "browser skill",
+    "chrome skill",
+    "自带浏览器",
+    "内置浏览器",
+    "浏览器功能",
+    "浏览器 skill",
+)
+
 
 UNATTENDED_PLAN_APPROVAL_PHRASES = (
     "approved in advance",
@@ -1376,9 +1393,11 @@ def _setup_options_from_message(text: str) -> dict[str, bool]:
 
 def _is_mcp_avoidance_intent(text: str, words: set[str] | None = None) -> bool:
     token_words = words if words is not None else _words(text)
-    if "mcp" not in token_words and "mcp" not in text:
-        return False
     if _has_task_intent(text, token_words):
+        return False
+    if _has_any(text, IMPLICIT_LOCAL_TOOL_PREFERENCE_PHRASES):
+        return True
+    if "mcp" not in token_words and "mcp" not in text:
         return False
     if bool(
         token_words
@@ -1669,7 +1688,7 @@ def _help_response(root: Path, *, run_id: str | None = None, include: dict[str, 
     capabilities = [
         {
             "name": "setup",
-            "summary": "Send `patchbay setup` for Codex or `patchbay setup for Claude Desktop` / `install patchbay for Gemini CLI` to initialize project files, local config, Skill installation, host MCP guidance, a doctor summary, top-level recommendations, safe actions[], and action_groups[]. Send `patchbay setup without MCP` for local-only setup, standalone `please don't use MCP` / `no MCP` / `use Chrome Skill instead of MCP` / `少用这个MCP` / `不要用这个MCP` / `不走 MCP` / `走本地模式` / `只用本地工具` for local_mode guidance, `install Codex Skill` for Skill-only setup, or `register MCP for Claude Desktop` for MCP-only registration.",
+            "summary": "Send `patchbay setup` for Codex or `patchbay setup for Claude Desktop` / `install patchbay for Gemini CLI` to initialize project files, local config, Skill installation, host MCP guidance, a doctor summary, top-level recommendations, safe actions[], and action_groups[]. Send `patchbay setup without MCP` for local-only setup, standalone `please don't use MCP` / `no MCP` / `use Chrome Skill` / `use Chrome Skill instead of MCP` / `用你自带的浏览器功能` / `少用这个MCP` / `不要用这个MCP` / `不走 MCP` / `走本地模式` / `只用本地工具` for local_mode guidance, `install Codex Skill` for Skill-only setup, or `register MCP for Claude Desktop` for MCP-only registration.",
         },
         {
             "name": "agent-skill-contract",

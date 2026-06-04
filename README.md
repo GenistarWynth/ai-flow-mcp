@@ -158,6 +158,8 @@ Setup scope is inferred from the prompt: `install Codex Skill` installs the Skil
 
 Chinese local-only phrases such as `不走 MCP`, `走本地模式`, and `只用本地工具` are handled the same way: the Agent returns local CLI/Skill/readiness actions and avoids MCP probe/register follow-ups.
 
+Implicit local browser preferences such as `use Chrome Skill`, `use browser skill`, `use your built-in browser`, or `用你自带的浏览器功能` also select `local_mode` even when the message does not explicitly mention MCP, so they do not create a model run.
+
 After starting `patchbay web --port 8765`, open `http://127.0.0.1:8765`.
 
 Mock mode can validate the workflow without model credentials:

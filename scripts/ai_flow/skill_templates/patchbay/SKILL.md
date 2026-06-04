@@ -53,7 +53,7 @@ scripts/patchbay apply <run_id> --confirmation apply_approved
 
 ## Local-Only And Skill-Only Mode
 
-If the user says MCP keeps asking for confirmation, asks to avoid MCP, asks for Chrome/browser Skill instead of MCP, or says `不要用这个MCP`, `不走 MCP`, `走本地模式`, or `只用本地工具`, stay on the local CLI/Skill path:
+If the user says MCP keeps asking for confirmation, asks to avoid MCP, asks for Chrome/browser Skill or the built-in browser even without saying MCP, or says `不要用这个MCP`, `用你自带的浏览器功能`, `不走 MCP`, `走本地模式`, or `只用本地工具`, stay on the local CLI/Skill path:
 
 ```bash
 scripts/patchbay setup --no-mcp --json

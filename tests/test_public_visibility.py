@@ -426,6 +426,8 @@ class PublicVisibilityTest(unittest.TestCase):
         self.assertIn("完全访问权限", text)
         self.assertIn("我根本不在身边", text)
         self.assertIn("原始命令文本", text)
+        self.assertIn("用你自带的浏览器功能", text)
+        self.assertIn("不会误创建模型 run", text)
 
     def test_english_readme_quickstart_surfaces_custom_economy_provider_agent_prompts(self) -> None:
         text = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
@@ -443,6 +445,8 @@ class PublicVisibilityTest(unittest.TestCase):
         self.assertIn("所有权限全都给你", text)
         self.assertIn("我根本不在身边", text)
         self.assertIn("exact command text visible", text)
+        self.assertIn("use your built-in browser", text)
+        self.assertIn("do not create a model run", text)
 
     def test_background_plan_returns_job_metadata(self) -> None:
         from scripts.ai_flow import service

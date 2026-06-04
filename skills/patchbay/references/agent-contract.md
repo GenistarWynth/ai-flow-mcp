@@ -52,7 +52,7 @@ The group does not override the action kind. A `kind: "command"` action should s
 
 ## Local-Only Scope
 
-If the user explicitly asks not to use MCP, says an MCP host keeps asking for confirmation, asks for Chrome/browser Skill instead of MCP, or says `please don't use MCP`, `no MCP`, `use Chrome Skill instead of MCP`, `少用这个MCP`, `不要用这个MCP`, `不走 MCP`, `走本地模式`, or `只用本地工具`, do not call MCP tools. Use local commands such as:
+If the user explicitly asks not to use MCP, says an MCP host keeps asking for confirmation, asks for Chrome/browser Skill or the built-in browser even without saying MCP, or says `please don't use MCP`, `no MCP`, `use Chrome Skill`, `use Chrome Skill instead of MCP`, `用你自带的浏览器功能`, `自带浏览器`, `少用这个MCP`, `不要用这个MCP`, `不走 MCP`, `走本地模式`, or `只用本地工具`, do not call MCP tools. Use local commands such as:
 
 ```bash
 scripts/patchbay setup --no-mcp --json

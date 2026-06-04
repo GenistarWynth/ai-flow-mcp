@@ -751,7 +751,9 @@ test = []
         self.assertIn("patchbay setup without MCP", setup_capability["summary"])
         self.assertIn("install Codex Skill", setup_capability["summary"])
         self.assertIn("register MCP for Claude Desktop", setup_capability["summary"])
+        self.assertIn("use Chrome Skill", setup_capability["summary"])
         self.assertIn("use Chrome Skill instead of MCP", setup_capability["summary"])
+        self.assertIn("用你自带的浏览器功能", setup_capability["summary"])
         self.assertIn("少用这个MCP", setup_capability["summary"])
         self.assertIn("不要用这个MCP", setup_capability["summary"])
         self.assertIn("不走 MCP", setup_capability["summary"])
@@ -779,6 +781,8 @@ test = []
         self.assertIn("patchbay skill doctor codex --json", contract["commands"])
         self.assertIn("actions[]", contract["structured_fields"])
         self.assertIn("failure_recovery", contract["structured_fields"])
+        self.assertIn("use Chrome Skill", contract["no_mcp_prompts"])
+        self.assertIn("用你自带的浏览器功能", contract["no_mcp_prompts"])
         self.assertIn("不要用这个MCP", contract["no_mcp_prompts"])
         references = {item["path"]: item for item in contract["references"]}
         self.assertIn("skills/patchbay/references/install.md", references)
@@ -2487,6 +2491,8 @@ model = "cheap-model"
             "no MCP",
             "不要用这个MCP好不好",
             "能不能少用这个MCP，用自带浏览器功能",
+            "用你自带的浏览器功能",
+            "use Chrome Skill",
             "use Chrome Skill instead of MCP",
             "走本地模式，不走 MCP",
             "只用本地工具，不走 MCP",
@@ -2522,6 +2528,8 @@ model = "cheap-model"
         for message in (
             "能不能少用这个MCP，用自带浏览器功能",
             "不要用这个MCP，你明明有Chrome Skill",
+            "用你自带的浏览器功能",
+            "use Chrome Skill",
             "please use browser skill instead of MCP",
             "只用本地工具，不走 MCP",
             "走本地模式，不走 MCP",

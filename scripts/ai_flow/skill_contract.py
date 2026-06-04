@@ -33,7 +33,10 @@ def skill_contract_summary() -> dict[str, Any]:
         "local_only_supported": True,
         "no_mcp_prompts": [
             "no MCP",
+            "use Chrome Skill",
             "use Chrome Skill instead of MCP",
+            "用你自带的浏览器功能",
+            "自带浏览器",
             "不要用这个MCP",
             "不走 MCP",
             "走本地模式",
