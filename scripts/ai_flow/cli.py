@@ -751,6 +751,17 @@ def _print_agent_activity(value: Any) -> None:
             )
 
 
+def _cancel_result_details(value: Any) -> list[str]:
+    if not isinstance(value, dict) or not value:
+        return []
+    details = []
+    for key in ("attempted", "terminated", "already_exited", "reason", "error"):
+        item = value.get(key)
+        if item not in (None, ""):
+            details.append(f"{key}={item}")
+    return details
+
+
 def _print_background_job(value: Any, *, include_actions: bool = True) -> None:
     if not isinstance(value, dict) or not value:
         return
@@ -770,15 +781,9 @@ def _print_background_job(value: Any, *, include_actions: bool = True) -> None:
         item = value.get(key)
         if item:
             print(f"- {key}: {_short_text(item, limit=220)}")
-    cancel_result = value.get("cancel_result") if isinstance(value.get("cancel_result"), dict) else {}
-    if cancel_result:
-        details = []
-        for key in ("attempted", "terminated", "already_exited", "reason", "error"):
-            item = cancel_result.get(key)
-            if item not in (None, ""):
-                details.append(f"{key}={item}")
-        if details:
-            print(f"- cancel_result: {', '.join(details)}")
+    details = _cancel_result_details(value.get("cancel_result"))
+    if details:
+        print(f"- cancel_result: {', '.join(details)}")
     actions = value.get("actions") if isinstance(value.get("actions"), list) else []
     groups = value.get("action_groups") if isinstance(value.get("action_groups"), list) else []
     if include_actions and actions:
@@ -796,6 +801,9 @@ def _print_agent_background_cancel_result(data: dict[str, Any]) -> None:
     if data.get("error"):
         print(f"error: {_short_text(data.get('error'), limit=220)}")
     _print_background_job(data.get("background_job"), include_actions=True)
+    details = _cancel_result_details(data.get("cancel_result"))
+    if details:
+        print(f"cancel_result: {', '.join(details)}")
     actions = data.get("actions") if isinstance(data.get("actions"), list) else []
     groups = data.get("action_groups") if isinstance(data.get("action_groups"), list) else []
     if actions:
