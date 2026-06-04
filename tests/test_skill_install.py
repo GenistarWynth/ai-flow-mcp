@@ -157,6 +157,8 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("poll_context", contract)
         self.assertIn("local Agent reply action buttons", contract)
         self.assertIn("open-latest-run", contract)
+        self.assertIn("setup/readiness/economy/provider configuration failures", contract)
+        self.assertIn("re-enable the triggering setup/profile/readiness controls", contract)
         self.assertIn("selected-run free-text send failures", contract)
         self.assertIn("preserve the draft", contract)
         self.assertIn("patchbay setup without MCP for claude-desktop", contract)

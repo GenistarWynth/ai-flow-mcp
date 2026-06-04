@@ -557,18 +557,22 @@ function errorDetail(error: unknown) {
   return String(error);
 }
 
+function namedFailureMessage(label: string, error: unknown) {
+  return `${label || "Action"}失败：${errorDetail(error)}`;
+}
+
 function actionFailureMessage(action: string, error: unknown) {
-  return `${commandLabel(action)}失败：${errorDetail(error)}`;
+  return namedFailureMessage(commandLabel(action), error);
 }
 
 function healthActionFailureMessage(action: Pick<AgentHealthAction, "label" | "message" | "id">, error: unknown) {
   const label = action.label || action.message || action.id || "Action";
-  return `${label}失败：${errorDetail(error)}`;
+  return namedFailureMessage(label, error);
 }
 
 function localReplyActionFailureMessage(action: Pick<LocalReplyAction, "label" | "message" | "id">, error: unknown) {
   const label = action.label || action.message || action.id || "Action";
-  return `${label}失败：${errorDetail(error)}`;
+  return namedFailureMessage(label, error);
 }
 
 function commandReason(command: string, safe: boolean) {
@@ -3606,7 +3610,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       }
       await loadRuns(selectedRun || undefined);
     } catch (err) {
-      setError(String(err));
+      setError(namedFailureMessage(`${host.label} setup`, err));
     } finally {
       setSetupInFlight(false);
     }
@@ -3638,7 +3642,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       if (selectedRun) await refreshRun(selectedRun);
       else await loadRuns(undefined, { autoSelect: false });
     } catch (err) {
-      setError(String(err));
+      setError(namedFailureMessage("Apply economy profile", err));
     } finally {
       setProfileInFlight(false);
     }
@@ -3658,7 +3662,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       if (selectedRun) await refreshRun(selectedRun);
       else await loadRuns(undefined, { autoSelect: false });
     } catch (err) {
-      setError(String(err));
+      setError(namedFailureMessage("Configure Reasonix command", err));
     } finally {
       setProfileInFlight(false);
     }
@@ -3678,7 +3682,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       if (selectedRun) await refreshRun(selectedRun);
       else await loadRuns(undefined, { autoSelect: false });
     } catch (err) {
-      setError(String(err));
+      setError(namedFailureMessage("Configure provider command", err));
     } finally {
       setProfileInFlight(false);
     }
@@ -3720,7 +3724,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       if (selectedRun) await refreshRun(selectedRun);
       else await loadRuns(undefined, { autoSelect: false });
     } catch (err) {
-      setError(String(err));
+      setError(namedFailureMessage("Create economy provider", err));
     } finally {
       setProfileInFlight(false);
     }
@@ -3742,7 +3746,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         await loadRuns(selectedRun || undefined, { autoSelect: false });
       }
     } catch (err) {
-      setError(String(err));
+      setError(namedFailureMessage(message, err));
     } finally {
       setProfileInFlight(false);
     }
@@ -3763,7 +3767,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       const localOnly = skipMcp || localOnlyMode;
       setDoctor(await client.getDoctor(doctorOptions(host, localOnly)));
     } catch (err) {
-      setError(String(err));
+      setError(namedFailureMessage(`${host.label} readiness`, err));
     }
   };
 
@@ -3810,7 +3814,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         appendLocalAgentReply(response, targetRun);
         await refreshRun(targetRun, response);
       } catch (err) {
-        setError(String(err));
+        setError(healthActionFailureMessage(action, err));
       } finally {
         setProfileInFlight(false);
       }

@@ -5290,6 +5290,23 @@ describe("Workbench", () => {
     expect(await screen.findByText("环境就绪")).toBeVisible();
   });
 
+  it("shows a named setup error from the empty state and re-enables setup", async () => {
+    const agentMessage = vi.fn().mockRejectedValue(new Error("setup unavailable"));
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      agentMessage
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.click(screen.getByRole("button", { name: "运行 setup" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Codex setup失败：setup unavailable");
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行 setup" })).toBeEnabled());
+    expect(client.createRun).not.toHaveBeenCalled();
+  });
+
   it("shows local-only economy routing in the start context before creating a run", async () => {
     const setupRouting = {
       profile: "economy",
@@ -5336,6 +5353,32 @@ describe("Workbench", () => {
     expect(within(updatedContext).getAllByText("reasonix_cli / deepseek-v4-pro").length).toBeGreaterThan(0);
     expect(within(updatedContext).queryByRole("button", { name: "启用经济路由" })).not.toBeInTheDocument();
     expect(client.getStatus).not.toHaveBeenCalled();
+  });
+
+  it("shows a named readiness refresh error from the start context", async () => {
+    const getDoctor = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        host: "codex",
+        root: "C:/repo",
+        checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true }, mcp: { ok: true, skipped: true } },
+        next_actions: []
+      })
+      .mockRejectedValueOnce(new Error("doctor unavailable"));
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      getDoctor
+    });
+
+    render(<Workbench client={client} />);
+
+    await waitFor(() => expect(getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "codex" }));
+    const startContext = await screen.findByLabelText("启动上下文");
+    await userEvent.click(within(startContext).getByRole("button", { name: "打开启动检查" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Codex readiness失败：doctor unavailable");
+    await waitFor(() => expect(getDoctor).toHaveBeenCalledTimes(2));
   });
 
   it("restores persisted local-only mode on startup", async () => {
@@ -5607,6 +5650,39 @@ describe("Workbench", () => {
     expect(within(updatedContext).getByText("经济路由已启用")).toBeVisible();
     expect(within(updatedContext).getAllByText("reasonix_cli / deepseek-v4-pro").length).toBeGreaterThan(0);
     expect(client.getStatus).not.toHaveBeenCalled();
+  });
+
+  it("shows a named economy profile error from the start context and re-enables routing", async () => {
+    const applyConfigProfile = vi.fn().mockRejectedValue(new Error("profile unavailable"));
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      applyConfigProfile,
+      getDoctor: vi.fn().mockResolvedValue({
+        ok: true,
+        root: "C:/repo",
+        checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true } },
+        routing: {
+          profile: "custom",
+          economy_configured: false,
+          phases: {
+            write: { configured: { provider: "mock", model: "mock" }, configured_economy: false },
+            fix: { configured: { provider: "mock", model: "mock" }, configured_economy: false }
+          },
+          summary: "Economy routing profile is not active: write mock / mock, fix mock / mock.",
+          recommendation: "Run `patchbay config profile apply economy`."
+        },
+        next_actions: []
+      })
+    });
+
+    render(<Workbench client={client} />);
+
+    const startContext = await screen.findByLabelText("启动上下文");
+    await userEvent.click(within(startContext).getByRole("button", { name: "启用经济路由" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Apply economy profile失败：profile unavailable");
+    await waitFor(() => expect(within(startContext).getByRole("button", { name: "启用经济路由" })).toBeEnabled());
+    expect(client.createRun).not.toHaveBeenCalled();
   });
 
   it("runs host-aware setup from the empty state and shows MCP guidance", async () => {
