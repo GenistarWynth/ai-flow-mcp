@@ -48,6 +48,7 @@ def create_status(
         "base_commit": base_commit,
         "worktree_path": None,
         "tests_passed": False,
+        "tests_status": "NOT_RUN",
         "review_result": None,
         "fix_iterations": 0,
         "created_at": now_iso(),

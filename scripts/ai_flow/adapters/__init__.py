@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import uuid
 from pathlib import Path
 from typing import Any, Callable
 
@@ -16,6 +17,7 @@ from ..artifacts import append_text
 from ..config import split_command
 from ..errors import AiFlowError
 from ..runner import merged_env, redact
+from ..usage import merge_usage_metrics, metrics_from_json_text, metrics_from_text, with_usage
 
 # ---------------------------------------------------------------------------
 # Role constants used as capability flags.
@@ -77,6 +79,11 @@ PROVIDERS: dict[str, ProviderRoles] = {
 
 
 BUILTIN_PROVIDER_IDS = set(PROVIDERS)
+_BUILTIN_PLANNERS = dict(PLANNERS)
+_BUILTIN_WRITERS = dict(WRITERS)
+_BUILTIN_REVIEWERS = dict(REVIEWERS)
+_BUILTIN_FIXERS = dict(FIXERS)
+_BUILTIN_PROVIDERS = {provider_id: set(roles) for provider_id, roles in PROVIDERS.items()}
 
 
 def _collect_provider_ids(*registries: dict[str, Any]) -> set[str]:
@@ -121,6 +128,7 @@ def provider_supports_phase(provider_id: str, phase: str) -> bool:
 
 def register_custom_providers(config: dict[str, Any]) -> None:
     """Register minimal TOML-defined CLI providers for this process."""
+    reset_custom_providers()
     providers = config.get("providers", {})
     if not isinstance(providers, dict):
         return
@@ -144,12 +152,33 @@ def register_custom_providers(config: dict[str, Any]) -> None:
         PROVIDERS[provider_id] = roles
         if ROLE_PLAN in roles:
             PLANNERS[provider_id] = _custom_plan_runner(provider_id, provider_cfg)
-        if ROLE_WRITE in roles:
-            WRITERS[provider_id] = _custom_writer_runner(provider_id, provider_cfg)
+        custom_writer = _custom_writer_runner(provider_id, provider_cfg) if roles & {ROLE_WRITE, ROLE_FIX} else None
+        if ROLE_WRITE in roles and custom_writer is not None:
+            WRITERS[provider_id] = custom_writer
         if ROLE_REVIEW in roles:
             REVIEWERS[provider_id] = _custom_review_runner(provider_id, provider_cfg)
-        if ROLE_FIX in roles:
-            FIXERS[provider_id] = _custom_writer_runner(provider_id, provider_cfg)
+        if ROLE_FIX in roles and custom_writer is not None:
+            FIXERS[provider_id] = custom_writer
+
+
+def reset_custom_providers() -> None:
+    """Remove project-scoped custom providers without overwriting built-in entries."""
+    for registry, builtins in (
+        (PLANNERS, _BUILTIN_PLANNERS),
+        (WRITERS, _BUILTIN_WRITERS),
+        (REVIEWERS, _BUILTIN_REVIEWERS),
+        (FIXERS, _BUILTIN_FIXERS),
+    ):
+        for provider_id in list(registry):
+            if provider_id not in builtins:
+                del registry[provider_id]
+        for provider_id, runner in builtins.items():
+            registry.setdefault(provider_id, runner)
+    for provider_id in list(PROVIDERS):
+        if provider_id not in _BUILTIN_PROVIDERS:
+            del PROVIDERS[provider_id]
+    for provider_id, roles in _BUILTIN_PROVIDERS.items():
+        PROVIDERS.setdefault(provider_id, set(roles))
 
 
 def _provider_argv(provider_cfg: dict[str, Any]) -> list[str]:
@@ -189,8 +218,13 @@ def _run_custom_cli(
             stage="config",
         )
     effective_env = merged_env(env)
+    usage_file = log_path.parent / f"{provider_id}-usage-{uuid.uuid4().hex}.json"
+    effective_env["PATCHBAY_USAGE_FILE"] = str(usage_file)
     append_text(log_path, f"\n## Custom provider {provider_id}\n\n")
-    append_text(log_path, f"cwd: {cwd}\ncommand: {redact(' '.join(argv), effective_env)}\n\n")
+    append_text(
+        log_path,
+        f"cwd: {cwd}\ncommand: {redact(' '.join(argv), effective_env)}\nusage_file: {usage_file}\n\n",
+    )
     try:
         completed = subprocess.run(
             argv,
@@ -231,7 +265,21 @@ def _run_custom_cli(
             f"Custom provider {provider_id} failed with exit code {completed.returncode}.",
             stage="config",
         )
-    return completed.stdout or ""
+    usage_metrics = merge_usage_metrics(
+        metrics_from_text(completed.stdout or ""),
+        metrics_from_text(completed.stderr or ""),
+        _metrics_from_usage_file(usage_file),
+    )
+    return with_usage(completed.stdout or "", usage_metrics)
+
+
+def _metrics_from_usage_file(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        return metrics_from_json_text(path.read_text(encoding="utf-8"))
+    except OSError:
+        return {}
 
 
 def _custom_plan_runner(provider_id: str, provider_cfg: dict[str, Any]) -> Callable[..., str]:
@@ -245,6 +293,7 @@ def _custom_plan_runner(provider_id: str, provider_cfg: dict[str, Any]) -> Calla
         command_key: str = "",
         timeout: int = 900,
         env: dict[str, str] | None = None,
+        phase: str = "write",
     ) -> str:
         prompt = "\n\n".join(["# User Task", task, "# Repository Context", context])
         return _run_custom_cli(
@@ -269,6 +318,7 @@ def _custom_writer_runner(provider_id: str, provider_cfg: dict[str, Any]) -> Cal
         command_key: str = "",
         timeout: int = 900,
         env: dict[str, str] | None = None,
+        phase: str = "write",
     ) -> str:
         output = _run_custom_cli(
             provider_id=provider_id,
@@ -281,13 +331,16 @@ def _custom_writer_runner(provider_id: str, provider_cfg: dict[str, Any]) -> Cal
         )
         contract = str(provider_cfg.get("output_contract", "writer_diff"))
         if contract == "worktree_diff":
-            return "\n".join(
-                [
-                    "BEGIN_WRITER_SUMMARY",
-                    output.strip() or f"Custom provider {provider_id} edited the worktree.",
-                    "END_WRITER_SUMMARY",
-                    "",
-                ]
+            return with_usage(
+                "\n".join(
+                    [
+                        "BEGIN_WRITER_SUMMARY",
+                        output.strip() or f"Custom provider {provider_id} edited the worktree.",
+                        "END_WRITER_SUMMARY",
+                        "",
+                    ]
+                ),
+                getattr(output, "usage_metrics", None),
             )
         return output
     return run_custom_writer
@@ -303,6 +356,7 @@ def _custom_review_runner(provider_id: str, provider_cfg: dict[str, Any]) -> Cal
         command_key: str = "",
         timeout: int = 900,
         env: dict[str, str] | None = None,
+        phase: str = "review",
     ) -> str:
         return _run_custom_cli(
             provider_id=provider_id,
@@ -333,6 +387,7 @@ __all__ = [
     "provider_roles",
     "provider_supports_phase",
     "register_custom_providers",
+    "reset_custom_providers",
     "run_claude_planner",
     "run_claude_reviewer",
     "run_codex_planner",

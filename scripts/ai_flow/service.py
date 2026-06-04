@@ -1,17 +1,22 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import datetime
 import json
 import os
+import signal
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from . import git_utils
+from .action_contract import group_actions
 from .adapters import (
+    FIXERS,
     PLANNERS,
     REVIEWERS,
     WRITERS,
@@ -32,20 +37,26 @@ from .artifacts import (
     read_text,
     run_dir as artifact_run_dir,
     write_json,
+    write_json_atomic,
     write_text,
 )
 from .config import (
     allowlisted_test_commands,
     configured_worktree_root,
     config_path,
+    economy_target,
     example_config_path,
     find_project_root,
     load_config,
     resolve_phase,
+    route_label,
+    route_command_status,
+    route_matches_economy,
 )
 from .context import build_context
 from .errors import AiFlowError, GitError, SafetyError, StateError
 from .events import append_event, event_count, latest_event, list_events
+from .handoff import build_handoff_context
 from .parsing import parse_planner_output, parse_writer_output, review_verdict
 from .plan_schema import validate_plan_json
 from .runner import run_logged
@@ -70,6 +81,8 @@ from .state import (
     require_status,
     set_status,
 )
+from .trace import list_trace, trace_count
+from .usage import merge_usage_metrics, metrics_from_output
 
 
 TERMINAL_STATUSES = {APPLIED, FAILED, REVIEWED_PASS, REVIEWED_CHANGES_REQUESTED}
@@ -77,6 +90,8 @@ RUN_LOCK_FILE = "RUN.lock"
 RESERVED_RUN_ENV = "PATCHBAY_RESERVED_RUN_ID"
 INHERITED_LOCK_ENV = "PATCHBAY_INHERITED_LOCK"
 LOCK_TOKEN_ENV = "PATCHBAY_LOCK_TOKEN"
+ECONOMY_PROVIDER = "reasonix_cli"
+ECONOMY_MODEL = "deepseek-v4-pro"
 
 
 def resolve_root(cwd: Path) -> Path:
@@ -92,6 +107,14 @@ def _load_run(root: Path, run_id: str) -> tuple[Path, dict[str, Any]]:
     return path, load_status(path)
 
 
+def _run_path_for_read(root: Path, run_id: str) -> Path:
+    run_path = _run_dir(root, run_id)
+    if (run_path / "STATUS.json").exists() or _job_path(run_path).exists():
+        return run_path
+    load_status(run_path)
+    return run_path
+
+
 def _lock_path(run_path: Path) -> Path:
     return run_path / RUN_LOCK_FILE
 
@@ -100,8 +123,408 @@ def _job_path(run_path: Path) -> Path:
     return run_path / "JOB.json"
 
 
+def _job_has_finished(job: dict[str, Any]) -> bool:
+    return (
+        "exit_code" in job
+        or bool(job.get("finished_at"))
+        or bool(job.get("reaper_error"))
+        or bool(job.get("canceled_at"))
+        or bool(job.get("cancelled_at"))
+        or bool(job.get("canceled"))
+        or bool(job.get("cancelled"))
+    )
+
+
+def _job_duration_ms(job: dict[str, Any]) -> int | None:
+    started = job.get("started_at_epoch")
+    if not isinstance(started, (int, float)):
+        return None
+    finished = job.get("finished_at_epoch")
+    if not isinstance(finished, (int, float)):
+        finished = time.time() if not _job_has_finished(job) else None
+    if not isinstance(finished, (int, float)):
+        return None
+    return max(0, int((finished - started) * 1000))
+
+
+def _background_job_summary(job: dict[str, Any]) -> dict[str, Any]:
+    finished = _job_has_finished(job)
+    exit_code = job.get("exit_code")
+    canceled = bool(job.get("canceled_at") or job.get("cancelled_at") or job.get("canceled") or job.get("cancelled"))
+    failed = not canceled and (bool(job.get("reaper_error")) or (isinstance(exit_code, int) and exit_code != 0))
+    run_id = str(job.get("run_id") or "")
+    actions = list(job.get("actions") or [])
+    if not actions and run_id and run_id != "pending":
+        actions = background_followup_actions(run_id)
+    return {
+        "active": not finished,
+        "status": "canceled" if canceled else "failed" if failed else "finished" if finished else "running",
+        "kind": job.get("kind") or "phase",
+        "phase": job.get("phase") or "background",
+        "action": job.get("action") or job.get("phase") or "background",
+        "pid": job.get("pid"),
+        "exit_code": exit_code,
+        "started_at": job.get("started_at"),
+        "finished_at": job.get("finished_at"),
+        "cancel_requested_at": job.get("cancel_requested_at"),
+        "canceled_at": job.get("canceled_at") or job.get("cancelled_at"),
+        "duration_ms": _job_duration_ms(job),
+        "events_path": job.get("events_path"),
+        "trace_path": job.get("trace_path"),
+        "error": job.get("reaper_error"),
+        "cancel_result": job.get("cancel_result"),
+        "actions": actions,
+        "action_groups": group_actions(actions),
+    }
+
+
+def background_followup_actions(run_id: str) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": "open_background_run",
+            "label": "Open background run",
+            "kind": "open_run",
+            "run_id": run_id,
+            "tab": "Overview",
+            "safe": True,
+            "reason": "Open the run that owns this background job without advancing any gate.",
+        },
+        {
+            "id": "open_trace",
+            "label": "Open activity",
+            "kind": "diagnostic_tab",
+            "run_id": run_id,
+            "tab": "Trace",
+            "safe": True,
+            "reason": "Inspect queued/running background agent events and provider activity.",
+        },
+        {
+            "id": "poll_status",
+            "label": "Poll status",
+            "kind": "local_agent",
+            "run_id": run_id,
+            "message": "status",
+            "safe": True,
+            "reason": "Refresh this background run without approving, continuing, or applying changes.",
+        },
+        {
+            "id": "poll_context",
+            "label": "Poll context",
+            "kind": "local_agent",
+            "run_id": run_id,
+            "message": "context",
+            "safe": True,
+            "reason": "Refresh the latest handoff context for this background run.",
+        },
+        {
+            "id": "poll_events",
+            "label": "Poll events",
+            "kind": "local_agent",
+            "run_id": run_id,
+            "message": "events",
+            "safe": True,
+            "reason": "Read the background run event stream without advancing any phase.",
+        },
+        {
+            "id": "cancel_background_job",
+            "label": "Cancel background job",
+            "kind": "local_agent",
+            "run_id": run_id,
+            "message": "cancel background job",
+            "safe": True,
+            "reason": "Stop the active background worker for this run without approving, applying, or advancing gates.",
+        },
+    ]
+
+
+def _job_status_without_status(root: Path, run_id: str, job: dict[str, Any]) -> dict[str, Any]:
+    stage = str(job.get("phase") or "background")
+    finished = _job_has_finished(job)
+    exit_code = job.get("exit_code")
+    canceled = bool(job.get("canceled_at") or job.get("cancelled_at") or job.get("canceled") or job.get("cancelled"))
+    if canceled:
+        detail = "Background job was canceled before writing STATUS.json."
+    elif finished:
+        detail = f"Background {stage} exited before writing STATUS.json"
+        if exit_code is not None:
+            detail += f" (exit code {exit_code})"
+        detail += "."
+    else:
+        detail = "Poll events/status until the background job writes STATUS.json."
+    return {
+        "run_id": run_id,
+        "status": FAILED if finished else "RUNNING",
+        "task": job.get("task", ""),
+        "repo_root": str(root),
+        "config_path": str(config_path(root)),
+        "worktree_path": None,
+        "tests_passed": False,
+        "tests_status": "NOT_RUN",
+        "review_result": None,
+        "fix_iterations": 0,
+        "created_at": job.get("started_at"),
+        "updated_at": job.get("finished_at") or job.get("started_at"),
+        "error": job.get("reaper_error") or (detail if finished else None),
+        "stage": stage,
+        "background_job": _background_job_summary(job),
+        "suggested_next_action": (
+            "Inspect events or start a replacement run."
+            if canceled
+            else "Inspect events/trace and retry the phase; the background job did not produce durable status."
+            if finished
+            else detail
+        ),
+    }
+
+
 def _record_job(run_path: Path, data: dict[str, Any]) -> None:
-    write_json(_job_path(run_path), data)
+    write_json_atomic(_job_path(run_path), data)
+
+
+def summarize_background_job(job: dict[str, Any]) -> dict[str, Any]:
+    return _background_job_summary(job)
+
+
+def cancel_background_job(cwd: Path, run_id: str, *, reason: str = "Canceled by user request.") -> dict[str, Any]:
+    root = resolve_root(cwd)
+    run_path = _run_path_for_read(root, run_id)
+    job_path = _job_path(run_path)
+    if not job_path.exists():
+        return {
+            "ok": False,
+            "action": "background_cancel",
+            "run_id": run_id,
+            "canceled": False,
+            "reply": f"Run {run_id} has no background job to cancel.",
+            "error": "background job not found",
+        }
+
+    job = read_json(job_path)
+    summary = _background_job_summary(job)
+    if not summary.get("active"):
+        return {
+            "ok": True,
+            "action": "background_cancel",
+            "run_id": run_id,
+            "canceled": False,
+            "reply": f"Background job for run {run_id} is already {summary.get('status')}.",
+            "background_job": summary,
+            "status": status(root, run_id),
+        }
+
+    termination = _terminate_background_process(job.get("pid"))
+    if termination.get("error") or (
+        termination.get("attempted")
+        and not termination.get("terminated")
+        and not termination.get("already_exited")
+    ):
+        return {
+            "ok": False,
+            "action": "background_cancel",
+            "run_id": run_id,
+            "canceled": False,
+            "reply": f"Could not cancel background job for run {run_id}: {termination.get('error') or 'process did not terminate'}.",
+            "background_job": summary,
+            "cancel_result": termination,
+            "error": termination.get("error") or "process did not terminate",
+        }
+
+    canceled_at = now_iso()
+    canceled_epoch = time.time()
+    job.update(
+        {
+            "canceled": True,
+            "cancel_requested_at": canceled_at,
+            "canceled_at": canceled_at,
+            "canceled_at_epoch": canceled_epoch,
+            "finished_at": canceled_at,
+            "finished_at_epoch": canceled_epoch,
+            "cancel_reason": reason,
+            "cancel_result": termination,
+        }
+    )
+    _record_job(run_path, job)
+    _release_background_locks(run_path)
+    stage = str(job.get("phase") or job.get("action") or "background")
+    append_event(
+        run_path,
+        phase=stage,
+        action="cancel",
+        status="CANCELED",
+        detail=reason,
+        run_id=run_id,
+        next_action="inspect",
+    )
+    try:
+        mark_failed(
+            run_path,
+            error=f"Background job canceled. {reason}",
+            stage=stage,
+            suggested_next_action="Inspect events or start a replacement run.",
+        )
+    except Exception:
+        pass
+    final_status = status(root, run_id)
+    return {
+        "ok": True,
+        "action": "background_cancel",
+        "run_id": run_id,
+        "canceled": True,
+        "reply": f"Canceled background job for run {run_id}.",
+        "background_job": final_status.get("background_job") or _background_job_summary(job),
+        "status": final_status,
+        "cancel_result": termination,
+    }
+
+
+def _terminate_background_process(pid: Any) -> dict[str, Any]:
+    if pid in (None, "", 0):
+        return {"attempted": False, "terminated": False, "reason": "pid missing"}
+    try:
+        pid_int = int(pid)
+    except (TypeError, ValueError):
+        return {"attempted": False, "terminated": False, "error": f"invalid pid: {pid!r}"}
+    if pid_int <= 0:
+        return {"attempted": False, "terminated": False, "error": f"invalid pid: {pid_int}"}
+
+    if os.name == "nt":
+        completed = subprocess.run(
+            ["taskkill", "/PID", str(pid_int), "/T", "/F"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        active_after_taskkill = _windows_process_is_active(pid_int)
+        output = f"{completed.stdout}\n{completed.stderr}".lower()
+        text_says_exited = any(
+            fragment in output for fragment in ("not found", "not running", "no instance", "could not find")
+        )
+        already_exited = active_after_taskkill is False or (active_after_taskkill is None and text_says_exited)
+        result: dict[str, Any] = {
+            "attempted": True,
+            "terminated": completed.returncode == 0,
+            "already_exited": already_exited,
+            "returncode": completed.returncode,
+        }
+        if active_after_taskkill is not None:
+            result["active_after_taskkill"] = active_after_taskkill
+        if completed.returncode != 0 and not already_exited:
+            result["error"] = (completed.stderr or completed.stdout or "taskkill failed").strip()
+        return result
+
+    try:
+        os.kill(pid_int, signal.SIGTERM)
+    except ProcessLookupError:
+        return {"attempted": True, "terminated": False, "already_exited": True}
+    except PermissionError as exc:
+        return {"attempted": True, "terminated": False, "error": str(exc)}
+    except OSError as exc:
+        return {"attempted": True, "terminated": False, "error": str(exc)}
+    return {"attempted": True, "terminated": True}
+
+
+def _windows_process_is_active(pid_int: int) -> bool | None:
+    try:
+        import ctypes
+        from ctypes import wintypes
+    except Exception:
+        return None
+
+    try:
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    except Exception:
+        return None
+
+    error_invalid_parameter = 87
+    error_access_denied = 5
+    process_query_limited_information = 0x1000
+    still_active = 259
+
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+    kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+
+    handle = kernel32.OpenProcess(process_query_limited_information, False, pid_int)
+    if not handle:
+        error = ctypes.get_last_error()
+        if error == error_invalid_parameter:
+            return False
+        if error == error_access_denied:
+            return True
+        return None
+
+    try:
+        exit_code = wintypes.DWORD()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+            return None
+        return exit_code.value == still_active
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def _release_background_locks(run_path: Path) -> None:
+    _release_lock(run_path)
+    for name in ("AGENT.lock",):
+        try:
+            (run_path / name).unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _mark_background_job_finished(
+    run_path: Path,
+    *,
+    exit_code: int | None = None,
+    error: str | None = None,
+) -> None:
+    job_path = _job_path(run_path)
+    if not job_path.exists():
+        return
+    try:
+        job = read_json(job_path)
+    except Exception:
+        return
+    if exit_code is not None:
+        job["exit_code"] = exit_code
+    if error:
+        job["reaper_error"] = error
+    job["finished_at"] = now_iso()
+    job["finished_at_epoch"] = time.time()
+    _record_job(run_path, job)
+
+
+def _track_background_process(
+    process: Any,
+    run_path: Path,
+    *,
+    on_exit: Callable[[int | None], None] | None = None,
+) -> None:
+    wait = getattr(process, "wait", None)
+    if not callable(wait):
+        return
+
+    def reap() -> None:
+        exit_code: int | None = None
+        try:
+            exit_code = wait()
+        except Exception as exc:
+            _mark_background_job_finished(run_path, error=str(exc))
+            return
+        try:
+            if on_exit:
+                on_exit(exit_code)
+        finally:
+            _mark_background_job_finished(run_path, exit_code=exit_code)
+
+    thread = threading.Thread(
+        target=reap,
+        name=f"patchbay-background-reaper-{getattr(process, 'pid', 'unknown')}",
+        daemon=True,
+    )
+    thread.start()
 
 
 def _patchbay_command(root: Path, phase: str) -> list[str]:
@@ -116,9 +539,38 @@ def _patchbay_command(root: Path, phase: str) -> list[str]:
 
 def _background_spawn_command(phase: str, phase_args: list[str]) -> list[str]:
     runner = """
+import json
 import os
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
+
+def exit_code(value):
+    if isinstance(value, int):
+        return value
+    return 0 if value is None else 1
+
+def mark_finished(run_dir, code):
+    job_path = Path(run_dir) / "JOB.json"
+    try:
+        job = json.loads(job_path.read_text(encoding="utf-8"))
+        job["exit_code"] = code
+        job["finished_at"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        job["finished_at_epoch"] = time.time()
+        temp_path = job_path.with_name(f".{job_path.name}.{os.getpid()}.{time.time_ns()}.tmp")
+        try:
+            with temp_path.open("w", encoding="utf-8", newline="\\n") as handle:
+                json.dump(job, handle, indent=2, ensure_ascii=False, sort_keys=True)
+                handle.write("\\n")
+            temp_path.replace(job_path)
+        finally:
+            if temp_path.exists():
+                temp_path.unlink()
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
 
 root = Path(os.environ["PATCHBAY_BACKGROUND_ROOT"])
 source_scripts = Path(os.environ.get("PATCHBAY_BACKGROUND_SOURCE_SCRIPTS", ""))
@@ -126,11 +578,22 @@ for candidate in (root / "scripts", source_scripts):
     if candidate.exists() and str(candidate) not in sys.path:
         sys.path.insert(0, str(candidate))
 
+code = 0
 try:
     from ai_flow.cli import main
-    raise SystemExit(main(sys.argv[1:]))
+    result = main(sys.argv[1:])
+    code = exit_code(result)
+    raise SystemExit(result)
+except SystemExit as exc:
+    code = exit_code(exc.code)
+    raise
+except BaseException:
+    code = 1
+    raise
 finally:
     run_dir = os.environ.get("PATCHBAY_BACKGROUND_RUN_DIR")
+    if run_dir:
+        mark_finished(run_dir, code)
     token = os.environ.get("PATCHBAY_LOCK_TOKEN")
     phase = os.environ.get("PATCHBAY_BACKGROUND_PHASE", "")
     if run_dir and token:
@@ -210,6 +673,7 @@ def start_background_phase(
         _acquire_lock(run_path, phase, token=lock_token)
         parent_holds_lock = True
         write_text(run_path / "events.jsonl", "")
+        write_text(run_path / "trace.jsonl", "")
         phase_args.extend(["--task", task, "--run-id", run_id])
         if mock:
             phase_args.append("--mock")
@@ -232,17 +696,21 @@ def start_background_phase(
     env["PATCHBAY_BACKGROUND_SOURCE_SCRIPTS"] = str(Path(__file__).resolve().parents[1])
     if phase == "plan" and run_id:
         env[RESERVED_RUN_ENV] = run_id
+    background_actions = background_followup_actions(str(run_id or "pending"))
     pending_job = {
         "background": True,
         "phase": phase,
         "pid": None,
         "run_id": run_id or "pending",
+        "task": task or "",
         "command": command,
         "started_at": now_iso(),
         "started_at_epoch": job_started,
         "root": str(root),
         "run_dir": str(run_path),
         "events_path": str(run_path / "events.jsonl"),
+        "trace_path": str(run_path / "trace.jsonl"),
+        "actions": background_actions,
     }
     _record_job(run_path, pending_job)
     try:
@@ -266,8 +734,16 @@ def start_background_phase(
     if early_exit is not None and parent_holds_lock:
         _release_lock(run_path, token=lock_token)
         job_data["exit_code"] = early_exit
+        job_data["finished_at"] = now_iso()
+        job_data["finished_at_epoch"] = time.time()
         parent_holds_lock = False
     _record_job(run_path, job_data)
+    if early_exit is None:
+        _track_background_process(
+            process,
+            run_path,
+            on_exit=lambda _exit_code: _release_lock(run_path, token=lock_token),
+        )
     return job_data
 
 
@@ -463,6 +939,25 @@ def _phase_config(cfg: dict[str, Any], *, role: str, model: str | None) -> dict[
     return phase_cfg
 
 
+def _usage_event_kwargs(output: Any) -> dict[str, Any]:
+    metrics = metrics_from_output(output)
+    result: dict[str, Any] = {}
+    token_usage = metrics.get("token_usage")
+    if isinstance(token_usage, dict) and token_usage.get("known"):
+        result["token_usage"] = {
+            key: value
+            for key, value in token_usage.items()
+            if key != "known" and value is not None
+        }
+    cost = metrics.get("cost")
+    if isinstance(cost, dict) and cost.get("known"):
+        result["cost"] = {
+            "currency": cost.get("currency") or "USD",
+            "estimated_total": cost.get("estimated_total"),
+        }
+    return result
+
+
 def _call_writer(
     *,
     root: Path,
@@ -470,7 +965,7 @@ def _call_writer(
     cfg: dict[str, Any],
     mock: bool,
     repair: bool = False,
-) -> tuple[str, str]:
+) -> tuple[str, str, dict[str, Any]]:
     status = load_status(run_path)
     task = str(status["task"])
     log_path = run_path / "writer.log"
@@ -478,10 +973,14 @@ def _call_writer(
     extra_files: list[str] = []
     raw = ""
     summary = ""
+    usage_parts: list[dict[str, Any]] = []
     for attempt in range(max_attempts):
         write_phase = resolve_phase(cfg, "write" if not repair else "fix")
         adapter_cfg = _phase_config(cfg, role="writer", model=write_phase.get("model"))
         provider = write_phase["provider"]
+        role_name = "fixer" if repair else "writer"
+        registry = FIXERS if repair else WRITERS
+        stage = "fix" if repair else "write"
         if (not mock) and provider == "reasonix_cli":
             prompt = _reasonix_agent_prompt(root=root, run_path=run_path, repair=repair)
         else:
@@ -501,32 +1000,43 @@ def _call_writer(
             raw = WRITERS["mock"](task=task, repair=repair, iteration=iteration)
         else:
             worktree = Path(status["worktree_path"])
-            writer = WRITERS.get(provider)
+            writer = registry.get(provider)
             if writer is None:
                 raise AiFlowError(
-                    f"Unknown writer provider: {provider}",
-                    stage="write",
-                    suggested_next_action="Set [phases.write].provider or [writer].provider to reasonix_cli or mock.",
+                    f"Unknown {role_name} provider: {provider}",
+                    stage=stage,
+                    suggested_next_action=f"Set [phases.{stage}].provider to a provider that supports {stage}.",
                 )
             try:
-                raw = writer(prompt=prompt, config=adapter_cfg, cwd=worktree, log_path=log_path, command_key=p_command_key, timeout=p_timeout, env=p_env)
+                raw = writer(
+                    prompt=prompt,
+                    config=adapter_cfg,
+                    cwd=worktree,
+                    log_path=log_path,
+                    command_key=p_command_key,
+                    timeout=p_timeout,
+                    env=p_env,
+                    phase=stage,
+                )
                 append_text(log_path, raw + "\n")
+                usage_parts.append(metrics_from_output(raw))
                 parsed = parse_writer_output(raw)
                 summary = parsed.summary
                 if parsed.diff:
-                    return parsed.diff, summary
+                    return parsed.diff, summary, merge_usage_metrics(*usage_parts)
                 git_utils.add_all(worktree)
                 final_diff = git_utils.diff(worktree)
                 if not final_diff.strip():
-                    raise AiFlowError(f"{provider} did not produce a worktree diff.", stage="write")
+                    raise AiFlowError(f"{provider} did not produce a worktree diff.", stage=stage)
                 validate_patch_safety(final_diff)
-                return final_diff, summary or f"{provider} edited the isolated worktree."
+                return final_diff, summary or f"{provider} edited the isolated worktree.", merge_usage_metrics(*usage_parts)
             except AiFlowError:
                 if attempt < max_attempts - 1:
                     append_text(log_path, "\nWriter attempt failed; retrying.\n")
                     continue
                 raise
         append_text(log_path, raw + "\n")
+        usage_parts.append(metrics_from_output(raw))
         parsed = parse_writer_output(raw)
         summary = parsed.summary
         if parsed.needed_files:
@@ -534,7 +1044,7 @@ def _call_writer(
             continue
         if not parsed.diff:
             raise AiFlowError("Writer did not provide a diff.", stage="write")
-        return parsed.diff, summary
+        return parsed.diff, summary, merge_usage_metrics(*usage_parts)
     raise AiFlowError(
         "Writer requested more file context too many times.",
         stage="write",
@@ -718,6 +1228,7 @@ def plan(cwd: Path, *, task: str, mock: bool = False, run_id: str | None = None)
                 timeout=plan_phase.get("timeout", 900),
                 env=plan_phase.get("env") or None,
             )
+        usage_kwargs = _usage_event_kwargs(raw)
         try:
             parsed = parse_planner_output(raw)
             validate_plan_json(parsed.plan_json)
@@ -740,6 +1251,7 @@ def plan(cwd: Path, *, task: str, mock: bool = False, run_id: str | None = None)
             artifact_paths=["PLAN.md", "plan.json", "TASK.md", "BASE_COMMIT"],
             next_action="approve",
             duration_ms=int((time.time() - plan_started) * 1000),
+            **usage_kwargs,
         )
         return {
             "run_id": run_id,
@@ -753,6 +1265,53 @@ def plan(cwd: Path, *, task: str, mock: bool = False, run_id: str | None = None)
     finally:
         if lock_started:
             _release_lock(run_path)
+
+
+def plan_with_context(cwd: Path, *, task: str, mock: bool = False, run_id: str | None = None) -> dict[str, Any]:
+    root = resolve_root(cwd)
+    result = plan(root, task=task, mock=mock, run_id=run_id)
+    return _with_plan_context(root, result)
+
+
+def _with_plan_context(root: Path, result: dict[str, Any]) -> dict[str, Any]:
+    preview = routing_preview(root)
+    actions = _dedupe_actions(list(result.get("actions") or []) + list(preview.get("actions") or []))
+    enriched = {
+        **result,
+        "profile": preview["profile"],
+        "routing": preview["routing"],
+        "actions": actions,
+    }
+    groups = group_actions(actions)
+    if groups:
+        enriched["action_groups"] = groups
+    return enriched
+
+
+def routing_preview(root: Path) -> dict[str, Any]:
+    from .config_wizard import run_config_wizard
+    from .routing import profile_routing_digest
+
+    profile = run_config_wizard(root, show_profile=True)
+    routing = profile_routing_digest(profile)
+    return {
+        "profile": profile,
+        "routing": routing,
+        "actions": list(profile.get("actions") or []),
+    }
+
+
+def _dedupe_actions(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    result: list[dict[str, Any]] = []
+    for action in actions:
+        key = str(action.get("id") or action.get("message") or action.get("command") or action.get("label") or "").strip()
+        if key and key in seen:
+            continue
+        if key:
+            seen.add(key)
+        result.append(action)
+    return result
 
 
 def approve(cwd: Path, run_id: str) -> dict[str, Any]:
@@ -779,28 +1338,95 @@ def approve(cwd: Path, run_id: str) -> dict[str, Any]:
     return result
 
 
+def _phase_command_blocker(cfg: dict[str, Any], phase_name: str, phase: dict[str, Any]) -> dict[str, Any] | None:
+    command_status = _routing_phase_command_status(cfg, phase)
+    if not command_status.get("required") or command_status.get("ready"):
+        return None
+    command_key = str(command_status.get("command_key") or "")
+    provider = str(command_status.get("provider") or phase.get("provider") or "")
+    status = str(command_status.get("status") or "not_ready")
+    source = str(command_status.get("source") or (f"commands.{command_key}" if command_key else "provider command"))
+    recommendation = str(command_status.get("recommendation") or "").strip()
+    message = f"{phase_name} is blocked because {source} is not ready for {provider} ({status})."
+    if recommendation:
+        message = f"{message} {recommendation}"
+    next_action = "configure_reasonix_command" if provider == ECONOMY_PROVIDER else "inspect_economy_provider_command"
+    actions = _routing_health_actions(
+        {
+            "next_action": next_action,
+            "target": {
+                "provider": provider,
+                "model": str(phase.get("model") or ""),
+                "command_key": command_key,
+            },
+            "command_statuses": {phase_name: command_status},
+        }
+    )
+    return {
+        "phase": phase_name,
+        "status": status,
+        "provider": provider,
+        "model": str(phase.get("model") or ""),
+        "command_key": command_key,
+        "source": source,
+        "command_status": command_status,
+        "message": message,
+        "suggested_next_action": recommendation
+        or f"Fix {source} so the configured provider can execute.",
+        "action": actions[0] if actions else None,
+    }
+
+
+def _ensure_phase_command_ready(cfg: dict[str, Any], phase_name: str, phase: dict[str, Any], *, mock: bool) -> None:
+    if mock:
+        return
+    blocker = _phase_command_blocker(cfg, phase_name, phase)
+    if blocker:
+        raise StateError(
+            str(blocker["message"]),
+            stage=phase_name,
+            suggested_next_action=str(blocker["suggested_next_action"]),
+        )
+
+
+def _blocked_next_action(data: dict[str, Any], cfg: dict[str, Any], effective: dict[str, Any]) -> dict[str, Any] | None:
+    status_value = str(data.get("status") or "")
+    phase_name = ""
+    if status_value == APPROVED:
+        phase_name = "write"
+    elif status_value == REVIEWED_CHANGES_REQUESTED:
+        phase_name = "fix"
+    if not phase_name:
+        return None
+    phase = effective.get(phase_name) or resolve_phase(cfg, phase_name)
+    return _phase_command_blocker(cfg, phase_name, phase)
+
+
 def write(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
     root = resolve_root(cwd)
     run_path, status = _load_run(root, run_id)
+    require_status(status, {APPROVED}, "write")
+    if not (run_path / "APPROVAL.json").exists():
+        raise StateError("Missing APPROVAL.json.", stage="write")
+    cfg = load_config(root)
+    write_phase = resolve_phase(cfg, "write")
+    _ensure_phase_command_ready(cfg, "write", write_phase, mock=mock)
     try:
         with git_utils.log_to(run_path / "git.log"):
-            require_status(status, {APPROVED}, "write")
             _begin_phase_lock(run_path, "write")
-            if not (run_path / "APPROVAL.json").exists():
-                raise StateError("Missing APPROVAL.json.", stage="write")
             if not git_utils.is_repo(root):
                 raise GitError(
                     "write requires a git repository because it creates an isolated worktree.",
                     stage="write",
                     suggested_next_action="Run Patchbay inside a git repository.",
                 )
-            cfg = load_config(root)
-            write_phase = resolve_phase(cfg, "write")
+            write_started = time.time()
             append_event(
                 run_path,
                 phase="write",
                 provider=write_phase["provider"],
                 model=write_phase.get("model", ""),
+                command_key=write_phase.get("command_key", ""),
                 action="start",
                 status="RUNNING",
                 run_id=run_id,
@@ -815,7 +1441,7 @@ def write(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
             git_utils.create_worktree(root, worktree_path, branch_name)
             write_text(run_path / "WORKTREE_PATH", str(worktree_path) + "\n")
             set_status(run_path, IMPLEMENTING, worktree_path=str(worktree_path))
-            patch, summary = _call_writer(root=root, run_path=run_path, cfg=cfg, mock=mock)
+            patch, summary, usage_metrics = _call_writer(root=root, run_path=run_path, cfg=cfg, mock=mock)
             if _writer_edits_worktree(cfg, mock, repair=False):
                 final_diff = patch
             else:
@@ -829,11 +1455,14 @@ def write(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 phase="write",
                 provider=write_phase["provider"],
                 model=write_phase.get("model", ""),
+                command_key=write_phase.get("command_key", ""),
                 action="success",
                 status="IMPLEMENTED",
                 run_id=run_id,
                 artifact_paths=["IMPLEMENTATION.md", "FINAL.diff", "writer.log"],
                 next_action="test",
+                duration_ms=int((time.time() - write_started) * 1000),
+                **_usage_event_kwargs(usage_metrics),
             )
             return result
     except Exception as exc:
@@ -854,6 +1483,7 @@ def test(cwd: Path, run_id: str) -> dict[str, Any]:
             cfg = load_config(root)
             plan_json = read_json(run_path / "plan.json")
             test_phase = resolve_phase(cfg, "test")
+            test_started = time.time()
             append_event(
                 run_path,
                 phase="test",
@@ -870,16 +1500,27 @@ def test(cwd: Path, run_id: str) -> dict[str, Any]:
             write_text(run_path / "TEST.log", "")
             if not commands:
                 append_text(run_path / "TEST.log", "No test commands selected.\n")
-                result = set_status(run_path, TESTED, tests_passed=True)
+                allow_without_tests = bool(cfg.get("workflow", {}).get("allow_apply_without_tests", False))
+                result = set_status(
+                    run_path,
+                    TESTED,
+                    tests_passed=allow_without_tests,
+                    tests_status="SKIPPED_ALLOWED" if allow_without_tests else "SKIPPED",
+                )
                 append_event(
                     run_path,
                     phase="test",
-                    action="success",
-                    status="TESTED",
-                    detail="No test commands selected.",
+                    action="skipped_allowed" if allow_without_tests else "skipped",
+                    status="SKIPPED_ALLOWED" if allow_without_tests else "SKIPPED",
+                    detail=(
+                        "No test commands selected; workflow.allow_apply_without_tests=true permits apply."
+                        if allow_without_tests
+                        else "No test commands selected; apply remains blocked until tests are configured or allow_apply_without_tests is enabled."
+                    ),
                     run_id=run_id,
                     artifact_paths=["TEST.log"],
                     next_action="review",
+                    duration_ms=int((time.time() - test_started) * 1000),
                 )
                 return result
             for command in commands:
@@ -898,7 +1539,7 @@ def test(cwd: Path, run_id: str) -> dict[str, Any]:
                         stage="test",
                         suggested_next_action="Run `scripts/patchbay fix <run_id>` after inspecting TEST.log.",
                     )
-            result = set_status(run_path, TESTED, tests_passed=True)
+            result = set_status(run_path, TESTED, tests_passed=True, tests_status="PASSED")
             append_event(
                 run_path,
                 phase="test",
@@ -908,6 +1549,7 @@ def test(cwd: Path, run_id: str) -> dict[str, Any]:
                 run_id=run_id,
                 artifact_paths=["TEST.log"],
                 next_action="review",
+                duration_ms=int((time.time() - test_started) * 1000),
             )
             return result
     except Exception as exc:
@@ -932,6 +1574,14 @@ def _review_prompt(run_path: Path) -> str:
             read_text(run_path / "TEST.log", default="").rstrip(),
         ]
     ).rstrip() + "\n"
+
+
+def _tests_phase_completed(status: dict[str, Any]) -> bool:
+    return bool(status.get("tests_passed")) or str(status.get("tests_status") or "") in {
+        "PASSED",
+        "SKIPPED",
+        "SKIPPED_ALLOWED",
+    }
 
 
 def review(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
@@ -965,13 +1615,14 @@ def review(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
             if (
                 status.get("status") == FAILED
                 and status.get("stage") in {"git", "review"}
-                and status.get("tests_passed")
+                and _tests_phase_completed(status)
                 and not status.get("review_result")
             ):
                 allowed_statuses.add(FAILED)
             require_status(status, allowed_statuses, "review")
             _begin_phase_lock(run_path, "review")
             worktree = Path(status["worktree_path"])
+            review_started = time.time()
             append_event(
                 run_path,
                 phase="review",
@@ -1020,6 +1671,7 @@ def review(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
             if after != before or after_status != before_status:
                 raise SafetyError("Reviewer modified files in the worktree.", stage="review")
             verdict = review_verdict(raw)
+            usage_kwargs = _usage_event_kwargs(raw)
             write_text(run_path / "REVIEW.md", raw)
             if verdict == "PASS":
                 result = set_status(run_path, REVIEWED_PASS, review_result="PASS")
@@ -1033,6 +1685,8 @@ def review(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                     run_id=run_id,
                     artifact_paths=["REVIEW.md"],
                     next_action="apply",
+                    duration_ms=int((time.time() - review_started) * 1000),
+                    **usage_kwargs,
                 )
                 return result
             result = set_status(
@@ -1050,6 +1704,8 @@ def review(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 run_id=run_id,
                 artifact_paths=["REVIEW.md"],
                 next_action="fix",
+                duration_ms=int((time.time() - review_started) * 1000),
+                **usage_kwargs,
             )
             return result
     except Exception as exc:
@@ -1077,14 +1733,16 @@ def _ensure_review_did_not_change_diff(run_path: Path, status: dict[str, Any]) -
 def fix(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
     root = resolve_root(cwd)
     run_path, status = _load_run(root, run_id)
+    allowed = {REVIEWED_CHANGES_REQUESTED}
+    if status.get("status") == FAILED and status.get("stage") == "test":
+        allowed.add(FAILED)
+    require_status(status, allowed, "fix")
+    cfg = load_config(root)
+    fix_phase = resolve_phase(cfg, "fix")
+    _ensure_phase_command_ready(cfg, "fix", fix_phase, mock=mock)
     try:
         with git_utils.log_to(run_path / "git.log"):
-            allowed = {REVIEWED_CHANGES_REQUESTED}
-            if status.get("status") == FAILED and status.get("stage") == "test":
-                allowed.add(FAILED)
-            require_status(status, allowed, "fix")
             _begin_phase_lock(run_path, "fix")
-            cfg = load_config(root)
             max_repairs = int(cfg.get("writer", {}).get("max_repair_iterations", 2))
             iterations = int(status.get("fix_iterations") or 0)
             if iterations >= max_repairs:
@@ -1094,12 +1752,13 @@ def fix(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                     suggested_next_action="Inspect artifacts manually or start a new run.",
                 )
             worktree = Path(status["worktree_path"])
-            fix_phase = resolve_phase(cfg, "fix")
+            fix_started = time.time()
             append_event(
                 run_path,
                 phase="fix",
                 provider=fix_phase["provider"],
                 model=fix_phase.get("model", ""),
+                command_key=fix_phase.get("command_key", ""),
                 action="start",
                 status="RUNNING",
                 detail=f"Fix iteration {iterations + 1}/{max_repairs}",
@@ -1108,7 +1767,7 @@ def fix(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 next_action="await fix completion",
             )
             set_status(run_path, FIXING)
-            patch, summary = _call_writer(root=root, run_path=run_path, cfg=cfg, mock=mock, repair=True)
+            patch, summary, usage_metrics = _call_writer(root=root, run_path=run_path, cfg=cfg, mock=mock, repair=True)
             if _writer_edits_worktree(cfg, mock, repair=True):
                 final_diff = patch
             else:
@@ -1121,6 +1780,7 @@ def fix(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 IMPLEMENTED,
                 fix_iterations=iterations + 1,
                 tests_passed=False,
+                tests_status="NOT_RUN",
                 review_result=None,
             )
             append_event(
@@ -1128,12 +1788,15 @@ def fix(cwd: Path, run_id: str, *, mock: bool = False) -> dict[str, Any]:
                 phase="fix",
                 provider=fix_phase["provider"],
                 model=fix_phase.get("model", ""),
+                command_key=fix_phase.get("command_key", ""),
                 action="success",
                 status="IMPLEMENTED",
                 detail=f"Fix iteration {iterations + 1} complete.",
                 run_id=run_id,
                 artifact_paths=["FIXES.md", "FINAL.diff"],
                 next_action="test",
+                duration_ms=int((time.time() - fix_started) * 1000),
+                **_usage_event_kwargs(usage_metrics),
             )
             return result
     except Exception as exc:
@@ -1158,7 +1821,15 @@ def _writer_edits_worktree(cfg: dict[str, Any], mock: bool, *, repair: bool = Fa
 
 def status(cwd: Path, run_id: str) -> dict[str, Any]:
     root = resolve_root(cwd)
-    run_path, data = _load_run(root, run_id)
+    run_path = _run_dir(root, run_id)
+    try:
+        _, data = _load_run(root, run_id)
+    except StateError:
+        job_path = _job_path(run_path)
+        if not job_path.exists():
+            raise
+        job = read_json(job_path)
+        data = _job_status_without_status(root, run_id, job)
     data = dict(data)
     data["run_dir"] = str(run_path)
     data["artifacts"] = list_run_artifacts(run_path)
@@ -1167,22 +1838,954 @@ def status(cwd: Path, run_id: str) -> dict[str, Any]:
         data["latest_event"] = latest
     data["current_phase"] = data.get("stage") or (latest or {}).get("phase") or _current_phase_from_status(str(data.get("status", "")))
     data["event_count"] = event_count(run_path)
+    run_metrics = _run_metrics(run_path)
     data["next_commands"] = _next_commands(data)
     data["gate_state"] = _gate_state(data)
+    if data.get("status") == FAILED:
+        data["failure_recovery"] = _failure_recovery(data)
     cfg = load_config(root)
-    effective: dict[str, Any] = {}
-    for phase in ("plan", "write", "review", "fix"):
-        resolved = resolve_phase(cfg, phase)
-        effective[phase] = {
-            "provider": resolved.get("provider", ""),
-            "model": resolved.get("model", ""),
-            "command_key": resolved.get("command_key", ""),
-        }
+    effective = _effective_phase_provider_summary(cfg)
     data["effective_phase_providers"] = effective
+    data["routing_evidence"] = _run_routing_evidence(run_metrics, effective, cfg)
+    data["efficiency_summary"] = _run_efficiency_summary(run_metrics, data["routing_evidence"])
+    data["blocked_next_action"] = _blocked_next_action(data, cfg, effective)
+    run_metrics["routing_evidence"] = data["routing_evidence"]
+    run_metrics["efficiency_summary"] = data["efficiency_summary"]
+    data["run_metrics"] = run_metrics
     job_path = _job_path(run_path)
     if job_path.exists():
-        data["job"] = read_json(job_path)
+        job = read_json(job_path)
+        data["job"] = job
+        data["background_job"] = _background_job_summary(job)
     return data
+
+
+def _failure_recovery(status_data: dict[str, Any]) -> dict[str, Any]:
+    stage = str(status_data.get("stage") or status_data.get("current_phase") or "unknown")
+    artifacts = list(status_data.get("artifacts") or [])
+    inspect = _failure_artifacts_for_stage(stage, artifacts)
+    suggested = str(status_data.get("suggested_next_action") or "").strip()
+    if not suggested:
+        suggested = "Inspect diagnostics before retrying or starting a replacement run."
+    actions = _failure_recovery_actions(inspect)
+    return {
+        "stage": stage,
+        "error": str(status_data.get("error") or "Run failed."),
+        "suggested_next_action": suggested,
+        "safe_actions": ["status", "events", "artifact", "diff", "new_run"],
+        "actions": actions,
+        "action_groups": group_actions(actions),
+        "artifacts": inspect,
+        "summary": f"Run failed in {stage}; inspect {', '.join(inspect) if inspect else 'diagnostics'} before taking another action.",
+    }
+
+
+def _failure_recovery_actions(artifacts: list[str]) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]] = [
+        {
+            "id": "inspect_events",
+            "label": "Inspect events",
+            "kind": "diagnostic_tab",
+            "tab": "Trace",
+            "safe": True,
+            "reason": "Open the event and trace timeline for the failed run.",
+        }
+    ]
+    if any(name == "FINAL.diff" or name.endswith(".diff") for name in artifacts):
+        actions.append(
+            {
+                "id": "inspect_diff",
+                "label": "Inspect diff",
+                "kind": "diagnostic_tab",
+                "tab": "Diff",
+                "safe": True,
+                "reason": "Open the current patch diff before deciding whether to retry or start over.",
+            }
+        )
+    if artifacts:
+        actions.append(
+            {
+                "id": "inspect_artifacts",
+                "label": "Inspect artifacts",
+                "kind": "diagnostic_tab",
+                "tab": "Artifacts",
+                "safe": True,
+                "reason": "Open the priority failure artifacts listed in the recovery summary.",
+            }
+        )
+    actions.append(
+        {
+            "id": "start_new_task",
+            "label": "Start replacement task",
+            "kind": "focus_composer",
+            "safe": True,
+            "reason": "Start a narrower replacement task instead of retrying the failed run blindly.",
+        }
+    )
+    return actions
+
+
+def _failure_artifacts_for_stage(stage: str, artifacts: list[str]) -> list[str]:
+    preferred: dict[str, list[str]] = {
+        "plan": ["PLAN.md", "plan.json", "claude-planner.log", "events.jsonl", "trace.jsonl", "STATUS.json"],
+        "write": ["writer.log", "IMPLEMENTATION.md", "FINAL.diff", "events.jsonl", "trace.jsonl", "STATUS.json"],
+        "test": ["TEST.log", "FINAL.diff", "events.jsonl", "trace.jsonl", "STATUS.json"],
+        "review": ["REVIEW.md", "codex-reviewer.log", "FINAL.diff", "events.jsonl", "trace.jsonl", "STATUS.json"],
+        "fix": ["writer.log", "FIXES.md", "FINAL.diff", "TEST.log", "REVIEW.md", "events.jsonl", "trace.jsonl", "STATUS.json"],
+        "apply": ["FINAL.diff", "git.log", "events.jsonl", "trace.jsonl", "STATUS.json"],
+    }
+    ordered = preferred.get(stage, ["events.jsonl", "trace.jsonl", "STATUS.json"])
+    available = [name for name in ordered if name in artifacts]
+    if available:
+        return available
+    fallback = [name for name in artifacts if name.endswith((".log", ".md", ".diff", ".json", ".jsonl"))]
+    return fallback[:6]
+
+
+_PHASE_TIER_BY_PHASE = {
+    "write": "economy",
+    "fix": "economy",
+    "plan": "supervision",
+    "review": "supervision",
+    "test": "execution",
+    "apply": "execution",
+}
+_CANONICAL_TIER_PHASES = {
+    "economy": ["write", "fix"],
+    "supervision": ["plan", "review"],
+    "execution": ["test", "apply"],
+}
+_TIER_LABELS = {
+    "economy": "Economy write/fix",
+    "supervision": "Supervision plan/review",
+    "execution": "Execution gates",
+    "other": "Other phases",
+}
+_PHASE_SORT_ORDER = {
+    "plan": 0,
+    "write": 1,
+    "test": 2,
+    "review": 3,
+    "fix": 4,
+    "apply": 5,
+}
+
+
+def _run_metrics(run_path: Path) -> dict[str, Any]:
+    entries = list_events(run_path)
+    phase_durations: dict[str, int] = {}
+    phase_attempts: dict[str, int] = {}
+    open_phase_starts: dict[str, str] = {}
+    provider_usage: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    provider_order: list[tuple[str, str, str, str]] = []
+    token_totals = {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cached_tokens": 0,
+        "total_tokens": 0,
+    }
+    token_known = False
+    token_by_phase: dict[str, dict[str, Any]] = {}
+    cost_total = 0.0
+    cost_known = False
+    cost_currency = "USD"
+    cost_by_phase: dict[str, dict[str, Any]] = {}
+
+    for entry in entries:
+        phase = str(entry.get("phase") or "")
+        action = str(entry.get("action") or "")
+        timestamp = str(entry.get("timestamp") or "")
+        if phase and action == "start":
+            phase_attempts[phase] = phase_attempts.get(phase, 0) + 1
+            open_phase_starts[phase] = timestamp
+
+        duration_ms = _event_duration_ms(entry)
+        if phase and duration_ms is not None:
+            phase_durations[phase] = phase_durations.get(phase, 0) + duration_ms
+            open_phase_starts.pop(phase, None)
+        elif phase and action != "start":
+            estimated = _estimate_duration_ms(open_phase_starts.pop(phase, ""), timestamp)
+            if estimated is not None:
+                phase_durations[phase] = phase_durations.get(phase, 0) + estimated
+
+        provider = str(entry.get("provider") or "")
+        model = str(entry.get("model") or "")
+        command_key = str(entry.get("command_key") or "")
+        provider_bucket: dict[str, Any] | None = None
+        if provider or model:
+            key = (phase, provider, model, command_key)
+            if key not in provider_usage:
+                provider_usage[key] = {
+                    "phase": phase,
+                    "provider": provider,
+                    "model": model,
+                    "events": 0,
+                    "duration_ms": 0,
+                }
+                if command_key:
+                    provider_usage[key]["command_key"] = command_key
+                provider_order.append(key)
+            provider_bucket = provider_usage[key]
+            provider_bucket["events"] += 1
+            if duration_ms is not None:
+                provider_bucket["duration_ms"] += duration_ms
+
+        usage = metrics_from_output(entry)
+        token_usage = usage.get("token_usage")
+        if isinstance(token_usage, dict) and token_usage.get("known"):
+            token_known = True
+            if provider_bucket is not None:
+                _accumulate_provider_tokens(provider_bucket, token_usage)
+            _accumulate_phase_tokens(token_by_phase, phase, token_usage)
+            for field in ("input_tokens", "output_tokens", "cached_tokens", "total_tokens"):
+                value = token_usage.get(field)
+                if value is not None:
+                    token_totals[field] += int(value)
+
+        cost = usage.get("cost")
+        if isinstance(cost, dict) and cost.get("known"):
+            cost_known = True
+            if provider_bucket is not None:
+                _accumulate_provider_cost(provider_bucket, cost)
+            estimated = cost.get("estimated_total")
+            if estimated is not None:
+                cost_total += float(estimated)
+            currency = str(cost.get("currency") or "USD")
+            if cost_currency == "USD" or cost_currency == currency:
+                cost_currency = currency
+            _accumulate_phase_cost(cost_by_phase, phase, cost)
+
+    total_duration_ms = sum(phase_durations.values()) if phase_durations else None
+    tier_usage = _run_tier_usage(
+        phase_durations=phase_durations,
+        total_duration_ms=total_duration_ms,
+        token_by_phase=token_by_phase,
+        total_tokens=token_totals["total_tokens"] if token_known else None,
+        cost_by_phase=cost_by_phase,
+        total_cost=cost_total if cost_known else None,
+        currency=cost_currency,
+    )
+    return {
+        "duration_known": bool(phase_durations),
+        "duration_source": "event_or_timestamp" if phase_durations else "unknown",
+        "total_duration_ms": total_duration_ms,
+        "phase_durations_ms": phase_durations,
+        "phase_attempts": phase_attempts,
+        "event_count": event_count(run_path),
+        "trace_count": trace_count(run_path),
+        "provider_usage": [provider_usage[key] for key in provider_order],
+        "cost": {
+            "known": cost_known,
+            "currency": cost_currency,
+            "estimated_total": round(cost_total, 6) if cost_known else None,
+            "by_phase": cost_by_phase,
+        },
+        "token_usage": {
+            "known": token_known,
+            "input_tokens": token_totals["input_tokens"] if token_known else None,
+            "output_tokens": token_totals["output_tokens"] if token_known else None,
+            "cached_tokens": token_totals["cached_tokens"] if token_known else None,
+            "total_tokens": token_totals["total_tokens"] if token_known else None,
+            "by_phase": token_by_phase,
+        },
+        "tier_usage": tier_usage,
+    }
+
+
+def _run_tier_usage(
+    *,
+    phase_durations: dict[str, int],
+    total_duration_ms: int | None,
+    token_by_phase: dict[str, dict[str, Any]],
+    total_tokens: int | None,
+    cost_by_phase: dict[str, dict[str, Any]],
+    total_cost: float | None,
+    currency: str,
+) -> dict[str, dict[str, Any]]:
+    tiers = {
+        tier: _empty_tier_usage(tier, currency)
+        for tier in ("economy", "supervision", "execution")
+    }
+    phases = sorted(
+        set(phase_durations) | set(token_by_phase) | set(cost_by_phase),
+        key=lambda phase: (_PHASE_SORT_ORDER.get(phase, 999), phase),
+    )
+    for phase in phases:
+        tier = _phase_tier(phase)
+        bucket = tiers.setdefault(tier, _empty_tier_usage(tier, currency))
+        if phase not in bucket["phases"]:
+            bucket["phases"].append(phase)
+
+        duration = phase_durations.get(phase)
+        if duration is not None:
+            bucket["duration_known"] = True
+            bucket["duration_ms"] += int(duration)
+            bucket["phase_durations_ms"][phase] = int(duration)
+
+        token_usage = token_by_phase.get(phase)
+        if isinstance(token_usage, dict) and token_usage.get("known"):
+            _accumulate_tier_tokens(bucket["token_usage"], token_usage)
+
+        cost = cost_by_phase.get(phase)
+        if isinstance(cost, dict) and cost.get("known"):
+            _accumulate_tier_cost(bucket["cost"], cost)
+
+    for bucket in tiers.values():
+        if bucket["duration_known"]:
+            bucket["duration_percent"] = _percent(bucket["duration_ms"], total_duration_ms)
+        else:
+            bucket["duration_ms"] = None
+            bucket["duration_percent"] = None
+
+        token_usage = bucket["token_usage"]
+        if token_usage["known"]:
+            token_usage["token_percent"] = _percent(token_usage["total_tokens"], total_tokens)
+        else:
+            for field in ("input_tokens", "output_tokens", "cached_tokens", "total_tokens"):
+                token_usage[field] = None
+            token_usage["token_percent"] = None
+
+        cost = bucket["cost"]
+        if cost["known"]:
+            cost["estimated_total"] = round(float(cost["estimated_total"]), 6)
+            cost["cost_percent"] = _percent(cost["estimated_total"], total_cost)
+        else:
+            cost["estimated_total"] = None
+            cost["cost_percent"] = None
+
+    return tiers
+
+
+def _run_efficiency_summary(run_metrics: dict[str, Any], routing: dict[str, Any]) -> dict[str, Any]:
+    tier_usage = run_metrics.get("tier_usage") if isinstance(run_metrics.get("tier_usage"), dict) else {}
+    economy = tier_usage.get("economy") if isinstance(tier_usage.get("economy"), dict) else {}
+    token_usage = economy.get("token_usage") if isinstance(economy.get("token_usage"), dict) else {}
+    cost = economy.get("cost") if isinstance(economy.get("cost"), dict) else {}
+    run_cost = run_metrics.get("cost") if isinstance(run_metrics.get("cost"), dict) else {}
+    health = routing.get("economy_health") if isinstance(routing.get("economy_health"), dict) else {}
+    coverage = routing.get("coverage") if isinstance(routing.get("coverage"), dict) else {}
+    routing_status = str(health.get("status") or "unknown")
+    usage_known = {
+        "tokens": bool(token_usage.get("known")),
+        "cost": bool(cost.get("known")),
+        "duration": bool(economy.get("duration_known")),
+    }
+    economy_share = {
+        "token_percent": token_usage.get("token_percent") if usage_known["tokens"] else None,
+        "total_tokens": token_usage.get("total_tokens") if usage_known["tokens"] else None,
+        "cost_percent": cost.get("cost_percent") if usage_known["cost"] else None,
+        "estimated_cost": cost.get("estimated_total") if usage_known["cost"] else None,
+        "currency": cost.get("currency") or run_cost.get("currency") or "USD",
+        "duration_percent": economy.get("duration_percent") if usage_known["duration"] else None,
+        "duration_ms": economy.get("duration_ms") if usage_known["duration"] else None,
+    }
+
+    if routing_status == "healthy":
+        status = "verified_economy" if any(usage_known.values()) else "missing_usage"
+    elif routing_status in {"pending_evidence", "drift", "not_configured", "command_not_ready"}:
+        status = routing_status
+    else:
+        status = "unknown"
+
+    share_parts = _efficiency_share_parts(economy_share, usage_known)
+    share_text = ", ".join(share_parts) if share_parts else "no token/cost/duration usage reported"
+    coverage_label = str(coverage.get("label") or "").strip()
+    if status == "verified_economy":
+        summary = f"Economy write/fix route is verified with {share_text}."
+        recommendation = "Keep plan/review on supervision providers and use this split to monitor whether simple work stays on the cheaper route."
+    elif status == "missing_usage":
+        summary = "Economy routing is healthy, but provider usage is not reported yet."
+        recommendation = "Have low-cost wrappers emit token/cost data through PATCHBAY_USAGE_FILE so the cost split can be audited."
+    elif status == "pending_evidence":
+        summary = f"Economy routing is configured, but provider evidence is incomplete{f' ({coverage_label})' if coverage_label else ''}."
+        recommendation = "Poll events or complete write/fix phases before treating the run as cost-optimized."
+    elif status == "command_not_ready":
+        summary = "Economy routing is configured, but the low-cost provider command cannot execute."
+        recommendation = "Fix the returned command action before starting or continuing high-volume write/fix work."
+    elif status == "drift":
+        summary = f"Write/fix routing drifted away from the configured economy provider{f' ({coverage_label})' if coverage_label else ''}."
+        recommendation = "Inspect provider events and configuration before assuming simple work used the cheaper model."
+    elif status == "not_configured":
+        summary = "Write/fix are not fully routed to the economy profile."
+        recommendation = "Apply the economy profile or configure a custom low-cost writer before high-volume implementation work."
+    else:
+        summary = f"Efficiency evidence is incomplete; economy load has {share_text}."
+        recommendation = "Inspect metrics and routing evidence before making cost-efficiency claims."
+
+    return {
+        "status": status,
+        "routing_status": routing_status,
+        "usage_known": usage_known,
+        "economy_share": economy_share,
+        "coverage": coverage,
+        "summary": summary,
+        "recommendation": recommendation,
+    }
+
+
+def _efficiency_share_parts(economy_share: dict[str, Any], usage_known: dict[str, bool]) -> list[str]:
+    parts: list[str] = []
+    if usage_known.get("tokens"):
+        percent = economy_share.get("token_percent")
+        tokens = economy_share.get("total_tokens")
+        label = f"{tokens} tokens" if tokens is not None else "known tokens"
+        parts.append(f"{label}{_efficiency_percent_suffix(percent)}")
+    if usage_known.get("cost"):
+        percent = economy_share.get("cost_percent")
+        amount = economy_share.get("estimated_cost")
+        currency = economy_share.get("currency") or "USD"
+        label = f"{currency} {amount}" if amount is not None else "known cost"
+        parts.append(f"{label}{_efficiency_percent_suffix(percent)}")
+    if usage_known.get("duration"):
+        percent = economy_share.get("duration_percent")
+        duration = economy_share.get("duration_ms")
+        label = f"{duration} ms" if duration is not None else "known duration"
+        parts.append(f"{label}{_efficiency_percent_suffix(percent)}")
+    return parts
+
+
+def _efficiency_percent_suffix(value: Any) -> str:
+    return f" / {value}%" if value is not None else ""
+
+
+def _empty_tier_usage(tier: str, currency: str) -> dict[str, Any]:
+    return {
+        "tier": tier,
+        "label": _TIER_LABELS.get(tier, tier),
+        "phases": list(_CANONICAL_TIER_PHASES.get(tier, [])),
+        "duration_known": False,
+        "duration_ms": 0,
+        "duration_percent": None,
+        "phase_durations_ms": {},
+        "token_usage": {
+            "known": False,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cached_tokens": 0,
+            "total_tokens": 0,
+            "token_percent": None,
+        },
+        "cost": {
+            "known": False,
+            "currency": currency or "USD",
+            "estimated_total": 0.0,
+            "cost_percent": None,
+        },
+    }
+
+
+def _phase_tier(phase: str) -> str:
+    return _PHASE_TIER_BY_PHASE.get(phase or "", "other")
+
+
+def _percent(value: int | float | None, total: int | float | None) -> float | None:
+    if value is None or total in (None, 0):
+        return None
+    return round((float(value) / float(total)) * 100, 1)
+
+
+def _accumulate_tier_tokens(bucket: dict[str, Any], token_usage: dict[str, Any]) -> None:
+    bucket["known"] = True
+    for field in ("input_tokens", "output_tokens", "cached_tokens", "total_tokens"):
+        value = token_usage.get(field)
+        if value is not None:
+            bucket[field] += int(value)
+
+
+def _accumulate_tier_cost(bucket: dict[str, Any], cost: dict[str, Any]) -> None:
+    bucket["known"] = True
+    estimated = cost.get("estimated_total")
+    if estimated is not None:
+        bucket["estimated_total"] += float(estimated)
+    bucket["currency"] = str(cost.get("currency") or bucket.get("currency") or "USD")
+
+
+def _run_routing_evidence(run_metrics: dict[str, Any], effective: dict[str, Any], cfg: dict[str, Any] | None = None) -> dict[str, Any]:
+    target = economy_target(cfg or {})
+    provider_usage = [
+        entry
+        for entry in run_metrics.get("provider_usage", [])
+        if isinstance(entry, dict) and (entry.get("provider") or entry.get("model"))
+    ]
+    phases: dict[str, dict[str, Any]] = {}
+    configured_economy_phases: list[str] = []
+    observed_phases: list[str] = []
+    observed_economy_phases: list[str] = []
+    observed_non_economy_phases: list[str] = []
+    missing_evidence: list[str] = []
+    for phase in ("write", "fix"):
+        configured = _routing_phase_snapshot(effective.get(phase) or {})
+        observed = [
+            _routing_phase_snapshot(entry)
+            for entry in provider_usage
+            if str(entry.get("phase") or "") == phase
+        ]
+        configured_economy = _is_economy_route(configured, target)
+        observed_economy = any(_is_economy_route(entry, target) for entry in observed)
+        observed_other = any(not _is_economy_route(entry, target) for entry in observed)
+        if configured_economy:
+            configured_economy_phases.append(phase)
+        if observed:
+            observed_phases.append(phase)
+        if observed_economy:
+            observed_economy_phases.append(phase)
+        if observed_other:
+            observed_non_economy_phases.append(phase)
+        if not observed:
+            missing_evidence.append(phase)
+        command_status = _routing_phase_command_status(cfg or {}, configured)
+        phases[phase] = {
+            "configured": configured,
+            "observed": observed,
+            "configured_economy": configured_economy,
+            "observed_economy": observed_economy,
+            "command_status": command_status if command_status.get("required") else None,
+            "status": (
+                "observed_mixed"
+                if observed_economy and observed_other
+                else "observed_economy"
+                if observed_economy
+                else "observed_other"
+                if observed
+                else "not_observed"
+            ),
+        }
+    economy_configured = configured_economy_phases == ["write", "fix"]
+    command_statuses = {
+        phase: phases[phase].get("command_status")
+        for phase in ("write", "fix")
+        if isinstance(phases.get(phase, {}).get("command_status"), dict)
+    }
+    command_not_ready = [
+        phase
+        for phase in ("write", "fix")
+        if isinstance(command_statuses.get(phase), dict) and command_statuses[phase].get("ready") is False
+    ]
+    required_command_statuses = [item for item in command_statuses.values() if item.get("required")]
+    economy_command_ready = (
+        all(item.get("ready") for item in required_command_statuses)
+        if required_command_statuses
+        else None
+    )
+    coverage = _routing_coverage(
+        configured_economy_phases=configured_economy_phases,
+        observed_phases=observed_phases,
+        observed_economy_phases=observed_economy_phases,
+        observed_non_economy_phases=observed_non_economy_phases,
+    )
+    economy_health = _economy_health(
+        economy_configured=economy_configured,
+        configured_economy_phases=configured_economy_phases,
+        observed_economy_phases=observed_economy_phases,
+        observed_non_economy_phases=observed_non_economy_phases,
+        missing_evidence=missing_evidence,
+        command_not_ready=command_not_ready,
+        command_statuses=command_statuses,
+        coverage=coverage,
+        target=target,
+    )
+    actions = _routing_health_actions(economy_health)
+    return {
+        "target": target,
+        "economy_configured": economy_configured,
+        "economy_command_ready": economy_command_ready,
+        "command_not_ready_phases": command_not_ready,
+        "configured_economy_phases": configured_economy_phases,
+        "observed_phases": observed_phases,
+        "observed_economy_phases": observed_economy_phases,
+        "observed_non_economy_phases": observed_non_economy_phases,
+        "missing_evidence": missing_evidence,
+        "coverage": coverage,
+        "economy_health": economy_health,
+        "actions": actions,
+        "phases": phases,
+        "summary": _routing_evidence_summary(
+            economy_configured=economy_configured,
+            observed_economy_phases=observed_economy_phases,
+            observed_non_economy_phases=observed_non_economy_phases,
+            missing_evidence=missing_evidence,
+            coverage=coverage,
+            target=target,
+        ),
+    }
+
+
+def _routing_health_actions(health: dict[str, Any]) -> list[dict[str, Any]]:
+    next_action = str(health.get("next_action") or "")
+    target = health.get("target", {}) if isinstance(health.get("target"), dict) else {}
+    target_name = str(target.get("label") or route_label(target))
+    if next_action == "configure_reasonix_command":
+        return [
+            {
+                "id": "configure_reasonix_command",
+                "label": "Configure Reasonix",
+                "kind": "local_agent",
+                "message": "configure reasonix command",
+                "command": "patchbay config --set-key commands.reasonix --set-value reasonix",
+                "safe": True,
+                "reason": f"Set the default Reasonix executable so the {target_name} write/fix economy route can actually run.",
+            }
+        ]
+    if next_action == "inspect_economy_provider_command":
+        actions = []
+        status = _first_not_ready_command_status(health)
+        source = str(status.get("source") or "")
+        if source.startswith("providers."):
+            actions.append(_configure_provider_command_action(source, target_name))
+        actions.append(
+            {
+                "id": "inspect_economy_provider_command",
+                "label": "Inspect provider command",
+                "kind": "local_agent",
+                "message": "readiness",
+                "safe": True,
+                "reason": f"Open readiness to inspect the configured {target_name} economy provider command.",
+            }
+        )
+        return actions
+    if next_action == "apply_economy_profile":
+        return [
+            {
+                "id": "apply_economy_profile",
+                "label": "Apply economy profile",
+                "kind": "local_agent",
+                "message": "apply economy profile",
+                "safe": True,
+                "reason": f"Route high-volume write/fix work to the configured {target_name} economy profile.",
+            }
+        ]
+    if next_action == "inspect_routing_events":
+        return [
+            {
+                "id": "inspect_routing_events",
+                "label": "Inspect routing events",
+                "kind": "diagnostic_tab",
+                "tab": "Trace",
+                "safe": True,
+                "reason": "Open provider events to inspect non-economy write/fix provider evidence.",
+            }
+        ]
+    if next_action == "wait_for_routing_evidence":
+        return [
+            {
+                "id": "wait_for_routing_evidence",
+                "label": "Watch provider events",
+                "kind": "diagnostic_tab",
+                "tab": "Trace",
+                "safe": True,
+                "reason": "Open events while write/fix phases produce provider evidence.",
+            }
+        ]
+    return []
+
+
+def _configure_provider_command_action(source: str, target_name: str) -> dict[str, Any]:
+    return {
+        "id": "configure_economy_provider_command",
+        "label": "Copy provider command",
+        "kind": "command",
+        "command": f"patchbay config --set-key {source} --set-value <command>",
+        "safe": True,
+        "reason": f"Copy the command for the {target_name} economy provider into .ai/patchbay.toml.",
+    }
+
+
+def _first_not_ready_command_status(health: dict[str, Any]) -> dict[str, Any]:
+    command_status = health.get("command_status")
+    if isinstance(command_status, dict) and command_status.get("required") and command_status.get("ready") is False:
+        return command_status
+    statuses = health.get("command_statuses")
+    if not isinstance(statuses, dict):
+        return {}
+    for phase in ("write", "fix"):
+        item = statuses.get(phase)
+        if isinstance(item, dict) and item.get("required") and item.get("ready") is False:
+            return item
+    for item in statuses.values():
+        if isinstance(item, dict) and item.get("required") and item.get("ready") is False:
+            return item
+    return {}
+
+
+def _economy_health(
+    *,
+    economy_configured: bool,
+    configured_economy_phases: list[str],
+    observed_economy_phases: list[str],
+    observed_non_economy_phases: list[str],
+    missing_evidence: list[str],
+    command_not_ready: list[str],
+    command_statuses: dict[str, Any],
+    coverage: dict[str, Any],
+    target: dict[str, Any],
+) -> dict[str, Any]:
+    required_phases = ["write", "fix"]
+    configured = set(configured_economy_phases)
+    missing_config = [phase for phase in required_phases if phase not in configured]
+    drift_phases = sorted(set(observed_non_economy_phases), key=required_phases.index)
+    missing_observation = [phase for phase in required_phases if phase in set(missing_evidence)]
+    target_name = str(target.get("label") or route_label(target))
+
+    if missing_config:
+        summary = f"Economy route is missing for {'/'.join(missing_config)}; high-volume work may use providers outside {target_name}."
+        return {
+            "status": "not_configured",
+            "severity": "warning",
+            "configured": economy_configured,
+            "target": target,
+            "required_phases": required_phases,
+            "missing_config_phases": missing_config,
+            "drift_phases": drift_phases,
+            "missing_evidence": missing_observation,
+            "observed_economy_phases": observed_economy_phases,
+            "summary": summary,
+            "recommendation": f"Run `patchbay config profile apply economy` before write/fix so simple implementation and repair work routes to {target_name}.",
+            "next_action": "apply_economy_profile",
+        }
+    if command_not_ready:
+        next_action = (
+            "configure_reasonix_command"
+            if str(target.get("provider") or "") == ECONOMY_PROVIDER
+            else "inspect_economy_provider_command"
+        )
+        summary = f"Economy route is configured, but {'/'.join(command_not_ready)} cannot execute because the {target_name} command is not ready."
+        return {
+            "status": "command_not_ready",
+            "severity": "warning",
+            "configured": True,
+            "target": target,
+            "required_phases": required_phases,
+            "missing_config_phases": [],
+            "command_not_ready_phases": command_not_ready,
+            "drift_phases": drift_phases,
+            "missing_evidence": missing_observation,
+            "observed_economy_phases": observed_economy_phases,
+            "command_statuses": command_statuses,
+            "summary": summary,
+            "recommendation": f"Fix the configured {target_name} provider command before continuing high-volume write/fix work.",
+            "next_action": next_action,
+        }
+    if drift_phases:
+        summary = f"Economy route is configured, but {'/'.join(drift_phases)} observed non-economy provider events."
+        return {
+            "status": "drift",
+            "severity": "warning",
+            "configured": True,
+            "target": target,
+            "required_phases": required_phases,
+            "missing_config_phases": [],
+            "drift_phases": drift_phases,
+            "missing_evidence": missing_observation,
+            "observed_economy_phases": observed_economy_phases,
+            "summary": summary,
+            "recommendation": "Inspect provider events and command routing before continuing high-volume write/fix work.",
+            "next_action": "inspect_routing_events",
+        }
+    if coverage.get("complete"):
+        return {
+            "status": "healthy",
+            "severity": "ok",
+            "configured": True,
+            "target": target,
+            "required_phases": required_phases,
+            "missing_config_phases": [],
+            "drift_phases": [],
+            "missing_evidence": [],
+            "observed_economy_phases": observed_economy_phases,
+            "summary": f"Economy route is configured and observed on {target_name} for all high-volume write/fix phases.",
+            "recommendation": "",
+            "next_action": "none",
+        }
+    summary = f"Economy route is configured; waiting for {'/'.join(missing_observation) or 'write/fix'} provider evidence."
+    return {
+        "status": "pending_evidence",
+        "severity": "info",
+        "configured": True,
+        "target": target,
+        "required_phases": required_phases,
+        "missing_config_phases": [],
+        "drift_phases": [],
+        "missing_evidence": missing_observation,
+        "observed_economy_phases": observed_economy_phases,
+        "summary": summary,
+        "recommendation": "Run or poll write/fix phases to confirm high-volume work is actually using the economy route.",
+        "next_action": "wait_for_routing_evidence",
+    }
+
+
+def _routing_coverage(
+    *,
+    configured_economy_phases: list[str],
+    observed_phases: list[str],
+    observed_economy_phases: list[str],
+    observed_non_economy_phases: list[str],
+) -> dict[str, Any]:
+    required_total = 2
+    observed_economy_total = len(set(observed_economy_phases))
+    percent = int(round((observed_economy_total / required_total) * 100))
+    return {
+        "required_phases": ["write", "fix"],
+        "required_total": required_total,
+        "configured_economy_total": len(set(configured_economy_phases)),
+        "observed_total": len(set(observed_phases)),
+        "observed_economy_total": observed_economy_total,
+        "observed_other_total": len(set(observed_non_economy_phases)),
+        "observed_economy_ratio": round(observed_economy_total / required_total, 2),
+        "observed_economy_percent": percent,
+        "complete": observed_economy_total == required_total,
+        "label": f"{observed_economy_total}/{required_total} economy phases observed",
+    }
+
+
+def _routing_phase_snapshot(route: dict[str, Any]) -> dict[str, Any]:
+    snapshot: dict[str, Any] = {
+        "provider": str(route.get("provider") or ""),
+        "model": str(route.get("model") or ""),
+    }
+    for key in ("phase", "command_key", "events", "duration_ms", "input_tokens", "output_tokens", "cached_tokens", "total_tokens"):
+        value = route.get(key)
+        if value not in (None, ""):
+            snapshot[key] = value
+    for key in ("cost", "token_usage"):
+        value = route.get(key)
+        if isinstance(value, dict) and value:
+            snapshot[key] = value
+    return snapshot
+
+
+def _routing_phase_command_status(cfg: dict[str, Any], phase: dict[str, Any]) -> dict[str, Any]:
+    return route_command_status(cfg, phase)
+
+
+def _is_economy_route(route: dict[str, Any], target: dict[str, Any]) -> bool:
+    return route_matches_economy(route, target)
+
+
+def _routing_evidence_summary(
+    *,
+    economy_configured: bool,
+    observed_economy_phases: list[str],
+    observed_non_economy_phases: list[str],
+    missing_evidence: list[str],
+    coverage: dict[str, Any],
+    target: dict[str, Any],
+) -> str:
+    coverage_label = str(coverage.get("label") or "").strip()
+    target_name = str(target.get("label") or route_label(target))
+    if economy_configured and observed_non_economy_phases:
+        observed_other = "/".join(observed_non_economy_phases)
+        return f"Economy route configured, but {observed_other} observed a non-economy provider; {coverage_label}."
+    if economy_configured and set(observed_economy_phases) == {"write", "fix"}:
+        return f"Economy route configured and observed on {target_name} for write/fix."
+    if economy_configured and observed_economy_phases:
+        missing = "/".join(missing_evidence) if missing_evidence else "remaining phases"
+        observed = "/".join(observed_economy_phases)
+        return f"Economy route configured; observed {observed}, {missing} not observed yet; {coverage_label}."
+    if economy_configured:
+        return "Economy route configured for write/fix; provider evidence is not observed yet."
+    if observed_economy_phases:
+        observed = "/".join(observed_economy_phases)
+        return f"Observed {observed} on {target_name}, but current write/fix config is not fully economy."
+    return "Economy route is not configured or not observed for write/fix."
+
+
+def _accumulate_phase_tokens(store: dict[str, dict[str, Any]], phase: str, token_usage: dict[str, Any]) -> None:
+    if not phase:
+        phase = "unknown"
+    bucket = store.setdefault(
+        phase,
+        {
+            "known": False,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cached_tokens": 0,
+            "total_tokens": 0,
+        },
+    )
+    bucket["known"] = True
+    for field in ("input_tokens", "output_tokens", "cached_tokens", "total_tokens"):
+        value = token_usage.get(field)
+        if value is not None:
+            bucket[field] += int(value)
+
+
+def _accumulate_provider_tokens(bucket: dict[str, Any], token_usage: dict[str, Any]) -> None:
+    provider_tokens = bucket.setdefault(
+        "token_usage",
+        {
+            "known": False,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cached_tokens": 0,
+            "total_tokens": 0,
+        },
+    )
+    provider_tokens["known"] = True
+    for field in ("input_tokens", "output_tokens", "cached_tokens", "total_tokens"):
+        value = token_usage.get(field)
+        if value is not None:
+            provider_tokens[field] += int(value)
+        bucket[field] = provider_tokens[field]
+
+
+def _accumulate_phase_cost(store: dict[str, dict[str, Any]], phase: str, cost: dict[str, Any]) -> None:
+    if not phase:
+        phase = "unknown"
+    bucket = store.setdefault(
+        phase,
+        {
+            "known": False,
+            "currency": str(cost.get("currency") or "USD"),
+            "estimated_total": 0.0,
+        },
+    )
+    bucket["known"] = True
+    estimated = cost.get("estimated_total")
+    if estimated is not None:
+        bucket["estimated_total"] += float(estimated)
+    currency = str(cost.get("currency") or bucket.get("currency") or "USD")
+    bucket["currency"] = currency
+
+
+def _accumulate_provider_cost(bucket: dict[str, Any], cost: dict[str, Any]) -> None:
+    provider_cost = bucket.setdefault(
+        "cost",
+        {
+            "known": False,
+            "currency": str(cost.get("currency") or "USD"),
+            "estimated_total": 0.0,
+        },
+    )
+    provider_cost["known"] = True
+    estimated = cost.get("estimated_total")
+    if estimated is not None:
+        provider_cost["estimated_total"] = round(float(provider_cost["estimated_total"]) + float(estimated), 6)
+    provider_cost["currency"] = str(cost.get("currency") or provider_cost.get("currency") or "USD")
+
+
+def _event_duration_ms(entry: dict[str, Any]) -> int | None:
+    value = entry.get("duration_ms")
+    if value is None:
+        return None
+    try:
+        duration = int(value)
+    except (TypeError, ValueError):
+        return None
+    if duration < 0:
+        return None
+    return duration
+
+
+def _estimate_duration_ms(start: str, end: str) -> int | None:
+    if not start or not end:
+        return None
+    try:
+        start_time = datetime.fromisoformat(start)
+        end_time = datetime.fromisoformat(end)
+    except ValueError:
+        return None
+    duration = int((end_time - start_time).total_seconds() * 1000)
+    return duration if duration >= 0 else None
 
 
 def _current_phase_from_status(status_value: str) -> str:
@@ -1224,18 +2827,286 @@ def _next_commands(data: dict[str, Any]) -> list[str]:
 
 
 def _gate_state(data: dict[str, Any]) -> dict[str, Any]:
+    status_value = str(data.get("status"))
+    stage_value = str(data.get("stage") or data.get("current_phase") or "")
     return {
-        "approved": str(data.get("status")) not in {"NEW", PLANNED},
+        "approved": status_value not in {"NEW", PLANNED} and not (status_value == "RUNNING" and stage_value == "plan"),
         "tests_passed": bool(data.get("tests_passed")),
+        "tests_status": data.get("tests_status", "NOT_RUN"),
         "review_result": data.get("review_result"),
         "ready_to_apply": data.get("status") == REVIEWED_PASS and bool(data.get("tests_passed")),
     }
 
 
+def _run_queue_action(data: dict[str, Any]) -> dict[str, Any]:
+    run_id = str(data.get("run_id") or "")
+    status_value = str(data.get("status") or "")
+    background = data.get("background_job") if isinstance(data.get("background_job"), dict) else {}
+    if background.get("active"):
+        return {
+            "id": "poll_context",
+            "label": "Poll context",
+            "kind": "local_agent",
+            "run_id": run_id,
+            "message": "context",
+            "safe": True,
+            "reason": "Refresh the active background run without advancing any gate.",
+        }
+    if status_value == PLANNED:
+        return {
+            "id": "approve_and_run",
+            "label": "Approve plan",
+            "kind": "local_agent",
+            "run_id": run_id,
+            "message": "approve",
+            "safe": False,
+            "requires_confirmation": {
+                "type": "plan_approval",
+                "required_action": "approve_and_run",
+                "confirmation": "plan_approved",
+            },
+            "reason": "Plan approval is required before implementation starts.",
+        }
+    if _gate_state(data).get("ready_to_apply"):
+        return {
+            "id": "apply",
+            "label": "Apply reviewed diff",
+            "kind": "local_agent",
+            "run_id": run_id,
+            "message": "apply",
+            "safe": False,
+            "requires_confirmation": {
+                "type": "apply_approval",
+                "required_action": "apply",
+                "confirmation": "apply_approved",
+            },
+            "reason": "Tests and review passed; apply still requires explicit confirmation.",
+        }
+    if status_value in {APPROVED, IMPLEMENTED, TESTED, REVIEWED_CHANGES_REQUESTED}:
+        return {
+            "id": "continue",
+            "label": "Continue run",
+            "kind": "local_agent",
+            "run_id": run_id,
+            "message": "continue",
+            "safe": False,
+            "reason": "Run the next Patchbay phase for this selected run.",
+        }
+    if status_value == FAILED:
+        return {
+            "id": "inspect_failure",
+            "label": "Inspect failure",
+            "kind": "diagnostic_tab",
+            "run_id": run_id,
+            "tab": "Trace",
+            "safe": True,
+            "reason": "Inspect events and artifacts before retrying or starting a replacement task.",
+        }
+    return {
+        "id": "open_run",
+        "label": "Open run",
+        "kind": "open_run",
+        "run_id": run_id,
+        "tab": "Overview",
+        "safe": True,
+        "reason": "Open this run without advancing any gate.",
+    }
+
+
+def _run_queue_state(data: dict[str, Any]) -> dict[str, Any]:
+    status_value = str(data.get("status") or "")
+    background = data.get("background_job") if isinstance(data.get("background_job"), dict) else {}
+    if background.get("active"):
+        key = "running"
+        label = "Running"
+        priority = 100
+        summary = "Background Agent job is active; poll context/events or cancel it."
+    elif status_value == PLANNED:
+        key = "needs_approval"
+        label = "Needs plan approval"
+        priority = 90
+        summary = "Plan is ready and waiting for explicit approval."
+    elif _gate_state(data).get("ready_to_apply"):
+        key = "ready_to_apply"
+        label = "Ready to apply"
+        priority = 80
+        summary = "Tests and review passed; apply requires explicit confirmation."
+    elif status_value == FAILED:
+        key = "failed"
+        label = "Needs diagnosis"
+        priority = 70
+        summary = str(data.get("suggested_next_action") or data.get("error") or "Inspect diagnostics before retrying.")
+    elif status_value in {APPROVED, IMPLEMENTED, TESTED, REVIEWED_CHANGES_REQUESTED}:
+        key = "ready_to_continue"
+        label = "Ready to continue"
+        priority = 60
+        summary = "Run can advance to the next gated Patchbay phase."
+    elif status_value in {IMPLEMENTING, TESTING, REVIEWING, FIXING}:
+        key = "running"
+        label = "Phase running"
+        priority = 55
+        summary = "A foreground phase is in progress; poll status/events."
+    elif status_value == APPLIED:
+        key = "applied"
+        label = "Applied"
+        priority = 20
+        summary = "Run has already been applied."
+    else:
+        key = "inspect"
+        label = "Inspect"
+        priority = 30
+        summary = "Open this run to inspect status and events."
+
+    action = _run_queue_action(data)
+    return {
+        "key": key,
+        "label": label,
+        "priority": priority,
+        "summary": summary,
+        "next_action": action,
+        "requires_confirmation": bool(action.get("requires_confirmation")),
+        "safe": bool(action.get("safe", True)),
+    }
+
+
+def _build_runs_inbox(items: list[dict[str, Any]]) -> dict[str, Any]:
+    groups: dict[str, dict[str, Any]] = {}
+    active_count = 0
+    confirmation_count = 0
+    safe_action_count = 0
+    for item in items:
+        queue = item.get("inbox") if isinstance(item.get("inbox"), dict) else {}
+        key = str(queue.get("key") or "inspect")
+        group = groups.setdefault(
+            key,
+            {
+                "key": key,
+                "label": queue.get("label") or key,
+                "count": 0,
+                "run_ids": [],
+            },
+        )
+        group["count"] += 1
+        group["run_ids"].append(item.get("run_id"))
+        if key == "running":
+            active_count += 1
+        if queue.get("requires_confirmation"):
+            confirmation_count += 1
+        if queue.get("safe"):
+            safe_action_count += 1
+
+    priority_order = {
+        "running": 0,
+        "needs_approval": 1,
+        "ready_to_apply": 2,
+        "failed": 3,
+        "ready_to_continue": 4,
+        "inspect": 5,
+        "applied": 6,
+    }
+    ordered_groups = sorted(groups.values(), key=lambda group: priority_order.get(str(group.get("key")), 99))
+    focus = max(items, key=lambda item: int((item.get("inbox") or {}).get("priority") or 0), default=None)
+    return {
+        "total": len(items),
+        "active_count": active_count,
+        "confirmation_required_count": confirmation_count,
+        "safe_action_count": safe_action_count,
+        "groups": ordered_groups,
+        "focus_run_id": focus.get("run_id") if focus else None,
+        "focus": focus,
+        "summary": _runs_inbox_summary(len(items), active_count, confirmation_count, ordered_groups),
+    }
+
+
+def _runs_inbox_summary(total: int, active_count: int, confirmation_count: int, groups: list[dict[str, Any]]) -> str:
+    if total == 0:
+        return "No Patchbay runs yet."
+    group_text = ", ".join(f"{group['label']}: {group['count']}" for group in groups[:4])
+    parts = [f"{total} runs"]
+    if active_count:
+        parts.append(f"{active_count} active")
+    if confirmation_count:
+        parts.append(f"{confirmation_count} need confirmation")
+    if group_text:
+        parts.append(group_text)
+    return "; ".join(parts) + "."
+
+
+def context(
+    cwd: Path,
+    run_id: str,
+    *,
+    since_event: int = 0,
+    since_trace: int = 0,
+    include_trace: bool = False,
+    status_data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return a unified run handoff digest for CLI, MCP, and web clients."""
+    root = resolve_root(cwd)
+    run_path = _run_path_for_read(root, run_id)
+    if status_data is None:
+        status_data = status(root, run_id)
+    return build_handoff_context(
+        run_path=run_path,
+        status_data=status_data,
+        since_event=since_event,
+        since_trace=since_trace,
+        include_trace=include_trace,
+    )
+
+
+def metrics(cwd: Path, run_id: str) -> dict[str, Any]:
+    """Return the run efficiency digest without the full handoff payload."""
+    status_data = status(cwd, run_id)
+    routing = status_data.get("routing_evidence", {})
+    efficiency = status_data.get("efficiency_summary", {})
+    actions = routing.get("actions", []) if isinstance(routing, dict) else []
+    return {
+        "run_id": run_id,
+        "status": status_data.get("status"),
+        "current_phase": status_data.get("current_phase"),
+        "effective_phase_providers": status_data.get("effective_phase_providers", {}),
+        "routing_evidence": routing,
+        "efficiency_summary": efficiency,
+        "actions": actions,
+        "action_groups": group_actions(actions),
+        "run_metrics": status_data.get("run_metrics", {}),
+    }
+
+
+def _effective_phase_provider_summary(cfg: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    effective: dict[str, dict[str, Any]] = {}
+    for phase in ("plan", "write", "review", "fix"):
+        resolved = resolve_phase(cfg, phase)
+        effective[phase] = {
+            "provider": resolved.get("provider", ""),
+            "model": resolved.get("model", ""),
+            "command_key": resolved.get("command_key", ""),
+        }
+    return effective
+
+
+def _run_provider_trail(run_path: Path) -> list[dict[str, Any]]:
+    trail: list[dict[str, Any]] = []
+    for item in list_events(run_path):
+        if not (item.get("provider") or item.get("model")):
+            continue
+        trail.append(
+            {
+                "phase": item.get("phase", ""),
+                "provider": item.get("provider", ""),
+                "model": item.get("model", ""),
+                "status": item.get("status", ""),
+                "timestamp": item.get("timestamp", ""),
+            }
+        )
+    return trail
+
+
 def events(cwd: Path, run_id: str, *, since: int = 0, phase: str | None = None) -> dict[str, Any]:
     """Return event log entries for a run (used by CLI ``events`` and MCP ``patchbay_events``)."""
     root = resolve_root(cwd)
-    run_path, data = _load_run(root, run_id)
+    run_path = _run_path_for_read(root, run_id)
     entries = list_events(run_path, since=since, phase=phase)
     return {
         "run_id": run_id,
@@ -1246,34 +3117,99 @@ def events(cwd: Path, run_id: str, *, since: int = 0, phase: str | None = None) 
     }
 
 
+def trace(cwd: Path, run_id: str, *, since: int = 0, phase: str | None = None) -> dict[str, Any]:
+    """Return structured trace entries for a run (used by CLI ``trace`` and MCP ``patchbay_trace``)."""
+    root = resolve_root(cwd)
+    run_path = _run_path_for_read(root, run_id)
+    entries = list_trace(run_path, since=since, phase=phase)
+    return {
+        "run_id": run_id,
+        "since": since,
+        "total": trace_count(run_path),
+        "returned": len(entries),
+        "trace": entries,
+    }
+
+
 def runs(cwd: Path, *, limit: int = 20) -> dict[str, Any]:
     root = resolve_root(cwd)
     ensure_layout(root)
+    cfg = load_config(root)
+    effective = _effective_phase_provider_summary(cfg)
     items: list[dict[str, Any]] = []
     for candidate in sorted(runs_dir(root).iterdir(), key=lambda item: item.stat().st_mtime, reverse=True):
-        if not candidate.is_dir() or not (candidate / "STATUS.json").exists():
+        if not candidate.is_dir():
             continue
         try:
-            data = load_status(candidate)
+            if (candidate / "STATUS.json").exists():
+                data = load_status(candidate)
+            elif (candidate / "JOB.json").exists():
+                job = read_json(candidate / "JOB.json")
+                data = _job_status_without_status(root, str(job.get("run_id") or candidate.name), job)
+            else:
+                continue
         except Exception:
             continue
-        items.append(
+        job_path = candidate / "JOB.json"
+        if job_path.exists():
+            try:
+                job = read_json(job_path)
+                data["job"] = job
+                data["background_job"] = _background_job_summary(job)
+            except Exception:
+                pass
+        if "current_phase" not in data:
+            data["current_phase"] = data.get("stage") or _current_phase_from_status(str(data.get("status", "")))
+        if "gate_state" not in data:
+            data["gate_state"] = _gate_state(data)
+        if "next_commands" not in data:
+            data["next_commands"] = _next_commands(data)
+        run_metrics = _run_metrics(candidate)
+        routing_evidence = _run_routing_evidence(run_metrics, effective, cfg)
+        efficiency_summary = _run_efficiency_summary(run_metrics, routing_evidence)
+        run_metrics["routing_evidence"] = routing_evidence
+        run_metrics["efficiency_summary"] = efficiency_summary
+        summary = {
+            "run_id": data.get("run_id", candidate.name),
+            "status": data.get("status"),
+            "task": data.get("task"),
+            "updated_at": data.get("updated_at"),
+            "run_dir": str(candidate),
+            "current_phase": data.get("current_phase"),
+            "tests_passed": data.get("tests_passed"),
+            "review_result": data.get("review_result"),
+            "next_commands": data.get("next_commands"),
+            "gate_state": data.get("gate_state"),
+            "effective_phase_providers": deepcopy(effective),
+            "routing_evidence": routing_evidence,
+            "efficiency_summary": efficiency_summary,
+            "run_metrics": run_metrics,
+            "provider_trail": _run_provider_trail(candidate),
+            "background_job": data.get("background_job"),
+        }
+        summary["inbox"] = _run_queue_state({**data, **summary})
+        summary["actions"] = _dedupe_actions([
             {
-                "run_id": data.get("run_id", candidate.name),
-                "status": data.get("status"),
-                "task": data.get("task"),
-                "updated_at": data.get("updated_at"),
-                "run_dir": str(candidate),
-            }
-        )
+                "id": "open_run",
+                "label": "Open run",
+                "kind": "open_run",
+                "run_id": summary["run_id"],
+                "tab": "Overview",
+                "safe": True,
+                "reason": "Open this run without advancing any gate.",
+            },
+            summary["inbox"]["next_action"],
+        ])
+        summary["action_groups"] = group_actions(summary["actions"])
+        items.append(summary)
         if len(items) >= limit:
             break
-    return {"count": len(items), "runs": items}
+    return {"count": len(items), "runs": items, "inbox": _build_runs_inbox(items)}
 
 
 def artifact(cwd: Path, run_id: str, artifact_name: str, *, tail: int | None = None) -> dict[str, Any]:
     root = resolve_root(cwd)
-    run_path, _ = _load_run(root, run_id)
+    run_path = _run_path_for_read(root, run_id)
     normalized = artifact_name.replace("\\", "/")
     if not normalized or normalized.startswith("/") or ".." in Path(normalized).parts:
         raise SafetyError("Invalid artifact name; use a file name inside the run directory.", stage="artifact")
@@ -1305,7 +3241,8 @@ def artifact(cwd: Path, run_id: str, artifact_name: str, *, tail: int | None = N
 
 def diff(cwd: Path, run_id: str) -> str:
     root = resolve_root(cwd)
-    run_path, data = _load_run(root, run_id)
+    run_path = _run_path_for_read(root, run_id)
+    data = load_status(run_path) if (run_path / "STATUS.json").exists() else {}
     final = run_path / "FINAL.diff"
     if final.exists():
         return read_text(final)
@@ -1419,12 +3356,19 @@ max_context_files = 30
 max_patch_attempts = 3
 max_repair_iterations = 2
 
+[profiles.economy]
+provider = "reasonix_cli"
+model = "deepseek-v4-pro"
+command_key = "reasonix"
+label = "Reasonix/DeepSeek"
+
 [workflow]
 require_plan_approval = true
 default_branch_prefix = "patchbay"
 worktree_root = "../.patchbay-worktrees"
 fail_on_dirty_workspace = true
 apply_to_current_workspace_only_after_review_pass = true
+allow_apply_without_tests = false # set true only for demo/mock repos that intentionally skip tests
 
 [commands_allowlist]
 test = [
@@ -1536,6 +3480,8 @@ cp .ai/patchbay.example.toml .ai/patchbay.toml
 按需编辑 `.ai/patchbay.toml`，尤其是 writer provider、命令路径和测试 allowlist。
 
 Writer 使用 Reasonix ACP coding agent（`reasonix acp`），由 Reasonix 自己的文件系统工具修改独立 worktree，Patchbay 只负责审批权限并捕获最终 `git diff`。
+
+`[profiles.economy]` 定义 `apply economy profile` 的目标 provider/model；默认是 Reasonix/DeepSeek，也可以改成任意低成本 writer。doctor、metrics 和 Web workbench 会按这个目标判断 write/fix 是否真的走了经济路由。
 
 ## 常用命令
 

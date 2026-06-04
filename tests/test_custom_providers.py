@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import sys
@@ -40,6 +41,9 @@ class CustomProviderTest(unittest.TestCase):
         (self.repo / ".ai").mkdir()
 
     def tearDown(self) -> None:
+        from scripts.ai_flow.adapters import reset_custom_providers
+
+        reset_custom_providers()
         shutil.rmtree(self.tempdir, ignore_errors=True)
 
     def test_custom_plan_provider_resolves_and_runs_cli_stdout(self) -> None:
@@ -99,9 +103,17 @@ provider = "local_planner"
         writer_script = self.tempdir / "writer.py"
         writer_script.write_text(
             """
+import json
+import os
+import sys
 from pathlib import Path
 Path("CUSTOM.md").write_text("# Custom writer\\n", encoding="utf-8")
+Path(os.environ["PATCHBAY_USAGE_FILE"]).write_text(json.dumps({
+    "usage": {"input_tokens": 10, "output_tokens": 5},
+    "total_cost_usd": 0.001,
+}, indent=2), encoding="utf-8")
 print("custom writer wrote CUSTOM.md")
+print(json.dumps({"usage": {"cached_tokens": 2}}), file=sys.stderr)
 """,
             encoding="utf-8",
         )
@@ -130,6 +142,91 @@ test = []
         service.approve(self.repo, planned["run_id"])
         written = service.write(self.repo, planned["run_id"])
         diff = service.diff(self.repo, planned["run_id"])
+        metrics = service.metrics(self.repo, planned["run_id"])["run_metrics"]
 
         self.assertEqual(written["status"], "IMPLEMENTED")
         self.assertIn("CUSTOM.md", diff)
+        self.assertEqual(metrics["token_usage"]["input_tokens"], 10)
+        self.assertEqual(metrics["token_usage"]["output_tokens"], 5)
+        self.assertEqual(metrics["token_usage"]["cached_tokens"], 2)
+        self.assertEqual(metrics["token_usage"]["total_tokens"], 17)
+        self.assertEqual(metrics["cost"]["estimated_total"], 0.001)
+
+    def test_custom_fix_only_provider_uses_fix_registry(self) -> None:
+        fixer_script = self.tempdir / "fixer.py"
+        fixer_script.write_text(
+            """
+from pathlib import Path
+Path("FIXED.md").write_text("# Custom fixer\\n", encoding="utf-8")
+print("custom fixer wrote FIXED.md")
+""",
+            encoding="utf-8",
+        )
+        python_cmd = sys.executable.replace("\\", "/")
+        (self.repo / ".ai" / "patchbay.toml").write_text(
+            f"""
+[providers.local_fixer]
+roles = ["fix"]
+command = "{python_cmd}"
+args = ["{fixer_script.as_posix()}"]
+prompt_mode = "stdin"
+output_contract = "worktree_diff"
+
+[phases.write]
+provider = "mock"
+
+[phases.fix]
+provider = "local_fixer"
+
+[commands_allowlist]
+test = []
+""",
+            encoding="utf-8",
+        )
+
+        from scripts.ai_flow import service
+
+        planned = service.plan(self.repo, task="custom fixer", mock=True)
+        service.approve(self.repo, planned["run_id"])
+        service.write(self.repo, planned["run_id"], mock=True)
+        run_path = self.repo / ".ai" / "runs" / planned["run_id"]
+        status = service.status(self.repo, planned["run_id"])
+        status["status"] = "REVIEWED_CHANGES_REQUESTED"
+        (run_path / "STATUS.json").write_text(json.dumps(status), encoding="utf-8")
+        (run_path / "REVIEW.md").write_text("CHANGES_REQUESTED\n\nRequired Fixes:\n1. Use local fixer.\n", encoding="utf-8")
+
+        fixed = service.fix(self.repo, planned["run_id"])
+        diff = service.diff(self.repo, planned["run_id"])
+
+        self.assertEqual(fixed["status"], "IMPLEMENTED")
+        self.assertIn("FIXED.md", diff)
+        self.assertIn("custom fixer wrote FIXED.md", (run_path / "writer.log").read_text(encoding="utf-8"))
+
+    def test_custom_provider_registry_is_scoped_to_loaded_config(self) -> None:
+        provider_script = self.tempdir / "writer.py"
+        provider_script.write_text("print('noop')\n", encoding="utf-8")
+        python_cmd = sys.executable.replace("\\", "/")
+        (self.repo / ".ai" / "patchbay.toml").write_text(
+            f"""
+[providers.local_writer]
+roles = ["write"]
+command = "{python_cmd}"
+args = ["{provider_script.as_posix()}"]
+prompt_mode = "stdin"
+output_contract = "writer_diff"
+""",
+            encoding="utf-8",
+        )
+
+        from scripts.ai_flow.adapters import WRITERS
+        from scripts.ai_flow.config import load_config
+
+        load_config(self.repo)
+        self.assertIn("local_writer", WRITERS)
+
+        other_repo = self.tempdir / "other-repo"
+        other_repo.mkdir()
+        (other_repo / ".ai").mkdir()
+        load_config(other_repo)
+
+        self.assertEqual(set(WRITERS), {"reasonix_cli", "mock"})

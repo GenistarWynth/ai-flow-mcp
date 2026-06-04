@@ -12,6 +12,8 @@ from ..config import split_command
 from ..errors import AiFlowError
 from ..runner import merged_env, redact
 from ..safety import validate_repo_relative_path
+from ..trace import append_trace
+from ..usage import metrics_from_value, with_usage
 
 
 def run_reasonix_writer(
@@ -23,9 +25,10 @@ def run_reasonix_writer(
     command_key: str = "reasonix",
     timeout: int = 900,
     env: dict[str, str] | None = None,
+    phase: str = "write",
 ) -> str:
-    command = _acp_command(config, cwd, log_path, command_key=command_key)
-    transcript = _run_acp(command=command, prompt=_agent_prompt(prompt), cwd=cwd, log_path=log_path, timeout=timeout, env=env)
+    command = _acp_command(config, cwd, log_path, command_key=command_key, phase=phase)
+    transcript = _run_acp(command=command, prompt=_agent_prompt(prompt), cwd=cwd, log_path=log_path, timeout=timeout, env=env, phase=phase)
     return "\n".join(
         [
             "BEGIN_WRITER_SUMMARY",
@@ -39,12 +42,12 @@ def run_reasonix_writer(
     ) + "\n"
 
 
-def _acp_command(config: dict, cwd: Path, log_path: Path, *, command_key: str = "reasonix") -> list[str]:
+def _acp_command(config: dict, cwd: Path, log_path: Path, *, command_key: str = "reasonix", phase: str = "write") -> list[str]:
     configured = split_command(config.get("commands", {}).get(command_key, ""))
     if not configured:
         raise AiFlowError(
             f"{command_key} command is not configured.",
-            stage="write",
+            stage=phase,
             suggested_next_action=(
                 f"Set commands.{command_key} in .ai/patchbay.toml to your Reasonix executable "
                 f"(reasonix or reasonix.cmd). Or explicitly configure "
@@ -74,8 +77,9 @@ def _agent_prompt(prompt: str) -> str:
     ).rstrip()
 
 
-def _run_acp(*, command: list[str], prompt: str, cwd: Path, log_path: Path, timeout: int = 900, env: dict[str, str] | None = None) -> str:
+def _run_acp(*, command: list[str], prompt: str, cwd: Path, log_path: Path, timeout: int = 900, env: dict[str, str] | None = None, phase: str = "write") -> str:
     effective_env = merged_env(env)
+    trace = _TraceRecorder(run_dir=log_path.parent, phase=phase, agent="reasonix", env=effective_env)
     append_text(
         log_path,
         "\n".join(
@@ -104,11 +108,11 @@ def _run_acp(*, command: list[str], prompt: str, cwd: Path, log_path: Path, time
     except FileNotFoundError as exc:
         raise AiFlowError(
             f"Reasonix ACP command was not found: {command[0]}",
-            stage="write",
+            stage=phase,
             suggested_next_action="Check [commands].reasonix in .ai/patchbay.toml.",
         ) from exc
 
-    client = _JsonRpcClient(proc, log_path)
+    client = _JsonRpcClient(proc, log_path, trace, phase=phase)
     try:
         init = client.request(
             "initialize",
@@ -134,7 +138,7 @@ def _run_acp(*, command: list[str], prompt: str, cwd: Path, log_path: Path, time
         if exit_code not in (0, None):
             raise AiFlowError(
                 f"Reasonix ACP exited with code {exit_code}.",
-                stage="write",
+                stage=phase,
                 suggested_next_action="Inspect writer.log and Reasonix transcript.",
             )
         transcript = "\n".join(
@@ -153,7 +157,7 @@ def _run_acp(*, command: list[str], prompt: str, cwd: Path, log_path: Path, time
             ]
         )
         append_text(log_path, transcript + "\n")
-        return transcript
+        return with_usage(transcript, metrics_from_value(result))
     except Exception:
         client.close()
         exit_code = _terminate_process(proc)
@@ -180,14 +184,77 @@ def _terminate_process(proc: subprocess.Popen[str]) -> int | None:
             return proc.wait(timeout=10)
 
 
+class _TraceRecorder:
+    def __init__(self, *, run_dir: Path, phase: str, agent: str, env: dict[str, str] | None = None) -> None:
+        self.run_dir = run_dir
+        self.phase = phase
+        self.agent = agent
+        self.env = env
+
+    def sent(self, method: str, params: dict[str, Any]) -> None:
+        append_trace(
+            self.run_dir,
+            phase=self.phase,
+            agent=self.agent,
+            action=method,
+            status="sent",
+            detail=_trace_detail(method, params),
+            raw={"method": method, "params": params},
+            env=self.env,
+        )
+
+    def stdout_raw(self, raw: str) -> None:
+        append_trace(
+            self.run_dir,
+            phase=self.phase,
+            agent=self.agent,
+            action="stdout",
+            status="received",
+            detail=raw[:500],
+            raw=raw,
+            env=self.env,
+        )
+
+    def stdout_json(self, message: dict[str, Any]) -> None:
+        method = str(message.get("method") or "response")
+        params = message.get("params", {}) if isinstance(message.get("params", {}), dict) else {}
+        tool_call = params.get("toolCall", {}) if isinstance(params, dict) else {}
+        append_trace(
+            self.run_dir,
+            phase=self.phase,
+            agent=self.agent,
+            action=method,
+            tool=_tool_name(tool_call),
+            path=_first_tool_path(tool_call),
+            status=_message_status(message),
+            detail=_trace_detail(method, params),
+            raw=message,
+            env=self.env,
+        )
+
+    def stderr(self, line: str) -> None:
+        append_trace(
+            self.run_dir,
+            phase=self.phase,
+            agent=self.agent,
+            action="stderr",
+            status="received",
+            detail=line[:500],
+            raw=line,
+            env=self.env,
+        )
+
+
 class _JsonRpcClient:
-    def __init__(self, proc: subprocess.Popen[str], log_path: Path) -> None:
+    def __init__(self, proc: subprocess.Popen[str], log_path: Path, trace: _TraceRecorder, *, phase: str = "write") -> None:
         if proc.stdin is None or proc.stdout is None:
-            raise AiFlowError("Reasonix ACP stdio pipes were not created.", stage="write")
+            raise AiFlowError("Reasonix ACP stdio pipes were not created.", stage=phase)
         self.proc = proc
         self.stdin = proc.stdin
         self.stdout = proc.stdout
         self.log_path = log_path
+        self.trace = trace
+        self.phase = phase
         self.next_id = 1
         self.responses: dict[int, dict[str, Any]] = {}
         self.updates: list[str] = []
@@ -212,14 +279,14 @@ class _JsonRpcClient:
                     if "error" in response:
                         raise AiFlowError(
                             f"Reasonix ACP {method} failed: {response['error']}",
-                            stage="write",
+                            stage=self.phase,
                             suggested_next_action="Inspect writer.log and Reasonix transcript.",
                         )
                     return response.get("result")
             time.sleep(0.05)
         raise AiFlowError(
             f"Reasonix ACP timed out waiting for {method}.",
-            stage="write",
+            stage=self.phase,
             suggested_next_action="Inspect writer.log and reduce task ambiguity.",
         )
 
@@ -229,6 +296,8 @@ class _JsonRpcClient:
     def _send(self, message: dict[str, Any]) -> None:
         raw = json.dumps(message, ensure_ascii=False)
         append_text(self.log_path, f">>> {redact(raw)}\n")
+        if "method" in message:
+            self.trace.sent(str(message.get("method", "")), message.get("params", {}))
         self.stdin.write(raw + "\n")
         self.stdin.flush()
 
@@ -241,9 +310,11 @@ class _JsonRpcClient:
             try:
                 message = json.loads(raw)
             except json.JSONDecodeError:
+                self.trace.stdout_raw(raw)
                 with self.lock:
                     self.updates.append(raw)
                 continue
+            self.trace.stdout_json(message)
             msg_id = message.get("id")
             if msg_id is not None and "method" not in message:
                 with self.lock:
@@ -263,7 +334,9 @@ class _JsonRpcClient:
         if self.proc.stderr is None:
             return
         for line in self.proc.stderr:
-            append_text(self.log_path, f"stderr: {redact(line.rstrip())}\n")
+            raw = line.rstrip()
+            append_text(self.log_path, f"stderr: {redact(raw)}\n")
+            self.trace.stderr(raw)
 
     def _allow_permission(self, message: dict[str, Any]) -> None:
         params = message.get("params", {})
@@ -274,7 +347,7 @@ class _JsonRpcClient:
     def _raise_process_error(self, method: str) -> None:
         raise AiFlowError(
             f"Reasonix ACP exited before responding to {method} (exit code {self.proc.returncode}).",
-            stage="write",
+            stage=self.phase,
             suggested_next_action="Inspect writer.log and Reasonix transcript.",
         )
 
@@ -382,3 +455,45 @@ def _option_id(options: list[dict[str, Any]], wanted: str) -> str | None:
         if option.get("optionId") == wanted:
             return wanted
     return None
+
+
+def _tool_name(tool_call: dict[str, Any]) -> str:
+    if not isinstance(tool_call, dict):
+        return ""
+    for key in ("kind", "title", "name"):
+        value = str(tool_call.get(key, "")).strip()
+        if value:
+            return value
+    return ""
+
+
+def _first_tool_path(tool_call: dict[str, Any]) -> str:
+    if not isinstance(tool_call, dict):
+        return ""
+    paths = _tool_call_paths(tool_call.get("rawInput"))
+    return paths[0] if paths else ""
+
+
+def _message_status(message: dict[str, Any]) -> str:
+    if "error" in message:
+        return "error"
+    method = str(message.get("method", ""))
+    if method == "session/request_permission":
+        return "requested"
+    if method == "session/update":
+        return "received"
+    if message.get("id") is not None and "method" not in message:
+        return "response"
+    return "received"
+
+
+def _trace_detail(method: str, params: dict[str, Any]) -> str:
+    if method == "session/update":
+        update = params.get("update", params)
+        if isinstance(update, dict):
+            return str(update.get("sessionUpdate") or update.get("kind") or update.get("type") or "session/update")
+    if method == "session/request_permission":
+        tool_call = params.get("toolCall", {}) if isinstance(params, dict) else {}
+        title = str(tool_call.get("title", "")).strip() if isinstance(tool_call, dict) else ""
+        return title or "permission requested"
+    return method

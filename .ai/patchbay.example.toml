@@ -14,12 +14,19 @@ max_context_files = 30
 max_patch_attempts = 3
 max_repair_iterations = 2
 
+[profiles.economy]
+provider = "reasonix_cli"
+model = "deepseek-v4-pro"
+command_key = "reasonix"
+label = "Reasonix/DeepSeek"
+
 [workflow]
 require_plan_approval = true
 default_branch_prefix = "patchbay"
 worktree_root = "../.patchbay-worktrees"
 fail_on_dirty_workspace = true
 apply_to_current_workspace_only_after_review_pass = true
+allow_apply_without_tests = false # set true only for demo/mock repos that intentionally skip tests
 
 [commands_allowlist]
 test = [

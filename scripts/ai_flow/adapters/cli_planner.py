@@ -16,6 +16,7 @@ from ..artifacts import append_text, read_text, write_text
 from ..config import split_command
 from ..errors import AiFlowError
 from ..runner import run_logged
+from ..usage import metrics_from_text, with_usage
 
 # ---------------------------------------------------------------------------
 # Prompt construction
@@ -166,15 +167,16 @@ def run_generic_cli_planner(
 
     argv = build_argv(command=command, prompt=short_prompt, model=model)
     result = run_logged(argv, cwd=cwd, log_path=log_path, timeout=timeout, env=env)
+    usage_metrics = metrics_from_text(result.stdout)
 
     # Try stream-json recovery first (some CLI tools support it)
     stream_text = extract_stream_json_plan(result.stdout)
     if stream_text:
         append_text(log_path, "\nRecovered planner output from stream-json assistant event.\n")
-        return stream_text
+        return with_usage(stream_text, usage_metrics)
     plain_text = extract_plain_stdout_plan(result.stdout)
     if plain_text:
-        return plain_text
+        return with_usage(plain_text, usage_metrics)
 
     if not result.ok:
         detail = failure_detail(result.stdout, result.stderr)
@@ -190,4 +192,4 @@ def run_generic_cli_planner(
             stage="plan",
         )
 
-    return result.stdout
+    return with_usage(result.stdout, usage_metrics)

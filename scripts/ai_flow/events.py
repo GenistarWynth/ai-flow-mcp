@@ -27,6 +27,7 @@ def append_event(
     phase: str,
     provider: str = "",
     model: str = "",
+    command_key: str = "",
     action: str,
     status: str,
     detail: str = "",
@@ -34,6 +35,8 @@ def append_event(
     artifact_paths: list[str] | None = None,
     duration_ms: int | None = None,
     next_action: str = "",
+    token_usage: dict[str, Any] | None = None,
+    cost: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Write an event record and return it.
 
@@ -54,6 +57,8 @@ def append_event(
         record["provider"] = provider
     if model:
         record["model"] = model
+    if command_key:
+        record["command_key"] = command_key
     if detail:
         record["detail"] = detail
     if artifact_paths:
@@ -62,6 +67,10 @@ def append_event(
         record["duration_ms"] = duration_ms
     if next_action:
         record["next_action"] = next_action
+    if token_usage:
+        record["token_usage"] = token_usage
+    if cost:
+        record["cost"] = cost
     append_text(events_path(run_dir), json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
     return record
 

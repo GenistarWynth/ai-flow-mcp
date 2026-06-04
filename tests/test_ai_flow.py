@@ -23,7 +23,7 @@ from scripts.ai_flow.adapters.codex_planner import _codex_exec_command
 from scripts.ai_flow.adapters.codex_reviewer import _read_verdict_file
 from scripts.ai_flow.adapters.cli_reviewer import extract_reviewer_output
 from scripts.ai_flow.adapters.reasonix_writer import _acp_command, _preferred_permission_option
-from scripts.ai_flow.config import load_config, resolve_phase
+from scripts.ai_flow.config import load_config, resolve_phase, split_command
 from scripts.ai_flow.errors import AiFlowError, SafetyError, StateError
 from scripts.ai_flow.parsing import parse_planner_output, parse_writer_output
 from scripts.ai_flow.plan_schema import empty_plan
@@ -78,8 +78,24 @@ class AiFlowTestCase(unittest.TestCase):
         planned = self.cli_json("plan", "--task", "mock end to end", "--mock")
         return planned["run_id"]
 
+    def allow_apply_without_tests(self) -> None:
+        path = self.repo / ".ai" / "patchbay.toml"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        existing = path.read_text(encoding="utf-8") if path.exists() else ""
+        if "[workflow]" in existing:
+            text = existing + "\nallow_apply_without_tests = true\n"
+        else:
+            text = existing + "\n[workflow]\nallow_apply_without_tests = true\n"
+        path.write_text(text, encoding="utf-8")
+
 
 class ParsingTests(unittest.TestCase):
+    def test_split_command_strips_wrapping_quotes_from_executable_path(self) -> None:
+        parts = split_command('"C:\\Program Files\\Reasonix\\reasonix.cmd" --stdio')
+
+        self.assertEqual(parts[0], "C:\\Program Files\\Reasonix\\reasonix.cmd")
+        self.assertEqual(parts[1:], ["--stdio"])
+
     def test_claude_planner_uses_bare_plan_print_mode(self) -> None:
         command = _claude_print_command(["claude"], "plan this", "claude-opus-4-7")
         self.assertEqual(command[:3], ["claude", "-p", "plan this"])
@@ -588,6 +604,9 @@ class McpServerTests(unittest.TestCase):
             self.assertIn(name, names)
         for name in ("ai_flow_plan", "ai_flow_status", "ai_flow_apply"):
             self.assertIn(name, names)
+        apply_tool = next(tool for tool in tools["result"]["tools"] if tool["name"] == "patchbay_apply")
+        self.assertEqual(apply_tool["inputSchema"]["properties"]["confirmation"]["enum"], ["apply_approved"])
+        self.assertIn("confirmation", apply_tool["inputSchema"]["required"])
 
     def test_tools_call_wraps_result_as_text_content(self) -> None:
         original = dict(mcp_server.TOOLS)
@@ -607,6 +626,33 @@ class McpServerTests(unittest.TestCase):
             mcp_server.TOOLS.clear()
             mcp_server.TOOLS.update(original)
 
+    def test_patchbay_plan_returns_routing_actions_contract(self) -> None:
+        with mock.patch.object(
+            mcp_server.service,
+            "plan_with_context",
+            return_value={
+                "run_id": "run-mcp",
+                "routing": {"economy_configured": False},
+                "actions": [{"id": "apply_economy_profile", "kind": "local_agent", "message": "apply economy profile"}],
+                "action_groups": [{"id": "routing", "action_ids": ["apply_economy_profile"]}],
+            },
+        ) as plan:
+            response = mcp_server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 7,
+                    "method": "tools/call",
+                    "params": {"name": "patchbay_plan", "arguments": {"task": "direct task"}},
+                }
+            )
+
+        payload = json.loads(response["result"]["content"][0]["text"])
+        self.assertEqual(payload["run_id"], "run-mcp")
+        self.assertFalse(payload["routing"]["economy_configured"])
+        self.assertEqual(payload["actions"][0]["id"], "apply_economy_profile")
+        self.assertEqual(payload["action_groups"][0]["id"], "routing")
+        plan.assert_called_once_with(mcp_server.ROOT, task="direct task")
+
     def test_legacy_tool_alias_still_calls_canonical_handler(self) -> None:
         original = dict(mcp_server.TOOLS)
         try:
@@ -624,6 +670,39 @@ class McpServerTests(unittest.TestCase):
         finally:
             mcp_server.TOOLS.clear()
             mcp_server.TOOLS.update(original)
+
+    def test_patchbay_apply_requires_explicit_confirmation(self) -> None:
+        with mock.patch.object(mcp_server.service, "apply", return_value={"status": "APPLIED"}) as apply:
+            response = mcp_server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 8,
+                    "method": "tools/call",
+                    "params": {"name": "patchbay_apply", "arguments": {"run_id": "run-mcp"}},
+                }
+            )
+
+        self.assertTrue(response["result"]["isError"])
+        self.assertIn("requires explicit approval", response["result"]["content"][0]["text"])
+        apply.assert_not_called()
+
+    def test_patchbay_apply_accepts_explicit_confirmation(self) -> None:
+        with mock.patch.object(mcp_server.service, "apply", return_value={"status": "APPLIED"}) as apply:
+            response = mcp_server.handle(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 9,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "patchbay_apply",
+                        "arguments": {"run_id": "run-mcp", "confirmation": "apply_approved"},
+                    },
+                }
+            )
+
+        payload = json.loads(response["result"]["content"][0]["text"])
+        self.assertEqual(payload["status"], "APPLIED")
+        apply.assert_called_once_with(mcp_server.ROOT, "run-mcp")
 
     def test_unknown_tool_returns_json_rpc_error(self) -> None:
         response = mcp_server.handle(
@@ -659,6 +738,19 @@ class McpServerTests(unittest.TestCase):
 
 
 class WorkflowTests(AiFlowTestCase):
+    def test_cli_plan_returns_routing_actions_contract(self) -> None:
+        planned = self.cli_json("plan", "--task", "direct plan context", "--mock")
+
+        self.assertIn("profile", planned)
+        self.assertIn("routing", planned)
+        self.assertIn("actions", planned)
+        self.assertIn("action_groups", planned)
+        self.assertFalse(planned["routing"]["economy_command_ready"])
+        actions = {item["id"]: item for item in planned["actions"]}
+        self.assertEqual(actions["configure_reasonix_command"]["message"], "configure reasonix command")
+        action_groups = {item["id"]: item for item in planned["action_groups"]}
+        self.assertIn("configure_reasonix_command", action_groups["routing"]["action_ids"])
+
     def test_legacy_config_name_is_still_loaded(self) -> None:
         legacy = self.repo / ".ai" / "ai-flow.toml"
         legacy.parent.mkdir(parents=True, exist_ok=True)
@@ -670,6 +762,38 @@ default_branch_prefix = "legacy-prefix"
         )
         cfg = load_config(self.repo)
         self.assertEqual(cfg["workflow"]["default_branch_prefix"], "legacy-prefix")
+
+    def test_cli_config_provider_add_cli_can_activate_economy_route(self) -> None:
+        result = self.cli_json(
+            "config",
+            "provider",
+            "add-cli",
+            "cheap_writer",
+            "--roles",
+            "write",
+            "fix",
+            "--command",
+            sys.executable,
+            "--args",
+            "cheap_writer.py",
+            "--output-contract",
+            "writer_diff",
+            "--activate-economy",
+            "--economy-model",
+            "deepseek-chat",
+            "--economy-label",
+            "DeepSeek cheap writer",
+        )
+
+        self.assertTrue(result["activated_economy"])
+        self.assertEqual(result["status"]["profile"], "economy")
+        cfg = load_config(self.repo)
+        write = resolve_phase(cfg, "write")
+        fix = resolve_phase(cfg, "fix")
+        self.assertEqual(write["provider"], "cheap_writer")
+        self.assertEqual(write["command_key"], "")
+        self.assertEqual(fix["model"], "deepseek-chat")
+        self.assertEqual(fix["command_key"], "")
 
     def test_status_transitions_and_artifacts(self) -> None:
         run_id = self.create_planned_run()
@@ -688,13 +812,50 @@ default_branch_prefix = "legacy-prefix"
             self.assertIn(name, status["artifacts"])
 
     def test_mock_full_flow_can_apply(self) -> None:
+        self.allow_apply_without_tests()
         run_id = self.create_planned_run()
         self.cli_json("approve", run_id)
         self.cli_json("write", run_id, "--mock")
         self.cli_json("test", run_id)
         self.cli_json("review", run_id, "--mock")
-        self.cli_json("apply", run_id)
+        self.cli_json("apply", run_id, "--confirmation", "apply_approved")
         self.assertTrue((self.repo / "PATCHBAY_MOCK_OUTPUT.md").exists())
+
+    def test_cli_apply_requires_explicit_confirmation(self) -> None:
+        self.allow_apply_without_tests()
+        run_id = self.create_planned_run()
+        self.cli_json("approve", run_id)
+        self.cli_json("write", run_id, "--mock")
+        self.cli_json("test", run_id)
+        self.cli_json("review", run_id, "--mock")
+
+        result = self.cli("apply", run_id)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("explicit approval", result.stderr)
+        status = self.cli_json("status", run_id)
+        self.assertEqual(status["status"], "REVIEWED_PASS")
+        self.assertFalse((self.repo / "PATCHBAY_MOCK_OUTPUT.md").exists())
+
+    def test_no_test_commands_do_not_allow_apply_by_default(self) -> None:
+        run_id = self.create_planned_run()
+        self.cli_json("approve", run_id)
+        self.cli_json("write", run_id, "--mock")
+        tested = self.cli_json("test", run_id)
+        self.assertFalse(tested["tests_passed"])
+        self.assertEqual(tested["tests_status"], "SKIPPED")
+        self.cli_json("review", run_id, "--mock")
+        status = self.cli_json("status", run_id)
+        self.assertFalse(status["gate_state"]["ready_to_apply"])
+        self.assertEqual(status["gate_state"]["tests_status"], "SKIPPED")
+
+        result = self.cli("apply", run_id, "--confirmation", "apply_approved")
+
+        self.assertNotEqual(result.returncode, 0)
+        failed = self.cli_json("status", run_id)
+        self.assertEqual(failed["status"], "FAILED")
+        self.assertEqual(failed["stage"], "apply")
+        self.assertIn("tests_passed is false", failed["error"])
 
     def test_worktree_creation_failure_records_error(self) -> None:
         run_id = self.create_planned_run()
@@ -718,6 +879,173 @@ test = []
         status = self.cli_json("status", run_id)
         self.assertEqual(status["status"], "FAILED")
         self.assertEqual(status["stage"], "write")
+
+    def test_economy_write_missing_reasonix_blocks_without_failing_run(self) -> None:
+        run_id = self.create_planned_run()
+        self.cli_json("approve", run_id)
+        cfg = self.repo / ".ai" / "patchbay.toml"
+        cfg.write_text(
+            """[phases.write]
+provider = "reasonix_cli"
+model = "deepseek-v4-pro"
+command_key = "reasonix"
+
+[phases.fix]
+provider = "reasonix_cli"
+model = "deepseek-v4-pro"
+command_key = "reasonix"
+
+[commands_allowlist]
+test = []
+""",
+            encoding="utf-8",
+        )
+
+        result = self.cli("write", run_id)
+
+        self.assertNotEqual(result.returncode, 0)
+        status = self.cli_json("status", run_id)
+        self.assertEqual(status["status"], "APPROVED")
+        self.assertNotIn("WORKTREE_PATH", status["artifacts"])
+        self.assertEqual(status["blocked_next_action"]["phase"], "write")
+        self.assertIn("commands.reasonix", status["blocked_next_action"]["message"])
+        self.assertEqual(status["routing_evidence"]["command_not_ready_phases"], ["write", "fix"])
+
+    def test_economy_fix_missing_reasonix_blocks_without_failing_run(self) -> None:
+        run_id = self.create_planned_run()
+        self.cli_json("approve", run_id)
+        cfg = self.repo / ".ai" / "patchbay.toml"
+        cfg.write_text(
+            """[phases.write]
+provider = "mock"
+
+[phases.fix]
+provider = "reasonix_cli"
+model = "deepseek-v4-pro"
+command_key = "reasonix"
+
+[commands_allowlist]
+test = []
+""",
+            encoding="utf-8",
+        )
+        self.cli_json("write", run_id, "--mock")
+        self.cli_json("test", run_id)
+        run_path = self.repo / ".ai" / "runs" / run_id
+        (run_path / "REVIEW.md").write_text("CHANGES_REQUESTED\n\nRequired Fixes:\n1. Test.\n", encoding="utf-8")
+        status = json.loads((run_path / "STATUS.json").read_text(encoding="utf-8"))
+        status["status"] = "REVIEWED_CHANGES_REQUESTED"
+        (run_path / "STATUS.json").write_text(json.dumps(status), encoding="utf-8")
+
+        result = self.cli("fix", run_id)
+
+        self.assertNotEqual(result.returncode, 0)
+        status = self.cli_json("status", run_id)
+        self.assertEqual(status["status"], "REVIEWED_CHANGES_REQUESTED")
+        self.assertEqual(status["blocked_next_action"]["phase"], "fix")
+        self.assertIn("configure_reasonix_command", status["blocked_next_action"]["action"]["id"])
+
+    def test_custom_economy_write_missing_command_blocks_without_failing_run(self) -> None:
+        run_id = self.create_planned_run()
+        self.cli_json("approve", run_id)
+        cfg = self.repo / ".ai" / "patchbay.toml"
+        cfg.write_text(
+            """[providers.cheap_writer]
+roles = ["write", "fix"]
+command = "definitely-missing-cheap-writer"
+prompt_mode = "stdin"
+output_contract = "writer_diff"
+
+[profiles.economy]
+provider = "cheap_writer"
+model = "cheap-model"
+label = "Cheap writer"
+
+[phases.write]
+provider = "cheap_writer"
+model = "cheap-model"
+
+[phases.fix]
+provider = "cheap_writer"
+model = "cheap-model"
+
+[commands_allowlist]
+test = []
+""",
+            encoding="utf-8",
+        )
+
+        result = self.cli("write", run_id)
+
+        self.assertNotEqual(result.returncode, 0)
+        status = self.cli_json("status", run_id)
+        self.assertEqual(status["status"], "APPROVED")
+        self.assertNotIn("WORKTREE_PATH", status["artifacts"])
+        blocker = status["blocked_next_action"]
+        self.assertEqual(blocker["phase"], "write")
+        self.assertEqual(blocker["source"], "providers.cheap_writer.command")
+        self.assertIn("providers.cheap_writer.command", blocker["message"])
+        self.assertEqual(blocker["action"]["id"], "configure_economy_provider_command")
+        self.assertEqual(
+            blocker["action"]["command"],
+            "patchbay config --set-key providers.cheap_writer.command --set-value <command>",
+        )
+        self.assertEqual(status["routing_evidence"]["command_not_ready_phases"], ["write", "fix"])
+        action_ids = [item["id"] for item in status["routing_evidence"]["actions"]]
+        self.assertLess(
+            action_ids.index("configure_economy_provider_command"),
+            action_ids.index("inspect_economy_provider_command"),
+        )
+        actions = {item["id"]: item for item in status["routing_evidence"]["actions"]}
+        self.assertEqual(
+            actions["configure_economy_provider_command"]["command"],
+            "patchbay config --set-key providers.cheap_writer.command --set-value <command>",
+        )
+
+    def test_custom_fix_missing_command_blocks_without_failing_run(self) -> None:
+        run_id = self.create_planned_run()
+        self.cli_json("approve", run_id)
+        cfg = self.repo / ".ai" / "patchbay.toml"
+        cfg.write_text(
+            """[providers.cheap_fixer]
+roles = ["fix"]
+command = "definitely-missing-cheap-fixer"
+prompt_mode = "stdin"
+output_contract = "worktree_diff"
+
+[phases.write]
+provider = "mock"
+
+[phases.fix]
+provider = "cheap_fixer"
+model = "cheap-model"
+
+[commands_allowlist]
+test = []
+""",
+            encoding="utf-8",
+        )
+        self.cli_json("write", run_id, "--mock")
+        self.cli_json("test", run_id)
+        run_path = self.repo / ".ai" / "runs" / run_id
+        (run_path / "REVIEW.md").write_text("CHANGES_REQUESTED\n\nRequired Fixes:\n1. Test.\n", encoding="utf-8")
+        status = json.loads((run_path / "STATUS.json").read_text(encoding="utf-8"))
+        status["status"] = "REVIEWED_CHANGES_REQUESTED"
+        (run_path / "STATUS.json").write_text(json.dumps(status), encoding="utf-8")
+
+        result = self.cli("fix", run_id)
+
+        self.assertNotEqual(result.returncode, 0)
+        status = self.cli_json("status", run_id)
+        self.assertEqual(status["status"], "REVIEWED_CHANGES_REQUESTED")
+        blocker = status["blocked_next_action"]
+        self.assertEqual(blocker["phase"], "fix")
+        self.assertEqual(blocker["source"], "providers.cheap_fixer.command")
+        self.assertEqual(blocker["action"]["id"], "configure_economy_provider_command")
+        self.assertEqual(
+            blocker["action"]["command"],
+            "patchbay config --set-key providers.cheap_fixer.command --set-value <command>",
+        )
 
     def test_writer_scope_rejects_unexplained_file_outside_plan(self) -> None:
         run_id = self.create_planned_run()
@@ -865,19 +1193,21 @@ test = []
         self.assertNotEqual(third.returncode, 0)
 
     def test_dirty_workspace_apply_fails(self) -> None:
+        self.allow_apply_without_tests()
         run_id = self.create_planned_run()
         self.cli_json("approve", run_id)
         self.cli_json("write", run_id, "--mock")
         self.cli_json("test", run_id)
         self.cli_json("review", run_id, "--mock")
         (self.repo / "dirty.txt").write_text("dirty\n", encoding="utf-8")
-        result = self.cli("apply", run_id)
+        result = self.cli("apply", run_id, "--confirmation", "apply_approved")
         self.assertNotEqual(result.returncode, 0)
         status = self.cli_json("status", run_id)
         self.assertEqual(status["status"], "FAILED")
         self.assertEqual(status["stage"], "git")
 
     def test_apply_rejects_executor_provider_config(self) -> None:
+        self.allow_apply_without_tests()
         run_id = self.create_planned_run()
         self.cli_json("approve", run_id)
         self.cli_json("write", run_id, "--mock")
@@ -887,13 +1217,16 @@ test = []
             """[phases.apply]
 provider = "codex_cli"
 
+[workflow]
+allow_apply_without_tests = true
+
 [commands_allowlist]
 test = []
 """,
             encoding="utf-8",
         )
 
-        result = self.cli("apply", run_id)
+        result = self.cli("apply", run_id, "--confirmation", "apply_approved")
 
         self.assertNotEqual(result.returncode, 0)
         status = self.cli_json("status", run_id)
@@ -998,6 +1331,34 @@ class PhaseResolverTests(unittest.TestCase):
         import copy
         from scripts.ai_flow.config import DEFAULT_CONFIG
         self.default_cfg = copy.deepcopy(DEFAULT_CONFIG)
+
+    def test_economy_route_match_respects_explicit_command_key(self) -> None:
+        from scripts.ai_flow.config import route_matches_economy
+
+        target = {
+            "provider": "reasonix_cli",
+            "model": "deepseek-v4-pro",
+            "command_key": "reasonix",
+        }
+
+        self.assertTrue(
+            route_matches_economy(
+                {"provider": "reasonix_cli", "model": "deepseek-v4-pro", "command_key": "reasonix"},
+                target,
+            )
+        )
+        self.assertFalse(
+            route_matches_economy(
+                {"provider": "reasonix_cli", "model": "deepseek-v4-pro", "command_key": "other_reasonix"},
+                target,
+            )
+        )
+        self.assertFalse(
+            route_matches_economy(
+                {"provider": "reasonix_cli", "model": "deepseek-v4-pro"},
+                target,
+            )
+        )
 
     def test_legacy_config_resolves_plan_to_claude_cli(self) -> None:
         """Without [phases], plan provider should resolve to claude_cli from legacy defaults."""
@@ -1120,6 +1481,26 @@ class PhaseResolverTests(unittest.TestCase):
         phase = resolve_phase(cfg, "fix")
         self.assertEqual(phase["command_key"], "phase_write")
         self.assertEqual(cfg["commands"]["phase_write"], "custom-reasonix --flag")
+
+    def test_custom_provider_does_not_inherit_builtin_phase_command_key(self) -> None:
+        from scripts.ai_flow.adapters import register_custom_providers, reset_custom_providers
+
+        cfg = dict(self.default_cfg)
+        cfg["providers"] = {
+            "cheap_writer": {
+                "roles": ["write", "fix"],
+                "command": sys.executable,
+                "output_contract": "writer_diff",
+            }
+        }
+        cfg.setdefault("phases", {})["write"] = {"provider": "cheap_writer", "model": "cheap-model"}
+        cfg.setdefault("phases", {})["fix"] = {"provider": "cheap_writer", "model": "cheap-model"}
+        try:
+            register_custom_providers(cfg)
+            self.assertEqual(resolve_phase(cfg, "write")["command_key"], "")
+            self.assertEqual(resolve_phase(cfg, "fix")["command_key"], "")
+        finally:
+            reset_custom_providers()
 
     def test_fix_phase_defaults_to_fully_resolved_write_phase(self) -> None:
         cfg = dict(self.default_cfg)
@@ -1253,7 +1634,8 @@ class McpSchemaTests(unittest.TestCase):
     def test_tool_list_includes_updated_descriptions(self) -> None:
         from scripts.ai_flow.mcp_server import handle
         tools_response = handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
-        tools = {tool["name"]: tool["description"] for tool in tools_response["result"]["tools"]}
+        tool_items = {tool["name"]: tool for tool in tools_response["result"]["tools"]}
+        tools = {name: tool["description"] for name, tool in tool_items.items()}
 
         # Canonical tools should have non-trivial descriptions
         self.assertIn("patchbay_plan", tools)
@@ -1262,21 +1644,274 @@ class McpSchemaTests(unittest.TestCase):
         self.assertIn("provider", tools["patchbay_write"].lower())
         self.assertIn("patchbay_review", tools)
         self.assertIn("phases.review", tools["patchbay_review"].lower())
+        self.assertIn("patchbay_cancel", tools)
+        self.assertIn("background job", tools["patchbay_cancel"])
+        self.assertIn("patchbay_metrics", tools)
+        self.assertIn("run_metrics", tools["patchbay_metrics"])
+        self.assertIn("economy_health", tools["patchbay_metrics"])
+        self.assertIn("command_not_ready", tools["patchbay_metrics"])
+        self.assertIn("actions[]", tools["patchbay_metrics"])
+        self.assertIn("action_groups[]", tools["patchbay_metrics"])
+        self.assertIn("routing_evidence.actions[]", tools["patchbay_metrics"])
+        self.assertIn("diagnostic_tab", tools["patchbay_metrics"])
+        self.assertIn("configure_reasonix_command", tools["patchbay_metrics"])
+        self.assertIn("configure_economy_provider_command", tools["patchbay_metrics"])
+        self.assertIn("patchbay_context", tools)
+        self.assertIn("health_cards", tools["patchbay_context"])
+        self.assertIn("conversation_state.suggestions", tools["patchbay_context"])
+        self.assertIn("action_groups[]", tools["patchbay_context"])
+        self.assertIn("Composer-style clients", tools["patchbay_context"])
+        self.assertIn("flat button list", tools["patchbay_context"])
+        self.assertIn("poll_context/status/events", tools["patchbay_context"])
+        self.assertIn("background_polling", tools["patchbay_context"])
+        self.assertIn("patchbay_agent", tools)
+        self.assertIn("actions[]", tools["patchbay_agent"])
+        self.assertIn("background control", tools["patchbay_agent"])
+        self.assertIn("configure_economy_provider_command", tools["patchbay_agent"])
+        self.assertIn("requested_view", tools["patchbay_agent"])
+        self.assertIn("diagnostic_tab", tools["patchbay_agent"])
+        self.assertIn("Claude Desktop", tools["patchbay_agent"])
+        self.assertIn("Claude 桌面", tools["patchbay_agent"])
+        self.assertIn("Gemini CLI", tools["patchbay_agent"])
+        self.assertIn("Gemini 命令行", tools["patchbay_agent"])
+        self.assertIn("Patchbay 怎么用", tools["patchbay_agent"])
+        self.assertIn("查看最近运行", tools["patchbay_agent"])
+        self.assertIn("help with run_id", tools["patchbay_agent"])
+        self.assertIn("selected-run gate_diagnosis.next_action", tools["patchbay_agent"])
+        self.assertIn("任务列表", tools["patchbay_agent"])
+        self.assertIn("帮我配置 Patchbay 到 Claude 桌面", tools["patchbay_agent"])
+        self.assertIn("install Codex Skill", tools["patchbay_agent"])
+        self.assertIn("register MCP for Claude Desktop", tools["patchbay_agent"])
+        self.assertIn("安装 Codex Skill", tools["patchbay_agent"])
+        self.assertIn("注册 MCP 到 Gemini 命令行", tools["patchbay_agent"])
+        self.assertIn("查看失败原因", tools["patchbay_agent"])
+        self.assertIn("what should I do next", tools["patchbay_agent"])
+        self.assertIn("下一步是什么", tools["patchbay_agent"])
+        self.assertIn("next_step", tools["patchbay_agent"])
+        self.assertIn("run_reference.next_action", tools["patchbay_agent"])
+        self.assertIn("what is blocking apply", tools["patchbay_agent"])
+        self.assertIn("what model will write/fix use", tools["patchbay_agent"])
+        self.assertIn("is writer using cheap model", tools["patchbay_agent"])
+        self.assertIn("cancel background job", tools["patchbay_agent"])
+        self.assertIn("门禁状态", tools["patchbay_agent"])
+        self.assertIn("现在写手是不是走便宜模型", tools["patchbay_agent"])
+        self.assertIn("gate_status", tools["patchbay_agent"])
+        self.assertIn("profile_show", tools["patchbay_agent"])
+        self.assertIn("gate_diagnosis", tools["patchbay_agent"])
+        self.assertIn("gate_diagnosis.next_action", tools["patchbay_agent"])
+        self.assertIn("blocked direct apply", tools["patchbay_agent"])
+        self.assertIn("safe diagnostic actions", tools["patchbay_agent"])
+        self.assertIn("检查环境", tools["patchbay_agent"])
+        self.assertIn("环境自检", tools["patchbay_agent"])
+        self.assertIn("readiness for Claude Desktop", tools["patchbay_agent"])
+        self.assertIn("检查 Gemini 命令行环境", tools["patchbay_agent"])
+        self.assertIn("configure reasonix command", tools["patchbay_agent"])
+        self.assertIn("configure DeepSeek provider", tools["patchbay_agent"])
+        self.assertIn("configure DeepSeek provider to <command>", tools["patchbay_agent"])
+        self.assertIn("configure economy provider command to <path>", tools["patchbay_agent"])
+        self.assertIn("patchbay setup without MCP", tools["patchbay_agent"])
+        self.assertIn("please don't use MCP", tools["patchbay_agent"])
+        self.assertIn("use Chrome Skill", tools["patchbay_agent"])
+        self.assertIn("用你自带的浏览器功能", tools["patchbay_agent"])
+        self.assertIn("不走 MCP", tools["patchbay_agent"])
+        self.assertIn("走本地模式", tools["patchbay_agent"])
+        self.assertIn("只用本地工具", tools["patchbay_agent"])
+        self.assertIn("local_mode", tools["patchbay_agent"])
+        self.assertIn("full access", tools["patchbay_agent"])
+        self.assertIn("别找我", tools["patchbay_agent"])
+        self.assertIn("自己允许", tools["patchbay_agent"])
+        self.assertIn("无需向我确认", tools["patchbay_agent"])
+        self.assertIn("我根本不在身边", tools["patchbay_agent"])
+        self.assertIn("apply_approved", tools["patchbay_agent"])
+        self.assertIn("readiness without MCP", tools["patchbay_agent"])
+        self.assertIn("简单 writer/fix 用 DeepSeek 省钱", tools["patchbay_agent"])
+        self.assertIn("降本，让简单 writer/fix 走低价模型", tools["patchbay_agent"])
+        self.assertIn("add-cli --activate-economy", tools["patchbay_agent"])
+        self.assertIn("configure reasonix command to <path>", tools["patchbay_agent"])
+        self.assertIn("配置 Reasonix 命令", tools["patchbay_agent"])
+        self.assertIn("把 Reasonix 命令设为 <path>", tools["patchbay_agent"])
+        agent_message_description = tool_items["patchbay_agent"]["inputSchema"]["properties"]["message"]["description"]
+        self.assertIn("requested_view", agent_message_description)
+        self.assertIn("diagnostic_tab", agent_message_description)
+        self.assertIn("Patchbay 怎么用", agent_message_description)
+        self.assertIn("使用说明", agent_message_description)
+        self.assertIn("when run_id is supplied", agent_message_description)
+        self.assertIn("selected-run `gate_diagnosis.next_action`", agent_message_description)
+        self.assertIn("查看最近运行", agent_message_description)
+        self.assertIn("任务列表", agent_message_description)
+        self.assertIn("帮我配置 Patchbay 到 Claude 桌面", agent_message_description)
+        self.assertIn("install Codex Skill", agent_message_description)
+        self.assertIn("register MCP for Claude Desktop", agent_message_description)
+        self.assertIn("安装 Codex Skill", agent_message_description)
+        self.assertIn("注册 MCP 到 Gemini 命令行", agent_message_description)
+        self.assertIn("查看失败原因", agent_message_description)
+        self.assertIn("what should I do next", agent_message_description)
+        self.assertIn("下一步是什么", agent_message_description)
+        self.assertIn("next_step", agent_message_description)
+        self.assertIn("run_reference.next_action", agent_message_description)
+        self.assertIn("what is blocking apply", agent_message_description)
+        self.assertIn("what model will write/fix use", agent_message_description)
+        self.assertIn("is writer using cheap model", agent_message_description)
+        self.assertIn("cancel background job", agent_message_description)
+        self.assertIn("停止后台任务", agent_message_description)
+        self.assertIn("门禁状态", agent_message_description)
+        self.assertIn("现在写手是不是走便宜模型", agent_message_description)
+        self.assertIn("gate_status", agent_message_description)
+        self.assertIn("profile_show", agent_message_description)
+        self.assertIn("gate_diagnosis", agent_message_description)
+        self.assertIn("gate_diagnosis.next_action", agent_message_description)
+        self.assertIn("safe diagnostic actions", agent_message_description)
+        self.assertIn("instead of requesting confirmation", agent_message_description)
+        self.assertIn("检查环境", agent_message_description)
+        self.assertIn("环境自检", agent_message_description)
+        self.assertIn("readiness for Claude Desktop", agent_message_description)
+        self.assertIn("检查 Gemini 命令行环境", agent_message_description)
+        self.assertIn("configure reasonix command", agent_message_description)
+        self.assertIn("configure DeepSeek provider", agent_message_description)
+        self.assertIn("configure DeepSeek provider to <command>", agent_message_description)
+        self.assertIn("configure economy provider command to <path>", agent_message_description)
+        self.assertIn("patchbay setup without MCP", agent_message_description)
+        self.assertIn("please don't use MCP", agent_message_description)
+        self.assertIn("use Chrome Skill", agent_message_description)
+        self.assertIn("用你自带的浏览器功能", agent_message_description)
+        self.assertIn("不走 MCP", agent_message_description)
+        self.assertIn("走本地模式", agent_message_description)
+        self.assertIn("只用本地工具", agent_message_description)
+        self.assertIn("local_mode", agent_message_description)
+        self.assertIn("full access", agent_message_description)
+        self.assertIn("别找我", agent_message_description)
+        self.assertIn("自己允许", agent_message_description)
+        self.assertIn("无需向我确认", agent_message_description)
+        self.assertIn("我根本不在身边", agent_message_description)
+        self.assertIn("missing_run", agent_message_description)
+        self.assertIn("apply_approved", agent_message_description)
+        self.assertIn("readiness without MCP", agent_message_description)
+        self.assertIn("providers.<id>.command", agent_message_description)
+        self.assertIn("--activate-economy", agent_message_description)
+        self.assertIn("简单 writer/fix 用 DeepSeek 省钱", agent_message_description)
+        self.assertIn("降本，让简单 writer/fix 走低价模型", agent_message_description)
+        self.assertIn("configure reasonix command to <path>", agent_message_description)
+        self.assertIn("配置 Reasonix 命令", agent_message_description)
+        self.assertIn("把 Reasonix 命令设为 <path>", agent_message_description)
+        self.assertIn("patchbay_doctor", tools)
+        self.assertIn("read-only readiness", tools["patchbay_doctor"].lower())
+        self.assertIn("actions[]", tools["patchbay_doctor"])
+        self.assertIn("action_groups[]", tools["patchbay_doctor"])
+        self.assertIn("registration actions", tools["patchbay_doctor"].lower())
+        self.assertIn("skip_mcp=true", tools["patchbay_doctor"])
+        self.assertIn("local-only readiness", tools["patchbay_doctor"])
+        self.assertIn("patchbay_setup", tools)
+        self.assertIn("initialize patchbay", tools["patchbay_setup"].lower())
+        self.assertIn("skip_mcp=true", tools["patchbay_setup"])
+        self.assertIn("local-only setup", tools["patchbay_setup"])
+        self.assertIn("recommendations", tools["patchbay_setup"])
+        self.assertIn("recommendation-derived next_actions", tools["patchbay_setup"])
+        self.assertIn("actions[]", tools["patchbay_setup"])
+        self.assertIn("action_groups[]", tools["patchbay_setup"])
+        self.assertIn("patchbay_install", tools)
+        self.assertIn("alias for patchbay_setup", tools["patchbay_install"].lower())
+        self.assertIn("skip_mcp=true", tools["patchbay_install"])
+        self.assertIn("recommendations", tools["patchbay_install"])
+        self.assertIn("recommendation-derived next_actions", tools["patchbay_install"])
+        self.assertIn("actions[]", tools["patchbay_install"])
+        self.assertIn("action_groups[]", tools["patchbay_install"])
+        self.assertIn("patchbay_config_profile_apply", tools)
+        self.assertIn("economy", tools["patchbay_config_profile_apply"].lower())
+        self.assertIn("action_groups[]", tools["patchbay_config_profile_apply"])
+        self.assertIn("configure_reasonix_command", tools["patchbay_config_profile_apply"])
+        self.assertIn("patchbay_config_profile_show", tools)
+        self.assertIn("action_groups[]", tools["patchbay_config_profile_show"])
+        self.assertIn("configure_reasonix_command", tools["patchbay_config_profile_show"])
+        for name in ("patchbay_skill_install", "patchbay_skill_print", "patchbay_skill_doctor"):
+            self.assertIn(name, tools)
+            self.assertIn("Codex Desktop", tools[name])
+            self.assertIn("Codex 桌面", tools[name])
+            self.assertIn("Codex Desktop", tool_items[name]["inputSchema"]["properties"]["host"]["description"])
+            self.assertIn("Codex 桌面", tool_items[name]["inputSchema"]["properties"]["host"]["description"])
+        self.assertIn("outdated", tools["patchbay_skill_doctor"])
+        self.assertIn("installed_matches_source", tools["patchbay_skill_doctor"])
+        self.assertIn("missing_installed_files", tools["patchbay_skill_doctor"])
+        self.assertIn("changed_installed_files", tools["patchbay_skill_doctor"])
+        self.assertIn("extra_installed_files", tools["patchbay_skill_doctor"])
+        self.assertIn("outdated", tools["patchbay_doctor"])
+        self.assertIn("installed_matches_source", tools["patchbay_doctor"])
+        self.assertIn("extra_installed_files", tools["patchbay_doctor"])
+        self.assertIn("patchbay_config_provider_add_cli", tools)
+        self.assertIn("economy write/fix route", tools["patchbay_config_provider_add_cli"])
+        provider_schema = tool_items["patchbay_config_provider_add_cli"]["inputSchema"]["properties"]
+        self.assertIn("activate_economy", provider_schema)
+        self.assertIn("economy_model", provider_schema)
+        self.assertIn("economy_label", provider_schema)
 
         # Legacy aliases should still exist and mention alias status
         self.assertIn("ai_flow_plan", tools)
         self.assertIn("legacy", tools["ai_flow_plan"].lower())
+        self.assertIn("ai_flow_install", tools)
+        self.assertIn("legacy", tools["ai_flow_install"].lower())
+        self.assertIn("Primary conversational Patchbay Agent", tools["ai_flow_agent"])
+        self.assertIn("initialize patchbay", tools["ai_flow_install"].lower())
+        self.assertIn("Codex Desktop", tools["ai_flow_skill_install"])
+        self.assertIn("Codex 桌面", tools["ai_flow_skill_install"])
+        self.assertIn("economy write/fix route", tools["ai_flow_config_provider_add_cli"])
 
     def test_canonical_and_legacy_names_both_present(self) -> None:
         from scripts.ai_flow.mcp_server import handle
         tools_response = handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
         names = {tool["name"] for tool in tools_response["result"]["tools"]}
         for canonical in ("patchbay_plan", "patchbay_approve", "patchbay_write", "patchbay_test",
-                          "patchbay_review", "patchbay_fix", "patchbay_status", "patchbay_diff", "patchbay_apply"):
+                          "patchbay_review", "patchbay_fix", "patchbay_status", "patchbay_context",
+                          "patchbay_metrics", "patchbay_doctor", "patchbay_setup", "patchbay_install",
+                          "patchbay_config_profile_apply", "patchbay_config_profile_show",
+                          "patchbay_trace", "patchbay_diff", "patchbay_apply", "patchbay_agent"):
             self.assertIn(canonical, names, f"{canonical} missing from tools/list")
         for legacy in ("ai_flow_plan", "ai_flow_approve", "ai_flow_write", "ai_flow_test",
-                       "ai_flow_review", "ai_flow_fix", "ai_flow_status", "ai_flow_diff", "ai_flow_apply"):
+                       "ai_flow_review", "ai_flow_fix", "ai_flow_status", "ai_flow_context",
+                       "ai_flow_metrics", "ai_flow_doctor", "ai_flow_setup", "ai_flow_install",
+                       "ai_flow_config_profile_apply", "ai_flow_config_profile_show",
+                       "ai_flow_trace", "ai_flow_diff", "ai_flow_apply", "ai_flow_agent"):
             self.assertIn(legacy, names, f"{legacy} missing from tools/list")
+
+    def test_install_aliases_use_setup_schema(self) -> None:
+        from scripts.ai_flow.mcp_server import handle
+        tools_response = handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+        tools = {tool["name"]: tool for tool in tools_response["result"]["tools"]}
+
+        for name in ("patchbay_install", "ai_flow_install"):
+            schema = tools[name]["inputSchema"]
+            self.assertIn("host", schema["properties"])
+            self.assertIn("skill_path", schema["properties"])
+            self.assertIn("skip_mcp", schema["properties"])
+            self.assertIn("local-only setup", schema["properties"]["skip_mcp"]["description"])
+            self.assertIn("create_config", schema["properties"])
+            self.assertNotIn("run_id", schema["properties"])
+            self.assertEqual(schema["required"], [])
+
+    def test_doctor_schema_accepts_host_for_registration_actions(self) -> None:
+        from scripts.ai_flow.mcp_server import handle
+        tools_response = handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+        tools = {tool["name"]: tool for tool in tools_response["result"]["tools"]}
+
+        schema = tools["patchbay_doctor"]["inputSchema"]
+        self.assertIn("host", schema["properties"])
+        self.assertIn("registration actions", schema["properties"]["host"]["description"])
+        self.assertIn("skip_mcp", schema["properties"])
+        self.assertIn("local-only readiness", schema["properties"]["skip_mcp"]["description"])
+        self.assertEqual(schema["required"], [])
+
+        agent_schema = tools["patchbay_agent"]["inputSchema"]
+        self.assertIn("Claude Desktop", agent_schema["properties"]["message"]["description"])
+        self.assertIn("Claude 桌面", agent_schema["properties"]["message"]["description"])
+        self.assertIn("Gemini CLI", agent_schema["properties"]["message"]["description"])
+
+    def test_config_profile_apply_schema(self) -> None:
+        from scripts.ai_flow.mcp_server import handle
+        tools_response = handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+        tools = {tool["name"]: tool for tool in tools_response["result"]["tools"]}
+
+        schema = tools["patchbay_config_profile_apply"]["inputSchema"]
+        self.assertIn("profile", schema["properties"])
+        self.assertEqual(schema["properties"]["profile"]["enum"], ["economy"])
+        self.assertEqual(schema["required"], [])
 
 
 class MockProviderSmokeTests(AiFlowTestCase):

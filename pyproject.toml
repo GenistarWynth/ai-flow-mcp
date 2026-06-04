@@ -7,13 +7,12 @@ name = "patchbay"
 version = "0.1.0"
 description = "MCP-friendly patch orchestration across interchangeable coding agents"
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
 requires-python = ">=3.11"
 dependencies = ["tomlkit>=0.13"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -25,8 +24,18 @@ patchbay-mcp = "patchbay_mcp_server:main"
 
 [tool.setuptools]
 package-dir = { "" = "scripts" }
-packages = ["ai_flow", "ai_flow.adapters", "ai_flow.prompts"]
+packages = [
+    "ai_flow",
+    "ai_flow.adapters",
+    "ai_flow.prompts",
+    "ai_flow.skill_templates",
+    "ai_flow.skill_templates.patchbay",
+    "ai_flow.skill_templates.patchbay.agents",
+    "ai_flow.skill_templates.patchbay.references",
+    "ai_flow.web_static",
+    "ai_flow.web_static.assets",
+]
 py-modules = ["patchbay_mcp_server"]
 
 [tool.setuptools.package-data]
-"ai_flow" = ["prompts/*.md"]
+"ai_flow" = ["prompts/*.md", "web_static/**", "skill_templates/**"]

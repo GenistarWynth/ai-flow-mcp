@@ -22,6 +22,7 @@ from ..config import split_command
 from ..errors import AiFlowError
 from ..plan_schema import empty_plan
 from ..runner import run_logged
+from ..usage import metrics_from_text, with_usage
 
 
 # ---------------------------------------------------------------------------
@@ -89,13 +90,14 @@ def run_claude_planner(
             timeout=timeout,
             env=env,
         )
+        usage_metrics = metrics_from_text(result.stdout)
         stream_text = extract_stream_json_plan(result.stdout)
         if stream_text or result.ok or not is_retryable_connection_failure(result.stdout, result.stderr):
             break
     assert result is not None
     if stream_text:
         append_text(log_path, "\nRecovered planner output from Claude stream-json assistant event.\n")
-        return stream_text
+        return with_usage(stream_text, usage_metrics)
     if not result.ok:
         transcript_text = _read_newest_transcript_plan(
             transcript_dirs,
@@ -133,7 +135,7 @@ def run_claude_planner(
             return transcript_text
     if not result.stdout.strip():
         raise AiFlowError("Claude planner produced empty output.", stage="plan")
-    return result.stdout
+    return with_usage(result.stdout, usage_metrics)
 
 
 # ---------------------------------------------------------------------------

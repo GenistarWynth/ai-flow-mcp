@@ -3,18 +3,61 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
+from textwrap import dedent
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 class McpInstallTest(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = Path(tempfile.mkdtemp())
         (self.tmp / "scripts" / "patchbay_mcp_server.py").parent.mkdir(parents=True, exist_ok=True)
-        (self.tmp / "scripts" / "patchbay_mcp_server.py").write_text("# stub\n")
+        (self.tmp / "scripts" / "patchbay_mcp_server.py").write_text(
+            dedent(
+                r'''
+                import json
+                import sys
 
-        import subprocess
+                TOOLS = [
+                    {"name": "patchbay_agent"},
+                    {"name": "patchbay_plan"},
+                    {"name": "patchbay_context"},
+                    {"name": "patchbay_metrics"},
+                    {"name": "patchbay_setup"},
+                    {"name": "patchbay_install"},
+                    {"name": "patchbay_skill_install"},
+                    {"name": "patchbay_skill_doctor"},
+                    {"name": "patchbay_doctor"},
+                    {"name": "patchbay_events"},
+                    {"name": "patchbay_apply"},
+                ]
+
+                for line in sys.stdin:
+                    if not line.strip():
+                        continue
+                    message = json.loads(line)
+                    method = message.get("method")
+                    if "id" not in message:
+                        continue
+                    if method == "initialize":
+                        result = {"serverInfo": {"name": "patchbay-test", "version": "0.0.0"}}
+                    elif method == "tools/list":
+                        result = {"tools": TOOLS}
+                    else:
+                        result = {}
+                    print(json.dumps({"jsonrpc": "2.0", "id": message["id"], "result": result}), flush=True)
+                '''
+            ).lstrip(),
+            encoding="utf-8",
+        )
+
         subprocess.run(["git", "init"], cwd=str(self.tmp), capture_output=True, check=True)
         subprocess.run(["git", "config", "user.email", "test@test"], cwd=str(self.tmp), capture_output=True, check=True)
         subprocess.run(["git", "config", "user.name", "test"], cwd=str(self.tmp), capture_output=True, check=True)
@@ -33,6 +76,83 @@ class McpInstallTest(unittest.TestCase):
         self.assertIn("codex mcp add patchbay", result["command"])
         self.assertTrue(result["dry_run"])
 
+    def test_dry_run_quotes_server_paths_with_spaces(self) -> None:
+        from scripts.ai_flow.mcp_install import _quote_command_arg, install_codex
+
+        spaced = self.tmp / "root with space"
+        server = spaced / "scripts" / "patchbay_mcp_server.py"
+        server.parent.mkdir(parents=True)
+        server.write_text("print('ok')\n", encoding="utf-8")
+
+        result = install_codex(spaced, dry_run=True)
+
+        self.assertIn(
+            f'{_quote_command_arg(sys.executable)} "{server}" --root "{spaced}"',
+            result["command"],
+        )
+
+    def test_external_root_uses_bundled_server_and_quotes_root_with_spaces(self) -> None:
+        from scripts.ai_flow.mcp_install import install_codex
+
+        spaced = self.tmp / "external root with space"
+        spaced.mkdir()
+
+        result = install_codex(spaced, dry_run=True)
+
+        self.assertIn("patchbay_mcp_server.py", result["command"])
+        self.assertIn(f'--root "{spaced}"', result["command"])
+        self.assertNotIn("patchbay-mcp --root", result["command"])
+
+    def test_codex_install_executes_command_when_available(self) -> None:
+        from scripts.ai_flow import mcp_install
+        import subprocess
+
+        completed = subprocess.CompletedProcess(args=["codex"], returncode=0, stdout="ok\n", stderr="")
+        with unittest.mock.patch.object(mcp_install.subprocess, "run", return_value=completed) as run_mock:
+            result = mcp_install.install_codex(self.tmp, dry_run=False)
+
+        self.assertTrue(result["executed"])
+        self.assertEqual(result["exit_code"], 0)
+        self.assertEqual(result["stdout"], "ok\n")
+        self.assertEqual(result["stderr"], "")
+        self.assertIn("codex mcp add patchbay", result["command"])
+        self.assertTrue(run_mock.called)
+        argv = run_mock.call_args.args[0]
+        self.assertEqual(argv[:4], ["codex", "mcp", "add", "patchbay"])
+        self.assertIn("--", argv)
+
+    def test_codex_install_falls_back_when_cli_missing(self) -> None:
+        from scripts.ai_flow import mcp_install
+
+        with unittest.mock.patch.object(mcp_install.subprocess, "run", side_effect=FileNotFoundError("codex not found")):
+            result = mcp_install.install_codex(self.tmp, dry_run=False)
+
+        self.assertFalse(result["executed"])
+        self.assertIn("codex not found", result["error"])
+        self.assertIn("codex mcp add patchbay", result["command"])
+
+    def test_codex_install_falls_back_when_cli_cannot_execute(self) -> None:
+        from scripts.ai_flow import mcp_install
+
+        with unittest.mock.patch.object(mcp_install.subprocess, "run", side_effect=PermissionError("codex denied")):
+            result = mcp_install.install_codex(self.tmp, dry_run=False)
+
+        self.assertFalse(result["executed"])
+        self.assertIn("codex denied", result["error"])
+        self.assertIn("codex mcp add patchbay", result["command"])
+
+    def test_codex_install_treats_existing_registration_as_success(self) -> None:
+        from scripts.ai_flow import mcp_install
+        import subprocess
+
+        completed = subprocess.CompletedProcess(args=["codex"], returncode=1, stdout="", stderr="server patchbay already exists\n")
+        with unittest.mock.patch.object(mcp_install.subprocess, "run", return_value=completed):
+            result = mcp_install.install_codex(self.tmp, dry_run=False)
+
+        self.assertTrue(result["executed"])
+        self.assertTrue(result["already_registered"])
+        self.assertIsNone(result["error"])
+
     def test_claude_dry_run_returns_command(self) -> None:
         from scripts.ai_flow.mcp_install import install_claude
         result = install_claude(self.tmp, dry_run=True)
@@ -44,6 +164,24 @@ class McpInstallTest(unittest.TestCase):
         result = run_mcp_install(self.tmp, "claude-code", dry_run=True)
         self.assertEqual(result["host"], "claude-code")
         self.assertIn("claude mcp add patchbay", result["command"])
+
+    def test_run_mcp_install_accepts_common_host_aliases(self) -> None:
+        from scripts.ai_flow.mcp_install import run_mcp_install
+
+        cases = [
+            (" Codex Desktop ", "codex"),
+            ("Codex 桌面", "codex"),
+            ("claude code", "claude-code"),
+            ("Claude 代码", "claude-code"),
+            ("Claude_Desktop", "claude-desktop"),
+            ("Claude 桌面", "claude-desktop"),
+            ("Gemini CLI", "gemini"),
+            ("Gemini 命令行", "gemini"),
+        ]
+        for host, expected in cases:
+            with self.subTest(host=host):
+                result = run_mcp_install(self.tmp, host, dry_run=True)
+                self.assertEqual(result["host"], expected)
 
     def test_gemini_dry_run_returns_command(self) -> None:
         from scripts.ai_flow.mcp_install import install_gemini
@@ -79,8 +217,12 @@ class McpInstallTest(unittest.TestCase):
     def test_unknown_host_raises(self) -> None:
         from scripts.ai_flow.mcp_install import run_mcp_install
         from scripts.ai_flow.errors import AiFlowError
-        with self.assertRaises(AiFlowError):
+
+        with self.assertRaises(AiFlowError) as error:
             run_mcp_install(self.tmp, "nonexistent")
+        self.assertIn("Claude Desktop", str(error.exception))
+        self.assertIn("Gemini CLI", str(error.exception))
+        self.assertIn("Claude Desktop", error.exception.suggested_next_action or "")
 
     def test_mcp_doctor(self) -> None:
         from scripts.ai_flow.mcp_install import run_mcp_doctor
@@ -88,11 +230,65 @@ class McpInstallTest(unittest.TestCase):
         self.assertIn("server_command", result)
         self.assertTrue(result["server_script_exists"])
         self.assertIn("codex", result["supported_hosts"])
+        self.assertTrue(result["server_reachable"])
+        self.assertTrue(result["required_tools_present"])
+        self.assertEqual(result["missing_tools"], [])
+        self.assertEqual(result["server_info"]["name"], "patchbay-test")
+
+    def test_mcp_doctor_probes_stdio_server(self) -> None:
+        from scripts.ai_flow import mcp_install
+
+        with unittest.mock.patch.object(
+            mcp_install,
+            "_probe_mcp_server",
+            return_value={
+                "ok": True,
+                "tool_count": 21,
+                "required_tools_present": True,
+                "missing_tools": [],
+                "server_info": {"name": "patchbay"},
+                "error": None,
+            },
+        ) as probe:
+            result = mcp_install.run_mcp_doctor(self.tmp)
+
+        probe.assert_called_once()
+        self.assertTrue(result["server_reachable"])
+        self.assertEqual(result["tool_count"], 21)
+        self.assertTrue(result["required_tools_present"])
 
     def test_mcp_doctor_includes_root(self) -> None:
         from scripts.ai_flow.mcp_install import run_mcp_doctor
         result = run_mcp_doctor(self.tmp)
         self.assertTrue(result["server_command"].endswith(f"--root {self.tmp}"))
+
+    def test_real_mcp_server_script_lists_install_and_skill_tools(self) -> None:
+        server = PROJECT_ROOT / "scripts" / "patchbay_mcp_server.py"
+        messages = [
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+        ]
+        completed = subprocess.run(
+            ["python", str(server), "--root", str(self.tmp)],
+            cwd=str(PROJECT_ROOT),
+            input="\n".join(json.dumps(message) for message in messages) + "\n",
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        responses = [json.loads(line) for line in completed.stdout.splitlines() if line.strip()]
+        tools_response = next(item for item in responses if item.get("id") == 2)
+        tool_names = {tool["name"] for tool in tools_response["result"]["tools"]}
+        self.assertIn("patchbay_agent", tool_names)
+        self.assertIn("patchbay_setup", tool_names)
+        self.assertIn("patchbay_skill_install", tool_names)
+        self.assertIn("patchbay_skill_doctor", tool_names)
 
 
 if __name__ == "__main__":

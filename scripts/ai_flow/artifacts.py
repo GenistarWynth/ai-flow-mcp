@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -77,6 +78,18 @@ def read_json(path: Path) -> dict[str, Any]:
 
 def write_json(path: Path, data: dict[str, Any]) -> None:
     write_text(path, json.dumps(data, indent=2, ensure_ascii=False, sort_keys=True) + "\n")
+
+
+def write_json_atomic(path: Path, data: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(data, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
+    temp_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        write_text(temp_path, payload)
+        temp_path.replace(path)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
 
 
 def find_run_dir(start: Path, run_id: str) -> Path:

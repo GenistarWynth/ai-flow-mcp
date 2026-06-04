@@ -17,6 +17,7 @@ from .cli_reviewer import (
 from ..artifacts import read_text
 from ..config import split_command
 from ..errors import AiFlowError
+from ..usage import metrics_from_text, with_usage
 
 
 # ---------------------------------------------------------------------------
@@ -88,10 +89,11 @@ def run_codex_reviewer(
         env=env,
         trust_early_output_file=True,
     )
+    usage_metrics = metrics_from_text(result.stdout)
     if output_file.exists():
         output = extract_reviewer_output(read_text(output_file))
         if output:
-            return output
+            return with_usage(output, usage_metrics)
     if result.returncode != 0:
         raise AiFlowError(
             f"Reviewer ({command_key}) failed with exit code {result.returncode}.",
@@ -102,7 +104,7 @@ def run_codex_reviewer(
         raise AiFlowError(f"Reviewer ({command_key}) produced empty output.", stage="review")
     output = extract_reviewer_output(result.stdout)
     if output:
-        return output
+        return with_usage(output, usage_metrics)
     raise AiFlowError(
         f"Reviewer ({command_key}) output did not start with PASS or CHANGES_REQUESTED.",
         stage="review",

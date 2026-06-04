@@ -2,8 +2,8 @@
 
 ``patchbay config`` (no args) runs a guided prompt sequence that writes or
 updates ``.ai/patchbay.toml``.  ``patchbay config set <key> <value>`` allows
-non-interactive key-value edits.  ``patchbay doctor`` validates the resolved
-phase configuration.
+non-interactive key-value edits.  ``patchbay config --doctor`` validates the
+resolved phase configuration.
 """
 
 from __future__ import annotations
@@ -13,6 +13,16 @@ from pathlib import Path
 from typing import Any
 
 import tomlkit
+
+from .action_contract import group_actions
+
+
+ECONOMY_PROFILE = {
+    "profile": "economy",
+    "summary": "Route high-volume implementation and repair work to the configured low-cost writer while leaving plan/review choices unchanged.",
+}
+
+CONFIG_PROFILES = {"economy": ECONOMY_PROFILE}
 
 
 def _prompt(prompt: str, default: str = "") -> str:
@@ -116,6 +126,11 @@ def run_config_wizard(
     provider_args: list[str] | None = None,
     prompt_mode: str = "stdin",
     output_contract: str = "",
+    activate_economy: bool = False,
+    economy_model: str = "",
+    economy_label: str = "",
+    profile: str = "",
+    show_profile: bool = False,
 ) -> dict[str, Any]:
     """Entry point for ``patchbay config``.
 
@@ -132,6 +147,18 @@ def run_config_wizard(
     if show:
         return {"config": str(cfg_path), "resolved": _public_config(cfg)}
 
+    if show_profile:
+        status = _profile_status(cfg)
+        return _with_action_groups({
+            "config": str(cfg_path),
+            **status,
+            "next_actions": _profile_next_actions(status),
+            "actions": _profile_actions(status),
+        })
+
+    if profile:
+        return _apply_profile(cfg_path, cfg, profile)
+
     if phase:
         return _set_phase(cfg_path, cfg, phase, provider=provider, model=model, command_key=command_key)
 
@@ -141,7 +168,7 @@ def run_config_wizard(
     if test_command:
         return _add_test_command(cfg_path, cfg, test_command)
 
-    if provider_id:
+    if provider_id or provider_roles is not None or provider_command or provider_args is not None or output_contract:
         return _add_cli_provider(
             cfg_path,
             cfg,
@@ -151,6 +178,9 @@ def run_config_wizard(
             args=provider_args or [],
             prompt_mode=prompt_mode,
             output_contract=output_contract,
+            activate_economy=activate_economy,
+            economy_model=economy_model,
+            economy_label=economy_label,
         )
 
     if set_key:
@@ -215,7 +245,25 @@ def _add_cli_provider(
     args: list[str],
     prompt_mode: str,
     output_contract: str,
+    activate_economy: bool = False,
+    economy_model: str = "",
+    economy_label: str = "",
 ) -> dict[str, Any]:
+    provider_id = provider_id.strip()
+    roles = [str(role).strip() for role in roles if str(role).strip()]
+    command = command.strip()
+    prompt_mode = prompt_mode.strip()
+    output_contract = output_contract.strip()
+    economy_model = economy_model.strip()
+    economy_label = economy_label.strip()
+    _validate_cli_provider_input(
+        provider_id=provider_id,
+        roles=roles,
+        command=command,
+        prompt_mode=prompt_mode,
+        output_contract=output_contract,
+        activate_economy=activate_economy,
+    )
     provider_cfg = {
         "roles": roles,
         "command": command,
@@ -224,8 +272,409 @@ def _add_cli_provider(
         "output_contract": output_contract,
     }
     cfg.setdefault("providers", {})[provider_id] = provider_cfg
-    _write_config_update(cfg_path, ("providers", provider_id), provider_cfg)
-    return {"config": str(cfg_path), "provider": provider_id, "updated": provider_cfg}
+    _register_custom_providers_for_status(cfg)
+    updates: list[tuple[tuple[str, ...], Any]] = [(("providers", provider_id), provider_cfg)]
+    economy_updates: dict[str, Any] = {}
+    if activate_economy:
+        economy_updates = _custom_economy_updates(
+            provider_id=provider_id,
+            model=economy_model,
+            label=economy_label or provider_id,
+        )
+        for key, value in economy_updates.items():
+            parts = tuple(key.split("."))
+            _set_nested(cfg, parts, value)
+            updates.append((parts, value))
+    _write_config_updates(cfg_path, updates)
+    result = {"config": str(cfg_path), "provider": provider_id, "updated": provider_cfg}
+    if activate_economy:
+        status = _profile_status(cfg)
+        result.update(
+            {
+                "activated_economy": True,
+                "economy_updated": economy_updates,
+                "status": status,
+                "next_actions": _profile_next_actions(status),
+                "actions": _profile_actions(status, include_validate=True),
+            }
+        )
+    return _with_action_groups(result)
+
+
+def _with_action_groups(result: dict[str, Any]) -> dict[str, Any]:
+    actions = result.get("actions")
+    if isinstance(actions, list):
+        result["action_groups"] = group_actions(actions)
+    return result
+
+
+def _validate_cli_provider_input(
+    *,
+    provider_id: str,
+    roles: list[str],
+    command: str,
+    prompt_mode: str,
+    output_contract: str,
+    activate_economy: bool = False,
+) -> None:
+    from .adapters import BUILTIN_PROVIDER_IDS, ROLE_FIX, ROLE_PLAN, ROLE_REVIEW, ROLE_WRITE
+    from .errors import AiFlowError
+
+    provider_id = provider_id.strip()
+    if not provider_id:
+        raise AiFlowError("Custom provider id cannot be empty.", stage="config")
+    if provider_id in BUILTIN_PROVIDER_IDS:
+        raise AiFlowError(
+            f"Custom provider id collides with built-in provider: {provider_id}",
+            stage="config",
+            suggested_next_action="Choose a unique provider id such as cheap_writer or local_writer.",
+        )
+    role_set = {str(role).strip() for role in roles if str(role).strip()}
+    if not role_set:
+        raise AiFlowError("Custom provider must declare at least one role.", stage="config")
+    valid_roles = {ROLE_PLAN, ROLE_WRITE, ROLE_REVIEW, ROLE_FIX}
+    invalid_roles = role_set - valid_roles
+    if invalid_roles:
+        raise AiFlowError(
+            f"Custom provider has invalid roles: {', '.join(sorted(invalid_roles))}",
+            stage="config",
+            suggested_next_action="Use one or more of: plan, write, review, fix.",
+        )
+    if activate_economy and {ROLE_WRITE, ROLE_FIX} - role_set:
+        raise AiFlowError(
+            "Custom economy providers must declare both write and fix roles.",
+            stage="config",
+            suggested_next_action="Add `--roles write fix` before using --activate-economy.",
+        )
+    if not command.strip():
+        raise AiFlowError("Custom provider command cannot be empty.", stage="config")
+    if prompt_mode not in {"stdin", "arg", "file"}:
+        raise AiFlowError("Custom provider prompt_mode must be one of: stdin, arg, file.", stage="config")
+    if output_contract not in {"plan_json", "review_verdict", "worktree_diff", "writer_diff"}:
+        raise AiFlowError(
+            "Custom provider output_contract must be one of: plan_json, review_verdict, worktree_diff, writer_diff.",
+            stage="config",
+        )
+
+
+def _custom_economy_updates(*, provider_id: str, model: str, label: str) -> dict[str, Any]:
+    return {
+        "profiles.economy.provider": provider_id,
+        "profiles.economy.model": model,
+        "profiles.economy.command_key": "",
+        "profiles.economy.label": label,
+        "writer.provider": provider_id,
+        "models.writer": model,
+        "phases.write.provider": provider_id,
+        "phases.write.model": model,
+        "phases.write.command_key": "",
+        "phases.fix.provider": provider_id,
+        "phases.fix.model": model,
+        "phases.fix.command_key": "",
+    }
+
+
+def _register_custom_providers_for_status(cfg: dict[str, Any]) -> None:
+    from .adapters import register_custom_providers
+
+    register_custom_providers(cfg)
+
+
+def _economy_profile_definition(cfg: dict[str, Any]) -> dict[str, Any]:
+    from .config import economy_target
+
+    target = economy_target(cfg)
+    provider = target["provider"]
+    model = target["model"]
+    command_key = target["command_key"]
+    updates: dict[tuple[str, ...], str] = {
+        ("writer", "provider"): provider,
+        ("phases", "write", "provider"): provider,
+        ("phases", "fix", "provider"): provider,
+    }
+    if model:
+        updates[("models", "writer")] = model
+        updates[("phases", "write", "model")] = model
+        updates[("phases", "fix", "model")] = model
+    if command_key:
+        updates[("phases", "write", "command_key")] = command_key
+        updates[("phases", "fix", "command_key")] = command_key
+    return {
+        "profile": "economy",
+        "summary": f"Route high-volume implementation and repair work to {target['label']} while leaving plan/review choices unchanged.",
+        "updates": updates,
+    }
+
+
+def _profile_definition(cfg: dict[str, Any], profile: str) -> dict[str, Any] | None:
+    if profile == "economy":
+        return _economy_profile_definition(cfg)
+    return CONFIG_PROFILES.get(profile)
+
+
+def _apply_profile(cfg_path: Path, cfg: dict[str, Any], profile: str) -> dict[str, Any]:
+    name = profile.strip().lower()
+    definition = _profile_definition(cfg, name)
+    if definition is None:
+        from .errors import AiFlowError
+        raise AiFlowError(
+            f"Unknown config profile: {profile}. Supported profiles: {', '.join(sorted(CONFIG_PROFILES))}.",
+            stage="config",
+            suggested_next_action="Run `patchbay config profile apply economy`.",
+        )
+    updates = list(definition["updates"].items())
+    for parts, value in updates:
+        _set_nested(cfg, parts, value)
+    _write_config_updates(cfg_path, updates)
+    status = _profile_status(cfg)
+    economy = status.get("economy", {}) if isinstance(status.get("economy"), dict) else {}
+    target = economy.get("target", {}) if isinstance(economy.get("target"), dict) else {}
+    next_actions = ["Run `patchbay config --doctor --json` to validate the resolved routing."]
+    if economy.get("command_ready") is False and target.get("provider") == "reasonix_cli":
+        next_actions.insert(0, "Set `commands.reasonix` if Reasonix is not on PATH.")
+    elif economy.get("command_ready") is False:
+        status = _first_not_ready_command_status(economy.get("command_status"))
+        source = str(status.get("source") or "providers.<id>.command")
+        next_actions.insert(0, f"Set `{source}` to a runnable provider command.")
+    return _with_action_groups({
+        "config": str(cfg_path),
+        "profile": name,
+        "summary": definition["summary"],
+        "updated": {
+            ".".join(parts): value for parts, value in updates
+        },
+        "status": status,
+        "next_actions": next_actions,
+        "actions": _profile_actions(status, include_validate=True),
+    })
+
+
+def _profile_next_actions(status: dict[str, Any]) -> list[str]:
+    profile = status.get("profile")
+    if profile == "economy":
+        economy = status.get("economy", {}) if isinstance(status.get("economy"), dict) else {}
+        if economy.get("command_ready") is False:
+            target = economy.get("target", {}) if isinstance(economy.get("target"), dict) else {}
+            if target.get("provider") == "reasonix_cli":
+                return ["configure reasonix command", "readiness"]
+            return ["copy provider command", "inspect economy provider command", "readiness"]
+        return ["readiness", "start"]
+    if profile == "custom":
+        return ["apply economy profile", "readiness"]
+    return ["readiness"]
+
+
+def _profile_actions(status: dict[str, Any], *, include_validate: bool = False) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]]
+    profile = status.get("profile")
+    if profile == "economy":
+        actions = [
+            {
+                "id": "open_readiness",
+                "label": "Open readiness",
+                "kind": "local_agent",
+                "message": "readiness",
+                "safe": True,
+                "reason": "Inspect setup and resolved write/fix routing.",
+            },
+        ]
+        economy = status.get("economy", {}) if isinstance(status.get("economy"), dict) else {}
+        if economy.get("command_ready") is False:
+            target = economy.get("target", {}) if isinstance(economy.get("target"), dict) else {}
+            if target.get("provider") == "reasonix_cli":
+                actions.append(_configure_reasonix_action(str(target.get("label") or "Reasonix/DeepSeek")))
+            else:
+                status = _first_not_ready_command_status(economy.get("command_status"))
+                source = str(status.get("source") or "providers.<id>.command")
+                if source.startswith("providers."):
+                    actions.append(_configure_provider_command_action(source, str(target.get("label") or "the configured")))
+                actions.append(
+                    {
+                        "id": "inspect_economy_provider_command",
+                        "label": "Inspect provider command",
+                        "kind": "local_agent",
+                        "message": "readiness",
+                        "safe": True,
+                        "reason": "Inspect the command or provider setup for the configured economy target.",
+                    }
+                )
+        else:
+            actions.append(
+                {
+                    "id": "start_new_task",
+                    "label": "Start new task",
+                    "kind": "focus_composer",
+                    "safe": True,
+                    "reason": "Start a new Patchbay plan using the active economy routing profile.",
+                }
+            )
+    elif profile == "custom":
+        actions = [
+            {
+                "id": "apply_economy_profile",
+                "label": "Apply economy profile",
+                "kind": "local_agent",
+                "message": "apply economy profile",
+                "safe": True,
+                "reason": "Route high-volume write/fix work to the configured economy profile.",
+            },
+            {
+                "id": "open_readiness",
+                "label": "Open readiness",
+                "kind": "local_agent",
+                "message": "readiness",
+                "safe": True,
+                "reason": "Inspect setup and current routing before changing the profile.",
+            },
+        ]
+    else:
+        actions = [
+            {
+                "id": "open_readiness",
+                "label": "Open readiness",
+                "kind": "local_agent",
+                "message": "readiness",
+                "safe": True,
+                "reason": "Inspect setup and phase configuration errors before changing routing.",
+            }
+        ]
+    if include_validate:
+        actions.append(
+            {
+                "id": "validate_config",
+                "label": "Validate config",
+                "kind": "command",
+                "command": "patchbay config --doctor --json",
+                "safe": True,
+                "reason": "Validate resolved phase routing after applying the profile.",
+            }
+        )
+    return actions
+
+
+def _configure_reasonix_action(target_label: str = "Reasonix/DeepSeek") -> dict[str, Any]:
+    return {
+        "id": "configure_reasonix_command",
+        "label": "Configure Reasonix",
+        "kind": "local_agent",
+        "message": "configure reasonix command",
+        "command": "patchbay config --set-key commands.reasonix --set-value reasonix",
+        "safe": True,
+        "reason": f"Set the default Reasonix executable so the {target_label} write/fix economy route can actually run.",
+    }
+
+
+def _configure_provider_command_action(source: str, target_label: str) -> dict[str, Any]:
+    return {
+        "id": "configure_economy_provider_command",
+        "label": "Copy provider command",
+        "kind": "command",
+        "command": f"patchbay config --set-key {source} --set-value <command>",
+        "safe": True,
+        "reason": f"Copy the command for the {target_label} economy provider into .ai/patchbay.toml.",
+    }
+
+
+def _first_not_ready_command_status(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    for phase in ("write", "fix"):
+        item = value.get(phase)
+        if isinstance(item, dict) and item.get("required") and item.get("ready") is False:
+            return item
+    return {}
+
+
+def _set_nested(cfg: dict[str, Any], parts: tuple[str, ...], value: Any) -> None:
+    current: Any = cfg
+    for part in parts[:-1]:
+        current = current.setdefault(part, {})
+    current[parts[-1]] = value
+
+
+def _profile_status(cfg: dict[str, Any]) -> dict[str, Any]:
+    from .config import economy_target, resolve_phase, route_matches_economy
+
+    target = economy_target(cfg)
+    try:
+        write = _public_phase(resolve_phase(cfg, "write"))
+        fix = _public_phase(resolve_phase(cfg, "fix"))
+    except Exception as exc:
+        return {
+            "profile": "invalid",
+            "economy": {"matches": False, "error": str(exc)},
+            "recommendation": "Fix phase configuration errors before applying a routing profile.",
+        }
+    economy_matches = (
+        route_matches_economy(write, target)
+        and route_matches_economy(fix, target)
+    )
+    command_status = {
+        "write": _phase_command_status(cfg, write),
+        "fix": _phase_command_status(cfg, fix),
+    }
+    command_ready = all(
+        item.get("ready") for item in command_status.values() if item.get("required")
+    )
+    return {
+        "profile": "economy" if economy_matches else "custom",
+        "economy": {
+            "matches": economy_matches,
+            "target": target,
+            "write": write,
+            "fix": fix,
+            "command_ready": command_ready,
+            "command_status": command_status,
+            "intent": f"High-volume write/fix work runs on the configured low-cost {target['label']} route.",
+        },
+        "phase_strategy": _phase_strategy(cfg),
+        "recommendation": ""
+        if economy_matches
+        else f"Run `patchbay config profile apply economy` to route write/fix work to {target['label']}.",
+    }
+
+
+def _phase_strategy(cfg: dict[str, Any]) -> dict[str, Any]:
+    from .config import economy_target, resolve_phase, route_matches_economy
+
+    target = economy_target(cfg)
+    roles = {
+        "plan": ("supervision", "Use a stronger model for task decomposition, constraints, and the execution plan."),
+        "write": ("economy", "Route high-volume implementation work to the low-cost writer."),
+        "fix": ("economy", "Route iterative repair work to the low-cost writer."),
+        "review": ("supervision", "Use an independent stronger reviewer before apply."),
+    }
+    strategy: dict[str, Any] = {}
+    for phase, (tier, reason) in roles.items():
+        try:
+            resolved = _public_phase(resolve_phase(cfg, phase))
+            strategy[phase] = {
+                **resolved,
+                "tier": tier,
+                "reason": reason,
+                "economy_route": route_matches_economy(resolved, target),
+            }
+            command_status = _phase_command_status(cfg, resolved)
+            if command_status.get("required"):
+                strategy[phase]["command_status"] = command_status
+        except Exception as exc:
+            strategy[phase] = {"tier": tier, "reason": reason, "error": str(exc)}
+    return strategy
+
+
+def _phase_command_status(cfg: dict[str, Any], phase: dict[str, Any]) -> dict[str, Any]:
+    from .config import route_command_status
+
+    return route_command_status(cfg, phase)
+
+
+def _public_phase(phase: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "provider": phase.get("provider", ""),
+        "model": phase.get("model", ""),
+        "command_key": phase.get("command_key", ""),
+        "timeout": phase.get("timeout", 900),
+    }
 
 
 def _set_config_key(cfg_path: Path, cfg: dict[str, Any], key: str, value: str) -> dict[str, Any]:

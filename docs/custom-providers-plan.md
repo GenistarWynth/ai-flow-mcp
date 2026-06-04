@@ -1,22 +1,22 @@
-# Custom Provider Support — Planning Document
+# Custom Provider Support
 
-> **Status: plan only, not yet implemented.**
-> This document enumerates the design, schema, safety constraints, and test surface for user-defined provider entries. No runtime code, registry changes, or config parsing for custom providers ships yet.
+> **Status: CLI baseline implemented; broader provider modes remain roadmap.**
+> Runtime support now covers TOML-defined CLI providers with `roles`, `command`, `args`, `prompt_mode`, and `output_contract`, plus `patchbay config provider add-cli`. This document keeps the shipped CLI contract and the remaining HTTP/ACP/safety roadmap in one place.
 
 ## Motivation
 
-Patchbay currently hard-codes a fixed set of providers in each role registry (`PLANNERS`, `WRITERS`, `REVIEWERS`, `FIXERS`). Users who want to plug in a different CLI agent, a local model server, or an HTTP endpoint must edit Python adapter code in `scripts/ai_flow/adapters/`. A declarative `[providers.<id>]` TOML block lets users define new providers in `.ai/patchbay.toml` without touching the codebase.
+Patchbay ships built-in providers in each role registry (`PLANNERS`, `WRITERS`, `REVIEWERS`, `FIXERS`) and can also register custom CLI providers from `.ai/patchbay.toml`. Users who want to plug in a different CLI agent can do so without editing Python adapter code. Local model servers, HTTP endpoints, and generic ACP providers remain future expansion points.
 
-## Scope (in scope, future implementation)
+## Scope
 
-- TOML-driven provider registration under `[providers.<id>]`.
-- Four modes: `cli_stdin` (prompt on stdin, output on stdout), `cli_stdout` (prompt as CLI arg), `http_api` (OpenAI-compatible Chat Completions), `acp` (Agent Communication Protocol, JSON-RPC over stdio).
-- Per-provider role capability mask: a single provider can be registered for one or more of `planner`, `writer`, `reviewer`, `fixer`.
-- Phase resolution (`resolve_phase`) reads providers from config and merges them into the existing registries at resolution time.
-- Output parsing contract: define sentinel markers, regex, or JSON paths to extract the relevant content from provider output.
-- Safety constraints: path allowlists, deny patterns, execution blocking, timeout enforcement.
-- Mock harness: built-in mock provider that exercises the generic adapter path.
-- Full test surface: unit tests for config parsing, provider dispatch, output parsing, safety enforcement, and integration tests for end-to-end flow.
+- Shipped: TOML-driven CLI provider registration under `[providers.<id>]`.
+- Shipped: `roles` capability mask using `plan`, `write`, `review`, and `fix`.
+- Shipped: CLI prompt delivery through `prompt_mode = "stdin" | "arg" | "file"`.
+- Shipped: output contracts `plan_json`, `review_verdict`, `writer_diff`, and `worktree_diff`.
+- Shipped: phase resolution registers configured providers into the existing registries at load time.
+- Shipped: custom provider IDs are rejected before registration or `add-cli` writes when they collide with built-ins (`reasonix_cli`, `claude_cli`, `codex_cli`, `gemini_cli`, `mock`).
+- Shipped: `patchbay config provider add-cli --activate-economy` registers a custom write/fix provider and immediately makes it the low-cost economy route.
+- Roadmap: HTTP API mode, generic ACP mode, provider-specific path allowlists/denylists, execution blocking, and richer output extraction.
 
 ## Out of scope
 
@@ -114,6 +114,16 @@ If a provider is referenced in a phase but doesn't list that role, Patchbay rais
 | `http_api` | OpenAI-compatible POST to `base_url/chat/completions` | JSON response body | Local model servers, proxies |
 | `acp` | JSON-RPC over stdio (ACP protocol) | ACP transcript | Agents that speak the ACP wire format |
 
+### Usage reporting contract
+
+For every custom CLI provider invocation, Patchbay sets `PATCHBAY_USAGE_FILE` to a JSON sidecar path inside the run directory. Wrappers can write either a JSON object or JSONL records there with OpenAI/Claude-style fields such as `usage.prompt_tokens`, `usage.completion_tokens`, `usage.input_tokens`, `usage.output_tokens`, `usage.cache_read_input_tokens`, `total_cost_usd`, or `estimated_cost_usd`.
+
+Patchbay merges usage found in stdout, stderr, and the sidecar, then preserves it through all output contracts, including `worktree_diff`. The merged totals flow into `events.jsonl`, `patchbay metrics`, `run_metrics.provider_usage`, `run_metrics.tier_usage`, and the Web workbench efficiency panel, so cheap high-volume writer/fixer routes can be verified with actual token/cost/duration evidence instead of provider names alone. `tier_usage.economy` groups write/fix, `tier_usage.supervision` groups plan/review, and `tier_usage.execution` groups test/apply so teams can see whether simple bulk work is actually consuming the expected low-cost share.
+
+When a custom provider is used as `[profiles.economy]`, readiness, metrics, and write/fix preflight gates also validate `providers.<id>.command`. Missing or unresolved commands are reported as `command_not_ready` with a copyable `configure_economy_provider_command` action before `inspect_economy_provider_command`, then leave the run in its prior durable state. The built-in Reasonix path continues to use the dedicated `configure_reasonix_command` action for `commands.reasonix`.
+
+`patchbay config provider add-cli` validates provider IDs, roles, command, prompt mode, and output contract before writing `.ai/patchbay.toml`. Invalid definitions fail without mutating the project config, so a bad low-cost provider setup cannot poison later doctor/setup runs. Add `--activate-economy --economy-model <model> --economy-label <label>` to write `[profiles.economy]`, `[phases.write]`, and `[phases.fix]` in the same update; this requires both `write` and `fix` roles so a write-only provider cannot be accidentally chosen for repair loops.
+
 ---
 
 ## Provider Registry Integration
@@ -194,7 +204,7 @@ When implementing, every item below must be addressed:
 - [ ] Provider output is redacted: any value from the provider's `env` that appears in stdout/stderr is replaced with `***REDACTED***` in logs.
 - [ ] Provider process is killed on timeout; orphan cleanup is handled.
 - [ ] Custom providers are never allowed to modify `.git/`, `.env*`, secret-like files, or paths outside the worktree (same rules as built-in providers).
-- [ ] Custom providers cannot override built-in provider IDs (`reasonix_cli`, `claude_cli`, `codex_cli`, `gemini_cli`, `mock`).
+- [x] Custom providers cannot override built-in provider IDs (`reasonix_cli`, `claude_cli`, `codex_cli`, `gemini_cli`, `mock`).
 
 ---
 
