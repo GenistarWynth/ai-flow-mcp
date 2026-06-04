@@ -393,6 +393,14 @@ function createClient(overrides: Partial<PatchbayClient> = {}): PatchbayClient {
 describe("Workbench", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: undefined
+    });
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: undefined
+    });
   });
 
   it("runs structured Skill install readiness actions through the local Agent", async () => {
@@ -902,6 +910,102 @@ describe("Workbench", () => {
     expect(writeText).toHaveBeenCalledWith("patchbay config --set-key providers.cheap_writer.command --set-value <command>");
     expect(client.runAction).not.toHaveBeenCalled();
     expect(client.agentMessage).not.toHaveBeenCalled();
+  });
+
+  it("falls back to execCommand when Clipboard API is unavailable", async () => {
+    const command = "patchbay doctor --json";
+    let copiedText = "";
+    const execCommand = vi.fn((name: string) => {
+      copiedText = (document.activeElement as HTMLTextAreaElement | null)?.value ?? "";
+      return name === "copy";
+    });
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: execCommand
+    });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      getDoctor: vi.fn().mockResolvedValue({
+        ok: false,
+        root: "C:/repo",
+        checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true } },
+        actions: [
+          {
+            id: "copy_doctor",
+            label: "Copy doctor command",
+            kind: "command",
+            command,
+            safe: true,
+            reason: "Copy the read-only doctor command."
+          }
+        ]
+      })
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    const button = within(details).getByRole("button", { name: "Copy command Copy doctor command" });
+    await userEvent.click(button);
+
+    expect(execCommand).toHaveBeenCalledWith("copy");
+    expect(copiedText).toBe(command);
+    expect(button).toHaveTextContent("Copied");
+    expect(document.querySelector("textarea[readonly]")).toBeNull();
+  });
+
+  it("falls back to execCommand when Clipboard API rejects writes", async () => {
+    const command = "patchbay config --set-key providers.cheap_writer.command --set-value <command>";
+    const writeText = vi.fn().mockRejectedValue(new Error("clipboard denied"));
+    let copiedText = "";
+    const execCommand = vi.fn((name: string) => {
+      copiedText = (document.activeElement as HTMLTextAreaElement | null)?.value ?? "";
+      return name === "copy";
+    });
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: execCommand
+    });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      getDoctor: vi.fn().mockResolvedValue({
+        ok: false,
+        root: "C:/repo",
+        checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true } },
+        actions: [
+          {
+            id: "configure_economy_provider_command",
+            label: "Copy provider command",
+            kind: "command",
+            command,
+            safe: true,
+            reason: "Copy the command for the cheap_writer economy provider into .ai/patchbay.toml."
+          }
+        ]
+      })
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    const button = within(details).getByRole("button", { name: "Copy command Copy provider command" });
+    await userEvent.click(button);
+
+    expect(writeText).toHaveBeenCalledWith(command);
+    expect(execCommand).toHaveBeenCalledWith("copy");
+    expect(copiedText).toBe(command);
+    expect(button).toHaveTextContent("Copied");
+    expect(document.querySelector("textarea[readonly]")).toBeNull();
   });
 
   it("renders a Codex-style thread and keeps orchestration details in the closed diagnostics drawer", async () => {

@@ -2264,10 +2264,32 @@ function ConfigPanel({ config }: { config: unknown }) {
 }
 
 async function copyTextToClipboard(text: string) {
+  if (!text) return false;
   try {
-    if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) return false;
-    await navigator.clipboard.writeText(text);
-    return true;
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Fall back below for desktop/non-secure contexts where Clipboard API is unavailable or rejected.
+  }
+  try {
+    if (typeof document === "undefined" || !document.body || typeof document.execCommand !== "function") return false;
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "true");
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    textarea.style.top = "0";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, text.length);
+    try {
+      return document.execCommand("copy");
+    } finally {
+      textarea.remove();
+    }
   } catch {
     return false;
   }

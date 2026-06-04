@@ -19,7 +19,7 @@ Read this reference when a host, desktop UI, or Skill-only workflow needs to han
 - `diagnostic_tab`: open the named UI tab such as `Trace`, `Log`, `Diff`, `Artifacts`, `Config`, or `Providers`.
 - `open_run`: open the given `run_id` before taking any gated action.
 - `focus_composer`: start or focus a replacement-task composer.
-- `command`: render the exact `command` as a copyable local CLI fallback, or run it only when the surrounding host deliberately supports local commands.
+- `command`: render the exact `command` as a copyable local CLI fallback, or run it only when the surrounding host deliberately supports local commands. Desktop/Web copy controls should use a fallback copy path when the Clipboard API is unavailable or rejects writes.
 
 Never treat safe diagnostic or setup actions as `continue`, `approve`, or `apply`.
 
