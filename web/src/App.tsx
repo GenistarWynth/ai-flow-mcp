@@ -179,6 +179,7 @@ const inboxFilterPreferenceKey = "patchbay.inboxFilter";
 const localMessagesPreferenceKey = "patchbay.localMessages";
 const newTaskReplyPreferenceKey = "patchbay.newTaskReply";
 const composerDraftPreferencePrefix = "patchbay.composerDraft.";
+const selectedMessagePreferencePrefix = "patchbay.selectedMessage.";
 const newTaskRunKey = "__new__";
 const statusFilterValues = new Set(["PLANNED", "IMPLEMENTING", "REVIEWED_PASS", "REVIEWED_CHANGES_REQUESTED", "FAILED"]);
 const localTranscriptRunLimit = 20;
@@ -326,6 +327,19 @@ function readSelectedRunPreference() {
 
 function writeSelectedRunPreference(runId: string) {
   writeStringPreference(selectedRunPreferenceKey, runId);
+}
+
+function selectedMessagePreferenceKey(runId: string) {
+  return `${selectedMessagePreferencePrefix}${encodeURIComponent(runId)}`;
+}
+
+function readSelectedMessagePreference(runId: string) {
+  return runId ? readStringPreference(selectedMessagePreferenceKey(runId)) : "";
+}
+
+function writeSelectedMessagePreference(runId: string, messageId: string) {
+  if (!runId) return;
+  writeStringPreference(selectedMessagePreferenceKey(runId), messageId);
 }
 
 function readDiagnosticsOpenPreference() {
@@ -3095,6 +3109,19 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     writeNewTaskReplyPreference(compact);
   };
 
+  const restoreSelectedMessageForRun = (runId: string, nextMessages: AgentMessage[] | undefined) => {
+    const normalizedMessages = dedupeMessages(nextMessages ?? []);
+    const storedMessageId = readSelectedMessagePreference(runId);
+    const nextMessage = (storedMessageId ? normalizedMessages.find((message) => message.id === storedMessageId) : null) ?? normalizedMessages[0] ?? null;
+    setSelectedMessage(nextMessage);
+    if (storedMessageId && storedMessageId !== nextMessage?.id) writeSelectedMessagePreference(runId, nextMessage?.id ?? "");
+  };
+
+  const setPersistentSelectedMessage = (message: AgentMessage, runId = selectedRun) => {
+    setSelectedMessage(message);
+    writeSelectedMessagePreference(runId, message.id);
+  };
+
   const doctorOptions = (host: SetupHostOption = readinessHost, skipMcp = localOnlyMode) => ({
     include_mcp: false,
     host: host.id,
@@ -3167,7 +3194,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       setContext(nextContext);
       setRawTrace(nextTrace.trace ?? nextTrace.events ?? []);
       appendTimelineEntries(nextContext.timeline ?? [], nextContext.cursors?.event, 0, true);
-      setSelectedMessage(nextContext.agent_activity?.messages?.[0] ?? null);
+      restoreSelectedMessageForRun(selectedRun, nextContext.agent_activity?.messages);
       setDiff(nextDiff.text ?? nextDiff.diff ?? "");
       setConfig(nextConfig);
       const firstArtifact = previewArtifactName(nextStatus);
@@ -3307,7 +3334,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     const nextContext = await client.getContext(runId);
     setContext(nextContext);
     setTrace(nextContext.timeline ?? []);
-    setSelectedMessage(nextContext.agent_activity?.messages?.[0] ?? null);
+    restoreSelectedMessageForRun(runId, nextContext.agent_activity?.messages);
     eventCursor.current = nextContext.cursors?.event ?? 0;
   };
 
@@ -3319,7 +3346,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     if (agentResponse?.context) {
       setContext(agentResponse.context);
       setTrace(agentResponse.context.timeline ?? []);
-      setSelectedMessage(agentResponse.context.agent_activity?.messages?.[0] ?? null);
+      restoreSelectedMessageForRun(runId, agentResponse.context.agent_activity?.messages);
       eventCursor.current = agentResponse.context.cursors?.event ?? 0;
     } else {
       await loadContextNow(runId);
@@ -4102,7 +4129,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
                 onAction={(action) => void runHealthAction(action)}
               />
               {messages.map((message) => (
-                <AgentEventBubble key={message.id} message={message} selected={selectedMessage?.id === message.id} onSelect={() => setSelectedMessage(message)} />
+                <AgentEventBubble key={message.id} message={message} selected={selectedMessage?.id === message.id} onSelect={() => setPersistentSelectedMessage(message)} />
               ))}
               {localRunMessages.map((message) => (
                 <Fragment key={message.id}>

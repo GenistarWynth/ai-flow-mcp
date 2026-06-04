@@ -137,6 +137,7 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("selected run", contract)
         self.assertIn("diagnostics drawer open state", contract)
         self.assertIn("active diagnostics tab", contract)
+        self.assertIn("selected Trace message keyed by run id", contract)
         self.assertIn("sidebar search/status/inbox filters", contract)
         self.assertIn("Clear stale inbox filters", contract)
         self.assertIn("composer drafts keyed by run id", contract)

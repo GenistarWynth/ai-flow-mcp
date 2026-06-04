@@ -988,6 +988,59 @@ describe("Workbench", () => {
     expect(within(details).getByText(/selected_message/)).not.toBeVisible();
   });
 
+  it("restores the selected Trace message for each run after remount", async () => {
+    const contextWithMessages = {
+      ...readyContext,
+      agent_activity: {
+        ...readyContext.agent_activity!,
+        messages: [
+          {
+            id: "event-first",
+            kind: "event",
+            timestamp: "2026-05-24T10:02:00Z",
+            phase: "plan",
+            title: "First trace event",
+            body: "First selected trace body",
+            status: "PLANNED",
+            status_label: "waiting",
+            tone: "ready"
+          },
+          {
+            id: "event-second",
+            kind: "event",
+            timestamp: "2026-05-24T10:03:00Z",
+            phase: "review",
+            title: "Second trace event",
+            body: "Second selected trace body",
+            status: "PASS",
+            status_label: "pass",
+            tone: "success",
+            provider: "codex_cli",
+            model: "gpt-5"
+          }
+        ]
+      }
+    };
+    const client = createClient({ getContext: vi.fn().mockResolvedValue(contextWithMessages) });
+    const { unmount } = render(<Workbench client={client} pollIntervalMs={0} />);
+
+    expect(await screen.findByRole("heading", { name: "Ship dashboard" })).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: /Second trace event/ }));
+
+    expect(window.localStorage.getItem("patchbay.selectedMessage.run-ready")).toBe("event-second");
+    unmount();
+
+    render(<Workbench client={createClient({ getContext: vi.fn().mockResolvedValue(contextWithMessages) })} pollIntervalMs={0} />);
+
+    expect(await screen.findByRole("heading", { name: "Ship dashboard" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "活动" }));
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    const selectedSection = within(details).getByRole("heading", { name: "Selected message" }).closest("section")!;
+    expect(within(selectedSection).getByText("Second selected trace body")).toBeVisible();
+    expect(within(selectedSection).queryByText("First selected trace body")).not.toBeInTheDocument();
+  });
+
   it("renders the Config diagnostics drawer as readable configuration summaries", async () => {
     const client = createClient({
       getConfig: vi.fn().mockResolvedValue({
