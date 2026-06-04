@@ -165,7 +165,7 @@ Background responses write `JOB.json`, append agent events, and return safe poll
 
 Use `scripts/patchbay cancel <run_id>`, `patchbay_cancel`, or selected-run Agent prompts such as `cancel background job` / `停止后台任务` only to stop the active worker. Cancellation marks `JOB.json` as canceled, releases background locks, appends a cancel event, and leaves plan/apply gates untouched. Do not treat cancellation as approval, retry, or apply.
 
-If a concrete `run_id` is already selected, explicit unattended phrases such as `don't ask me`, `assume yes`, `you have all permissions`, `full access`, `approve yourself`, `不要问我`, `别找我`, `所有权限都给你`, `所有权限全都给你`, `无需向我确认`, `完全访问权限`, `自己允许`, or `我根本不在身边` count as plan approval for that run and may start background write/test/review autopilot. Without a `run_id`, they must return `missing_run` guidance. They never authorize final apply.
+If a concrete `run_id` is already selected, explicit unattended phrases such as `don't ask me`, `assume yes`, `you have all permissions`, `full access`, `approve yourself`, `不要问我`, `不要询问我`, `别找我`, `别再询问我`, `所有权限给你`, `所有权限全都给你`, `全部权限给你`, `无需向我确认`, `完全访问权限`, `自己允许`, or `我根本不在身边` count as plan approval for that run and may start background write/test/review autopilot. Without a `run_id`, they must return `missing_run` guidance. They never authorize final apply.
 
 ## Failure Recovery
 

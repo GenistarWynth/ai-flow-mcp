@@ -2462,6 +2462,8 @@ model = "cheap-model"
                 "我给你完全访问权限了，不要问我了",
                 "别找我呀，自己允许",
                 "不要再询问我，所有权限全都给你了",
+                "不要询问我，全部权限给你",
+                "别再询问我，所有权限给你",
                 "我根本不在身边，你自己决定",
             )
         ):
@@ -2511,6 +2513,7 @@ model = "cheap-model"
             "don't ask me, you have all permissions",
             "full access, approve yourself",
             "\u4e0d\u8981\u95ee\u6211\u4e86\uff0c\u6240\u6709\u6743\u9650\u90fd\u7ed9\u4f60",
+            "\u4e0d\u8981\u8be2\u95ee\u6211\uff0c\u5168\u90e8\u6743\u9650\u7ed9\u4f60",
             "\u65e0\u9700\u5411\u6211\u786e\u8ba4\uff0c\u6240\u6709\u6743\u9650\u5168\u90e8\u7ed9\u4f60",
             "\u522b\u518d\u627e\u6211\uff0c\u4eba\u4e0d\u5728",
             "\u6211\u6839\u672c\u4e0d\u5728\u8eab\u8fb9\uff0c\u4f60\u81ea\u5df1\u6279\u51c6",
