@@ -3586,6 +3586,24 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }));
   };
 
+  const rememberLocalOnlyResponse = async (response: AgentResponse, fallbackHost: SetupHostOption = readinessHost) => {
+    if (!selectsLocalOnlyMode(response)) return false;
+    const responseHost = setupHostById(hostFromAgentResponse(response) ?? fallbackHost.id);
+    setPersistentLocalOnlyMode(true);
+    setPersistentReadinessHost(responseHost);
+    const responseDoctor = response.setup?.doctor ?? response.doctor;
+    if (responseDoctor) {
+      setDoctor(responseDoctor);
+      return true;
+    }
+    try {
+      setDoctor(await client.getDoctor(doctorOptions(responseHost, true)));
+    } catch (err) {
+      setError(namedFailureMessage(`${responseHost.label} readiness`, err));
+    }
+    return true;
+  };
+
   const runSetupAction = async (host: SetupHostOption = readinessHost, message = host.message) => {
     if (setupInFlight) return;
     const setupMessage = setupMessageForMode(host, message, localOnlyMode);
@@ -3739,7 +3757,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     setProfileInFlight(true);
     try {
       const response = await client.agentMessage(message, { include: { plan: true }, background: true });
-      if (selectsLocalOnlyMode(response)) setPersistentLocalOnlyMode(true);
+      await rememberLocalOnlyResponse(response);
       if (selectedRun) appendLocalAgentReply(response);
       else setPersistentNewTaskReply(response);
       if (response.run_id && isLatestRunReadOnlyResponse(response)) {
@@ -4022,8 +4040,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     try {
       if (!selectedRun) {
         const created = await client.agentMessage(text, { include: { plan: true }, background: true });
-        const createdLocalOnly = selectsLocalOnlyMode(created);
-        if (createdLocalOnly) setPersistentLocalOnlyMode(true);
+        const createdLocalOnly = await rememberLocalOnlyResponse(created);
         clearComposerDraft(submittedRunKey);
         setPersistentNewTaskReply(null);
         if (isLatestRunReadOnlyResponse(created)) {
@@ -4038,11 +4055,9 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
           setPersistentNewTaskMode(true);
           setPersistentNewTaskReply(created);
           const responseHostId = hostFromAgentResponse(created);
-          const responseHost = setupHostById(responseHostId ?? readinessHost.id);
           const responseDoctor = created.setup?.doctor ?? created.doctor;
-          if (responseHostId || createdLocalOnly) setPersistentReadinessHost(responseHost);
-          if (responseDoctor) setDoctor(responseDoctor);
-          else if (createdLocalOnly) setDoctor(await client.getDoctor(doctorOptions(responseHost, true)));
+          if (!createdLocalOnly && responseHostId) setPersistentReadinessHost(setupHostById(responseHostId));
+          if (!createdLocalOnly && responseDoctor) setDoctor(responseDoctor);
           await loadRuns(undefined, { autoSelect: false });
           return;
         }
@@ -4062,7 +4077,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
           include: { diff: true, review: true },
           background: true
         });
-        if (selectsLocalOnlyMode(response)) setPersistentLocalOnlyMode(true);
+        await rememberLocalOnlyResponse(response);
         clearComposerDraft(submittedRunKey);
         appendLocalMessage(text);
         appendLocalAgentReply(response);

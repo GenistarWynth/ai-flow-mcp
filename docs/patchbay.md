@@ -167,7 +167,7 @@ scripts/patchbay cleanup <run_id>
 
 Natural Chinese routing prompts such as `降本，让简单 writer/fix 走低价模型` and `优化成本，让写手工作走低价模型` apply the economy profile without creating a run; ordinary product tasks such as `优化成本仪表盘` still start a planned run.
 
-Implicit local browser preferences such as `use Chrome Skill`, `use browser skill`, `use your built-in browser`, or `用你自带的浏览器功能` also return `local_mode` even without the word `MCP`, so they stay on the local CLI/Skill path instead of creating a run. In the Web workbench new-task composer, that response is persisted as local-only mode and immediately refreshes readiness with `skip_mcp=true`.
+Implicit local browser preferences such as `use Chrome Skill`, `use browser skill`, `use your built-in browser`, or `用你自带的浏览器功能` also return `local_mode` even without the word `MCP`, so they stay on the local CLI/Skill path instead of creating a run. In the Web workbench, composer replies and structured local Agent actions that select `local_mode` are persisted as local-only mode and immediately refresh readiness with `skip_mcp=true`.
 
 Foreground planning/start responses remain at the plan approval gate, and background planning/start responses remain pollable. Both include a read-only `profile`, `routing`, safe `actions[]`, and `action_groups[]` preview so Desktop, MCP, and Skill clients can show before approval whether high-volume write/fix work is already routed to the cheaper economy provider, and can render safe local follow-ups such as `apply_economy_profile` or `configure_reasonix_command` without advancing the run.
 

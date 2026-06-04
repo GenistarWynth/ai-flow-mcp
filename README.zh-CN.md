@@ -154,7 +154,7 @@ setup 会根据提示词自动收窄范围：`install Codex Skill` 只安装 Ski
 
 `不走 MCP`、`走本地模式`、`只用本地工具` 这类中文本地-only 表达也走同一条路径：Agent 只返回本地 CLI/Skill/readiness 动作，并避免 MCP probe/register 后续操作。
 
-`use Chrome Skill`、`use browser skill`、`use your built-in browser` 或 `用你自带的浏览器功能` 这类隐式本地浏览器偏好，即使没有直接写 `MCP`，也会进入 `local_mode`，不会误创建模型 run。Workbench 的新任务输入框收到这类回复后，会持久化本地-only 模式，并立即用 `skip_mcp=true` 刷新 readiness。
+`use Chrome Skill`、`use browser skill`、`use your built-in browser` 或 `用你自带的浏览器功能` 这类隐式本地浏览器偏好，即使没有直接写 `MCP`，也会进入 `local_mode`，不会误创建模型 run。Workbench 的 composer 回复和结构化本地 Agent 动作一旦选择 `local_mode`，都会持久化本地-only 模式，并立即用 `skip_mcp=true` 刷新 readiness。
 
 `what model will write/fix use`、`is writer using cheap model`、`现在写手是不是走便宜模型` 这类路由问题是只读的 `profile_show`，只报告当前写/修复模型与 provider；如果调用时带了 run id，还会附带该运行的 `metrics.efficiency_summary`，区分“已配置便宜模型”和“本次运行实际观察到的 provider/token/cost 证据”。setup、doctor/readiness 与 profile/routing 响应都会返回同一份 `routing.workload_policy`，明确 `write`/`fix` 是适合大量简单实现和修复的 economy 阶段，`plan`/`review` 是 supervision 阶段，方便桌面端、MCP host 和 Skill 直接解释性价比分工；setup/install JSON 还会把 doctor 的 `recommendations` 提升到顶层，并把可执行建议映射成 `apply economy profile`、`configure reasonix command` 或 `configure economy provider command` 这类短 `next_actions`；当自定义 economy provider 的命令未就绪时，客户端应优先渲染 `configure_economy_provider_command` 复制命令，再显示 inspect 动作，让用户直接修复 `providers.<id>.command`。就绪页可以直接渲染 `doctor.routing`，setup 回复可以直接渲染顶层 `routing`，不用等用户额外询问路由。显式 `command_key` 缺失或不一致都会被视为路由漂移，不会被当作已验证的经济路由证据。`apply economy profile`、“让大量简单写手工作用便宜模型/DeepSeek 去干”或“优化成本，让写手工作走低价模型”这类明确配置意图才会修改本地路由。
 
