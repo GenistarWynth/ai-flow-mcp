@@ -173,8 +173,12 @@ const setupHostPreferenceKey = "patchbay.setupHost";
 const selectedRunPreferenceKey = "patchbay.selectedRun";
 const diagnosticsOpenPreferenceKey = "patchbay.diagnosticsOpen";
 const diagnosticsTabPreferenceKey = "patchbay.diagnosticsTab";
+const runSearchPreferenceKey = "patchbay.runSearch";
+const statusFilterPreferenceKey = "patchbay.statusFilter";
+const inboxFilterPreferenceKey = "patchbay.inboxFilter";
 const composerDraftPreferencePrefix = "patchbay.composerDraft.";
 const newTaskRunKey = "__new__";
+const statusFilterValues = new Set(["PLANNED", "IMPLEMENTING", "REVIEWED_PASS", "REVIEWED_CHANGES_REQUESTED", "FAILED"]);
 const setupHostLabels = new Map(setupHostOptions.map((host) => [host.id, host.label]));
 const setupHostAliases: Record<string, string[]> = {
   codex: ["codex desktop", "codex 桌面"],
@@ -307,6 +311,31 @@ function readDiagnosticsTabPreference() {
 
 function writeDiagnosticsTabPreference(tab: TabName) {
   writeStringPreference(diagnosticsTabPreferenceKey, tab);
+}
+
+function readRunSearchPreference() {
+  return readStringPreference(runSearchPreferenceKey);
+}
+
+function writeRunSearchPreference(value: string) {
+  writeStringPreference(runSearchPreferenceKey, value);
+}
+
+function readStatusFilterPreference() {
+  const status = readStringPreference(statusFilterPreferenceKey);
+  return statusFilterValues.has(status) ? status : "";
+}
+
+function writeStatusFilterPreference(status: string) {
+  writeStringPreference(statusFilterPreferenceKey, statusFilterValues.has(status) ? status : "");
+}
+
+function readInboxFilterPreference() {
+  return readStringPreference(inboxFilterPreferenceKey);
+}
+
+function writeInboxFilterPreference(key: string) {
+  writeStringPreference(inboxFilterPreferenceKey, key);
 }
 
 function composerDraftPreferenceKey(runKey: string) {
@@ -2854,9 +2883,9 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const [config, setConfig] = useState<unknown>(null);
   const [doctor, setDoctor] = useState<DoctorReport | null>(null);
   const [activeTab, setActiveTab] = useState<TabName>(readDiagnosticsTabPreference);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [inboxFilter, setInboxFilter] = useState("");
+  const [search, setSearch] = useState(readRunSearchPreference);
+  const [statusFilter, setStatusFilter] = useState(readStatusFilterPreference);
+  const [inboxFilter, setInboxFilter] = useState(readInboxFilterPreference);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(readDiagnosticsOpenPreference);
   const [confirm, setConfirm] = useState<ConfirmState>(null);
   const [error, setError] = useState("");
@@ -2869,6 +2898,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const [localMessages, setLocalMessages] = useState<Record<string, LocalMessage[]>>({});
   const [newTaskReply, setNewTaskReply] = useState<AgentResponse | null>(null);
   const [localOnlyMode, setLocalOnlyMode] = useState(readLocalOnlyPreference);
+  const [runsLoaded, setRunsLoaded] = useState(false);
   const refreshSeq = useRef(0);
   const selectedRunPreferenceRestored = useRef(false);
 
@@ -2897,6 +2927,22 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     writeDiagnosticsOpenPreference(open);
   };
 
+  const setPersistentSearch = (value: string) => {
+    setSearch(value);
+    writeRunSearchPreference(value);
+  };
+
+  const setPersistentStatusFilter = (status: string) => {
+    const nextStatus = statusFilterValues.has(status) ? status : "";
+    setStatusFilter(nextStatus);
+    writeStatusFilterPreference(nextStatus);
+  };
+
+  const setPersistentInboxFilter = (key: string) => {
+    setInboxFilter(key);
+    writeInboxFilterPreference(key);
+  };
+
   const doctorOptions = (host: SetupHostOption = readinessHost, skipMcp = localOnlyMode) => ({
     include_mcp: false,
     host: host.id,
@@ -2913,6 +2959,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     const nextInbox = result?.inbox ?? null;
     setRuns(nextRuns);
     setRunsInbox(nextInbox);
+    setRunsLoaded(true);
     if (preferredRunId) {
       setPersistentSelectedRun(preferredRunId);
       return nextRuns;
@@ -3051,6 +3098,13 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       setPersistentSelectedRun(inboxFocusRunId(visibleRuns, runsInbox));
     }
   }, [visibleRuns, selectedRun, newTaskMode, runsInbox]);
+
+  useEffect(() => {
+    if (!inboxFilter || !runsLoaded) return;
+    const groupExists = (runsInbox?.groups ?? []).some((group) => group.key === inboxFilter);
+    const runExists = runs.some((run) => run.inbox?.key === inboxFilter);
+    if (!groupExists && !runExists) setPersistentInboxFilter("");
+  }, [runs, runsInbox, inboxFilter, runsLoaded]);
 
   const selectedSummary = useMemo(() => runs.find((run) => run.run_id === selectedRun), [runs, selectedRun]);
   const activeContext = context?.run_id === selectedRun ? context : null;
@@ -3736,8 +3790,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   };
 
   const selectInboxGroup = (key: string) => {
-    setStatusFilter("");
-    setInboxFilter((current) => (current === key ? "" : key));
+    setPersistentStatusFilter("");
+    setPersistentInboxFilter(inboxFilter === key ? "" : key);
   };
 
   return (
@@ -3755,11 +3809,11 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         </div>
         <label className="search">
           <Search size={15} />
-          <input aria-label="搜索运行" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索线程" />
+          <input aria-label="搜索运行" value={search} onChange={(event) => setPersistentSearch(event.target.value)} placeholder="搜索线程" />
         </label>
         <label className="filter">
           <span>状态</span>
-          <select aria-label="状态筛选" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+          <select aria-label="状态筛选" value={statusFilter} onChange={(event) => setPersistentStatusFilter(event.target.value)}>
             <option value="">全部</option>
             <option value="PLANNED">等待批准</option>
             <option value="IMPLEMENTING">实现中</option>

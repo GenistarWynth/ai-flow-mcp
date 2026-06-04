@@ -1823,6 +1823,51 @@ describe("Workbench", () => {
     expect(screen.getByRole("heading", { name: "Needs fix" })).toBeInTheDocument();
   });
 
+  it("restores sidebar search and status filters after remount", async () => {
+    const { unmount } = render(<Workbench client={createClient()} pollIntervalMs={0} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await userEvent.selectOptions(screen.getByLabelText("状态筛选"), "REVIEWED_CHANGES_REQUESTED");
+    await userEvent.type(screen.getByLabelText("搜索运行"), "fix");
+
+    expect(window.localStorage.getItem("patchbay.statusFilter")).toBe("REVIEWED_CHANGES_REQUESTED");
+    expect(window.localStorage.getItem("patchbay.runSearch")).toBe("fix");
+    unmount();
+
+    const getStatus = vi.fn().mockResolvedValue({
+      run_id: "run-fix",
+      task: "Needs fix",
+      status: "REVIEWED_CHANGES_REQUESTED",
+      current_phase: "fix",
+      gate_state: { approved: true, tests_passed: true, review_result: "CHANGES_REQUESTED", ready_to_apply: false },
+      artifacts: []
+    });
+    const getContext = vi.fn().mockResolvedValue({
+      ...plannedContext,
+      run_id: "run-fix",
+      status: "REVIEWED_CHANGES_REQUESTED",
+      current_phase: "fix",
+      agent_activity: {
+        ...plannedContext.agent_activity!,
+        conversation_state: {
+          ...plannedContext.agent_activity!.conversation_state!,
+          task: "Needs fix",
+          status: "REVIEWED_CHANGES_REQUESTED",
+          phase: "fix",
+          phase_label: "修复"
+        }
+      }
+    });
+    render(<Workbench client={createClient({ getStatus, getContext })} pollIntervalMs={0} />);
+
+    expect(await screen.findByRole("heading", { name: "Needs fix" })).toBeInTheDocument();
+    expect(screen.getByLabelText("搜索运行")).toHaveValue("fix");
+    expect(screen.getByLabelText("状态筛选")).toHaveValue("REVIEWED_CHANGES_REQUESTED");
+    const runList = screen.getByLabelText("运行线程");
+    expect(within(runList).queryByRole("button", { name: /Ship dashboard/ })).not.toBeInTheDocument();
+    expect(within(runList).getByRole("button", { name: /Needs fix/ })).toBeInTheDocument();
+  });
+
   it("restores the selected run and diagnostics view after remount", async () => {
     const { unmount } = render(<Workbench client={createClient()} pollIntervalMs={0} />);
 
@@ -2120,11 +2165,64 @@ describe("Workbench", () => {
     await userEvent.click(within(summary).getByRole("button", { name: /Ready to continue/ }));
 
     const runList = screen.getByLabelText("运行线程");
+    expect(window.localStorage.getItem("patchbay.inboxFilter")).toBe("ready_to_continue");
     expect(within(runList).queryByRole("button", { name: /Ship dashboard/ })).not.toBeInTheDocument();
     expect(within(runList).getByRole("button", { name: /Needs fix/ })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Needs fix" })).toBeInTheDocument();
 
     await userEvent.click(within(summary).getByRole("button", { name: /Ready to continue/ }));
+    expect(window.localStorage.getItem("patchbay.inboxFilter")).toBeNull();
+    expect(within(runList).getByRole("button", { name: /Ship dashboard/ })).toBeInTheDocument();
+    expect(within(runList).getByRole("button", { name: /Needs fix/ })).toBeInTheDocument();
+  });
+
+  it("restores inbox group filters and clears them when they are stale", async () => {
+    const { unmount } = render(<Workbench client={createClient()} pollIntervalMs={0} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await userEvent.click(within(screen.getByLabelText("Agent inbox summary")).getByRole("button", { name: /Ready to continue/ }));
+
+    expect(window.localStorage.getItem("patchbay.inboxFilter")).toBe("ready_to_continue");
+    unmount();
+
+    const getStatus = vi.fn().mockResolvedValue({
+      run_id: "run-fix",
+      task: "Needs fix",
+      status: "REVIEWED_CHANGES_REQUESTED",
+      current_phase: "fix",
+      gate_state: { approved: true, tests_passed: true, review_result: "CHANGES_REQUESTED", ready_to_apply: false },
+      artifacts: []
+    });
+    const getContext = vi.fn().mockResolvedValue({
+      ...plannedContext,
+      run_id: "run-fix",
+      status: "REVIEWED_CHANGES_REQUESTED",
+      current_phase: "fix",
+      agent_activity: {
+        ...plannedContext.agent_activity!,
+        conversation_state: {
+          ...plannedContext.agent_activity!.conversation_state!,
+          task: "Needs fix",
+          status: "REVIEWED_CHANGES_REQUESTED",
+          phase: "fix",
+          phase_label: "修复"
+        }
+      }
+    });
+    const restored = render(<Workbench client={createClient({ getStatus, getContext })} pollIntervalMs={0} />);
+
+    expect(await screen.findByRole("heading", { name: "Needs fix" })).toBeInTheDocument();
+    expect(window.localStorage.getItem("patchbay.inboxFilter")).toBe("ready_to_continue");
+    let runList = screen.getByLabelText("运行线程");
+    expect(within(runList).queryByRole("button", { name: /Ship dashboard/ })).not.toBeInTheDocument();
+    expect(within(runList).getByRole("button", { name: /Needs fix/ })).toBeInTheDocument();
+    restored.unmount();
+
+    window.localStorage.setItem("patchbay.inboxFilter", "stale_group");
+    render(<Workbench client={createClient()} pollIntervalMs={0} />);
+
+    await waitFor(() => expect(window.localStorage.getItem("patchbay.inboxFilter")).toBeNull());
+    runList = screen.getByLabelText("运行线程");
     expect(within(runList).getByRole("button", { name: /Ship dashboard/ })).toBeInTheDocument();
     expect(within(runList).getByRole("button", { name: /Needs fix/ })).toBeInTheDocument();
   });
