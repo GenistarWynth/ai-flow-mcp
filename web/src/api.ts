@@ -620,6 +620,7 @@ export type AgentResponse = {
   run_id: string | null;
   action?: string;
   ok?: boolean;
+  canceled?: boolean;
   reply?: string;
   status?: RunStatus | null;
   context?: HandoffContext | null;

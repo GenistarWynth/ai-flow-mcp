@@ -419,6 +419,7 @@ function compactAgentResponseForTranscript(response?: AgentResponse | null): Age
     run_id: typeof response.run_id === "string" ? response.run_id : null,
     action: response.action,
     ok: response.ok,
+    canceled: response.canceled,
     reply: trimLocalTranscriptText(response.reply),
     recent_run: response.recent_run,
     run_reference: response.run_reference,
@@ -4998,6 +4999,7 @@ function LocalAgentResponseDetails({
   const efficiency = response.efficiency_summary ?? response.metrics?.efficiency_summary;
   const hasPanels = Boolean(
     response.gate_diagnosis ||
+      response.background_job ||
       response.setup ||
       response.routing ||
       response.metrics?.routing_evidence ||
@@ -5011,6 +5013,7 @@ function LocalAgentResponseDetails({
   return (
     <>
       {response.gate_diagnosis ? <GateDiagnosisCard diagnosis={response.gate_diagnosis} /> : null}
+      <BackgroundJobCard job={response.background_job} onAction={onCommandAction} />
       {response.setup ? <SetupResultCard response={response} /> : null}
       {response.routing || response.metrics?.routing_evidence ? <RoutingResultCard response={response} /> : null}
       <EfficiencySummaryCard summary={efficiency} />

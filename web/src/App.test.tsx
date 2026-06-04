@@ -7530,6 +7530,12 @@ describe("Workbench", () => {
     await waitFor(() => expect(client.getContext).toHaveBeenCalledTimes(contextCalls + 1));
     await userEvent.click(screen.getAllByRole("button", { name: "Cancel background job" }).at(-1)!);
     await waitFor(() => expect(client.agentMessage).toHaveBeenCalledWith("cancel background job", { runId: "run-ready" }));
+    expect(await screen.findByText("后台已取消 · 实现")).toBeInTheDocument();
+    const storedMessages = JSON.parse(window.localStorage.getItem("patchbay.localMessages") ?? "{}");
+    const cancelReply = storedMessages["run-ready"].at(-1);
+    expect(cancelReply.response.action).toBe("background_cancel");
+    expect(cancelReply.response.canceled).toBe(true);
+    expect(cancelReply.response.background_job.status).toBe("canceled");
     expect(screen.getByRole("heading", { name: "Background implementation" })).toBeInTheDocument();
     expect(screen.getAllByText(/1.5s/).length).toBeGreaterThan(0);
     expect(screen.getByText("后台任务运行中")).toBeInTheDocument();
