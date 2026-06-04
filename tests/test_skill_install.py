@@ -148,6 +148,8 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("omitting bulky `context`, `status`, `runs`, `diff`", contract)
         self.assertIn("topbar refresh controls", contract)
         self.assertIn("provider trace, diff, and artifact preview", contract)
+        self.assertIn("pause idle incremental context refreshes", contract)
+        self.assertIn("continue polling active background jobs", contract)
         self.assertIn("preserve selected-run free-text drafts if send fails", contract)
         self.assertIn("patchbay setup without MCP for claude-desktop", contract)
         self.assertIn("MCP setup", contract)

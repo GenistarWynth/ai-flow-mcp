@@ -351,6 +351,10 @@ function writeSelectedMessagePreference(runId: string, messageId: string) {
   writeStringPreference(selectedMessagePreferenceKey(runId), messageId);
 }
 
+function documentIsHidden() {
+  return typeof document !== "undefined" && document.visibilityState === "hidden";
+}
+
 function readDiagnosticsOpenPreference() {
   try {
     return typeof window !== "undefined" && window.localStorage?.getItem(diagnosticsOpenPreferenceKey) === "true";
@@ -3282,15 +3286,25 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     }
 
     void loadSelectedRun().catch((err) => setError(String(err)));
+    const refreshVisibleRun = () => {
+      if (!documentIsHidden()) void loadContextUpdate().catch((err) => setError(String(err)));
+    };
     const timer =
       pollIntervalMs > 0
         ? window.setInterval(() => {
+            if (documentIsHidden() && !backgroundWasActive) return;
             void loadContextUpdate().catch((err) => setError(String(err)));
           }, pollIntervalMs)
         : undefined;
+    if (pollIntervalMs > 0 && typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", refreshVisibleRun);
+    }
     return () => {
       cancelled = true;
       if (timer !== undefined) window.clearInterval(timer);
+      if (pollIntervalMs > 0 && typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", refreshVisibleRun);
+      }
     };
   }, [selectedRun, client, pollIntervalMs]);
 

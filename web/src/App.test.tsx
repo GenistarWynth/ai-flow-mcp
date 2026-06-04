@@ -390,9 +390,17 @@ function createClient(overrides: Partial<PatchbayClient> = {}): PatchbayClient {
   };
 }
 
+function setDocumentVisibility(state: DocumentVisibilityState) {
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    value: state
+  });
+}
+
 describe("Workbench", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    setDocumentVisibility("visible");
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: undefined
@@ -6621,6 +6629,25 @@ describe("Workbench", () => {
     expect(within(thread).getAllByText("等待批准")).toHaveLength(1);
   });
 
+  it("skips idle selected-run polling while the document is hidden", async () => {
+    setDocumentVisibility("hidden");
+    const getContext = vi.fn().mockResolvedValue(readyContext);
+    const client = createClient({ getContext });
+
+    render(<Workbench client={client} pollIntervalMs={10} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await waitFor(() => expect(getContext).toHaveBeenCalledTimes(1));
+    await new Promise((resolve) => window.setTimeout(resolve, 60));
+
+    expect(getContext).toHaveBeenCalledTimes(1);
+
+    setDocumentVisibility("visible");
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    await waitFor(() => expect(getContext).toHaveBeenCalledWith("run-ready", { since_event: 1 }));
+  });
+
   it("sends free text through the conversational agent endpoint", async () => {
     const client = createClient();
 
@@ -6940,6 +6967,7 @@ describe("Workbench", () => {
   });
 
   it("auto-refreshes active background jobs until completion", async () => {
+    setDocumentVisibility("hidden");
     const runningJob: BackgroundJob = {
       active: true,
       status: "running",
