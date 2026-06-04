@@ -168,6 +168,7 @@ const setupHostOptions: SetupHostOption[] = [
   { id: "claude-desktop", label: "Claude Desktop", message: "patchbay setup for claude-desktop" },
   { id: "gemini", label: "Gemini", message: "install patchbay for gemini" }
 ];
+const localOnlyPreferenceKey = "patchbay.localOnlyMode";
 const setupHostLabels = new Map(setupHostOptions.map((host) => [host.id, host.label]));
 const setupHostAliases: Record<string, string[]> = {
   codex: ["codex desktop", "codex 桌面"],
@@ -205,6 +206,35 @@ function setupMessageToHost(message: string) {
 
 function setupWithoutMcpMessage(host?: SetupHostOption) {
   return host && host.id !== "codex" ? `patchbay setup without MCP for ${host.id}` : "patchbay setup without MCP";
+}
+
+function readLocalOnlyPreference() {
+  try {
+    return typeof window !== "undefined" && window.localStorage?.getItem(localOnlyPreferenceKey) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function writeLocalOnlyPreference(enabled: boolean) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return;
+    if (enabled) {
+      window.localStorage.setItem(localOnlyPreferenceKey, "true");
+    } else {
+      window.localStorage.removeItem(localOnlyPreferenceKey);
+    }
+  } catch {
+    // Storage can be unavailable in locked-down browser contexts; keep the in-memory state working.
+  }
+}
+
+function setupMessageForMode(host: SetupHostOption, message: string, localOnlyMode: boolean) {
+  if (!localOnlyMode || isNoMcpSetupText(message) || isMcpOnlySetupText(message) || isSkillOnlySetupText(message)) return message;
+  if (message === host.message || message.startsWith("patchbay setup") || message.startsWith("install patchbay")) {
+    return setupWithoutMcpMessage(host);
+  }
+  return message;
 }
 
 function setupHostFromAction(action: AgentHealthAction, fallback: SetupHostOption) {
@@ -2738,8 +2768,19 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const [profileInFlight, setProfileInFlight] = useState(false);
   const [localMessages, setLocalMessages] = useState<Record<string, LocalMessage[]>>({});
   const [newTaskReply, setNewTaskReply] = useState<AgentResponse | null>(null);
-  const [localOnlyMode, setLocalOnlyMode] = useState(false);
+  const [localOnlyMode, setLocalOnlyMode] = useState(readLocalOnlyPreference);
   const refreshSeq = useRef(0);
+
+  const setPersistentLocalOnlyMode = (enabled: boolean) => {
+    setLocalOnlyMode(enabled);
+    writeLocalOnlyPreference(enabled);
+  };
+
+  const doctorOptions = (host: SetupHostOption = readinessHost, skipMcp = localOnlyMode) => ({
+    include_mcp: false,
+    host: host.id,
+    ...(skipMcp ? { skip_mcp: true } : {})
+  });
 
   const patchRunSummary = (runId: string, patch: Partial<RunSummary>) => {
     setRuns((current) => current.map((run) => (run.run_id === runId ? { ...run, ...patch } : run)));
@@ -2764,7 +2805,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
 
   useEffect(() => {
     void loadRuns().catch((err) => setError(String(err)));
-    void client.getDoctor({ include_mcp: false, host: setupHostOptions[0].id }).then(setDoctor).catch((err) => setError(String(err)));
+    void client.getDoctor(doctorOptions(setupHostOptions[0], localOnlyMode)).then(setDoctor).catch((err) => setError(String(err)));
   }, []);
 
   useEffect(() => {
@@ -3080,13 +3121,16 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
 
   const runSetupAction = async (host: SetupHostOption = readinessHost, message = host.message) => {
     if (setupInFlight) return;
-    const skipMcp = isNoMcpSetupText(message);
-    if (skipMcp) setLocalOnlyMode(true);
+    const setupMessage = setupMessageForMode(host, message, localOnlyMode);
+    const skipMcp = isNoMcpSetupText(setupMessage);
+    if (skipMcp) setPersistentLocalOnlyMode(true);
     setError("");
     setReadinessHost(host);
     setSetupInFlight(true);
     try {
-      const response = await client.agentMessage(message);
+      const response = await client.agentMessage(setupMessage);
+      const responseLocalOnly = skipMcp || localOnlyMode || selectsLocalOnlyMode(response);
+      if (responseLocalOnly) setPersistentLocalOnlyMode(true);
       const responseHost = setupHostById(hostFromAgentResponse(response) ?? host.id);
       const setupDoctor = response.setup?.doctor ?? response.doctor;
       setReadinessHost(responseHost);
@@ -3095,7 +3139,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       if (setupDoctor) {
         setDoctor(setupDoctor);
       } else {
-        setDoctor(await client.getDoctor({ include_mcp: false, host: responseHost.id, ...(skipMcp ? { skip_mcp: true } : {}) }));
+        setDoctor(await client.getDoctor(doctorOptions(responseHost, responseLocalOnly)));
       }
       await loadRuns(selectedRun || undefined);
     } catch (err) {
@@ -3125,7 +3169,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       };
       if (selectedRun) appendLocalAgentReply(response);
       else setNewTaskReply(response);
-      const [nextDoctor, nextConfig] = await Promise.all([client.getDoctor({ include_mcp: false, host: readinessHost.id }), client.getConfig()]);
+      const [nextDoctor, nextConfig] = await Promise.all([client.getDoctor(doctorOptions()), client.getConfig()]);
       setDoctor(nextDoctor);
       setConfig(nextConfig);
       if (selectedRun) await refreshRun(selectedRun);
@@ -3145,7 +3189,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       const response = await client.agentMessage(message);
       if (selectedRun) appendLocalAgentReply(response);
       else setNewTaskReply(response);
-      const [nextDoctor, nextConfig] = await Promise.all([client.getDoctor({ include_mcp: false, host: readinessHost.id }), client.getConfig()]);
+      const [nextDoctor, nextConfig] = await Promise.all([client.getDoctor(doctorOptions()), client.getConfig()]);
       setDoctor(nextDoctor);
       setConfig(nextConfig);
       if (selectedRun) await refreshRun(selectedRun);
@@ -3165,7 +3209,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       const response = await client.agentMessage(message);
       if (selectedRun) appendLocalAgentReply(response);
       else setNewTaskReply(response);
-      const [nextDoctor, nextConfig] = await Promise.all([client.getDoctor({ include_mcp: false, host: readinessHost.id }), client.getConfig()]);
+      const [nextDoctor, nextConfig] = await Promise.all([client.getDoctor(doctorOptions()), client.getConfig()]);
       setDoctor(nextDoctor);
       setConfig(nextConfig);
       if (selectedRun) await refreshRun(selectedRun);
@@ -3207,7 +3251,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       };
       if (selectedRun) appendLocalAgentReply(response);
       else setNewTaskReply(response);
-      const [nextDoctor, nextConfig] = await Promise.all([client.getDoctor({ include_mcp: false, host: readinessHost.id }), client.getConfig()]);
+      const [nextDoctor, nextConfig] = await Promise.all([client.getDoctor(doctorOptions()), client.getConfig()]);
       setDoctor(nextDoctor);
       setConfig(nextConfig);
       if (selectedRun) await refreshRun(selectedRun);
@@ -3225,7 +3269,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     setProfileInFlight(true);
     try {
       const response = await client.agentMessage(message, { include: { plan: true }, background: true });
-      if (selectsLocalOnlyMode(response)) setLocalOnlyMode(true);
+      if (selectsLocalOnlyMode(response)) setPersistentLocalOnlyMode(true);
       if (selectedRun) appendLocalAgentReply(response);
       else setNewTaskReply(response);
       if (response.run_id && isLatestRunReadOnlyResponse(response)) {
@@ -3241,7 +3285,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   };
 
   const openReadinessAction = async (force = false, host: SetupHostOption = readinessHost, skipMcp = localOnlyMode) => {
-    if (skipMcp) setLocalOnlyMode(true);
+    if (skipMcp) setPersistentLocalOnlyMode(true);
     if (host.id !== readinessHost.id) {
       setReadinessHost(host);
       force = true;
@@ -3251,7 +3295,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     if (doctor && !force) return;
     try {
       const localOnly = skipMcp || localOnlyMode;
-      setDoctor(await client.getDoctor({ include_mcp: false, host: host.id, ...(localOnly ? { skip_mcp: true } : {}) }));
+      setDoctor(await client.getDoctor(doctorOptions(host, localOnly)));
     } catch (err) {
       setError(String(err));
     }
@@ -3485,7 +3529,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     try {
       if (!selectedRun) {
         const created = await client.agentMessage(text, { include: { plan: true }, background: true });
-        if (selectsLocalOnlyMode(created)) setLocalOnlyMode(true);
+        if (selectsLocalOnlyMode(created)) setPersistentLocalOnlyMode(true);
         setComposer("");
         setNewTaskReply(null);
         if (isLatestRunReadOnlyResponse(created)) {
@@ -3523,7 +3567,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
           include: { diff: true, review: true },
           background: true
         });
-        if (selectsLocalOnlyMode(response)) setLocalOnlyMode(true);
+        if (selectsLocalOnlyMode(response)) setPersistentLocalOnlyMode(true);
         appendLocalAgentReply(response);
         await refreshRun(selectedRun, response);
       }
