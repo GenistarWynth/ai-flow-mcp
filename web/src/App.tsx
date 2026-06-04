@@ -4060,7 +4060,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         await refreshRun(selectedRun, response);
       }
     } catch (err) {
-      setError(String(err));
+      setError(`发送消息失败：${errorDetail(err)}`);
     } finally {
       setSubmitting(false);
     }

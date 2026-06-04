@@ -2331,7 +2331,7 @@ describe("Workbench", () => {
     await userEvent.type(screen.getByLabelText("给 Patchbay Agent 输入消息"), "keep this note");
     await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
 
-    await screen.findByText("Error: network unavailable");
+    expect(await screen.findByRole("alert")).toHaveTextContent("发送消息失败：network unavailable");
     expect(window.localStorage.getItem("patchbay.composerDraft.run-ready")).toBe("keep this note");
     expect(screen.getByLabelText("给 Patchbay Agent 输入消息")).toHaveValue("keep this note");
   });
