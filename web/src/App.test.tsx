@@ -4494,6 +4494,102 @@ describe("Workbench", () => {
     expect(await screen.findByText("环境就绪")).toBeVisible();
   });
 
+  it("shows local-only economy routing in the start context before creating a run", async () => {
+    const setupRouting = {
+      profile: "economy",
+      economy_configured: true,
+      target: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix", label: "Reasonix/DeepSeek" },
+      summary: "Economy routing profile is active: write reasonix_cli / deepseek-v4-pro, fix reasonix_cli / deepseek-v4-pro.",
+      phases: {
+        write: { configured: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" }, configured_economy: true },
+        fix: { configured: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" }, configured_economy: true }
+      }
+    };
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: null,
+      action: "setup",
+      ok: true,
+      reply: "Patchbay local setup completed.",
+      routing: setupRouting,
+      setup: {
+        routing: setupRouting,
+        doctor: {
+          ok: true,
+          root: "C:/repo",
+          checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true } },
+          next_actions: []
+        }
+      }
+    });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      agentMessage
+    });
+
+    render(<Workbench client={client} />);
+
+    const startContext = await screen.findByLabelText("启动上下文");
+    expect(within(startContext).getByText("Codex setup")).toBeVisible();
+    await userEvent.click(within(startContext).getByRole("button", { name: "无 MCP setup" }));
+
+    await waitFor(() => expect(agentMessage).toHaveBeenCalledWith("patchbay setup without MCP"));
+    const updatedContext = await screen.findByLabelText("启动上下文");
+    expect(within(updatedContext).getByText("本地模式 / No MCP")).toBeVisible();
+    expect(within(updatedContext).getByText("启动环境就绪")).toBeVisible();
+    expect(within(updatedContext).getByText("经济路由已启用")).toBeVisible();
+    expect(within(updatedContext).getAllByText("reasonix_cli / deepseek-v4-pro").length).toBeGreaterThan(0);
+    expect(within(updatedContext).queryByRole("button", { name: "启用经济路由" })).not.toBeInTheDocument();
+    expect(client.getStatus).not.toHaveBeenCalled();
+  });
+
+  it("applies the economy profile from the start context before creating a run", async () => {
+    const applyConfigProfile = vi.fn().mockResolvedValue({
+      profile: "economy",
+      status: {
+        profile: "economy",
+        economy: {
+          matches: true,
+          write: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" },
+          fix: { provider: "reasonix_cli", model: "deepseek-v4-pro", command_key: "reasonix" }
+        }
+      },
+      next_actions: ["readiness", "start"]
+    });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      applyConfigProfile,
+      getDoctor: vi.fn().mockResolvedValue({
+        ok: true,
+        root: "C:/repo",
+        checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true } },
+        routing: {
+          profile: "custom",
+          economy_configured: false,
+          phases: {
+            write: { configured: { provider: "mock", model: "mock" }, configured_economy: false },
+            fix: { configured: { provider: "mock", model: "mock" }, configured_economy: false }
+          },
+          summary: "Economy routing profile is not active: write mock / mock, fix mock / mock.",
+          recommendation: "Run `patchbay config profile apply economy`."
+        },
+        next_actions: []
+      })
+    });
+
+    render(<Workbench client={client} />);
+
+    const startContext = await screen.findByLabelText("启动上下文");
+    expect(within(startContext).getByText("经济路由未启用")).toBeVisible();
+    await userEvent.click(within(startContext).getByRole("button", { name: "启用经济路由" }));
+
+    await waitFor(() => expect(applyConfigProfile).toHaveBeenCalledWith("economy"));
+    expect(await screen.findByText("Economy routing profile applied.")).toBeVisible();
+    const updatedContext = await screen.findByLabelText("启动上下文");
+    expect(within(updatedContext).getByText("经济路由已启用")).toBeVisible();
+    expect(within(updatedContext).getAllByText("reasonix_cli / deepseek-v4-pro").length).toBeGreaterThan(0);
+    expect(client.getStatus).not.toHaveBeenCalled();
+  });
+
   it("runs host-aware setup from the empty state and shows MCP guidance", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {

@@ -28,6 +28,7 @@ import {
   AgentHealthCard,
   AgentMessage,
   BackgroundJob,
+  CommandStatus,
   ConfigProfileStatus,
   createPatchbayClient,
   DoctorCheck,
@@ -66,6 +67,8 @@ type DoctorProfileStatus = {
     intent?: string;
     write?: PhaseProvider;
     fix?: PhaseProvider;
+    command_ready?: boolean;
+    command_status?: Record<string, CommandStatus>;
   };
   phase_strategy?: Record<string, PhaseStrategy>;
 };
@@ -1668,6 +1671,82 @@ function RunSnapshotCard({
   );
 }
 
+function StartContextCard({
+  report,
+  routing,
+  localOnlyMode,
+  readinessHost,
+  setupBusy,
+  profileBusy,
+  onOpenReadiness,
+  onLocalSetup,
+  onApplyEconomy
+}: {
+  report?: DoctorReport | null;
+  routing?: RoutingEvidence | null;
+  localOnlyMode?: boolean;
+  readinessHost: SetupHostOption;
+  setupBusy?: boolean;
+  profileBusy?: boolean;
+  onOpenReadiness?: () => void;
+  onLocalSetup?: () => void;
+  onApplyEconomy?: () => void;
+}) {
+  const readiness = readinessSnapshot(report);
+  const economy = economyStartSnapshot(routing);
+  const route = writeFixRouteSnapshot(routing);
+  const mode = localOnlyMode
+    ? { label: "本地模式 / No MCP", detail: "启动前检查和 setup 不注册 MCP。", tone: "success" }
+    : { label: `${setupHostLabel(readinessHost.id)} setup`, detail: "可随时切换到无 MCP 本地 setup。", tone: "idle" };
+  return (
+    <section className="start-context-card" aria-label="启动上下文">
+      <div className="start-context-head">
+        <ShieldCheck size={15} />
+        <strong>启动上下文</strong>
+        <span>{routing?.profile ?? "local"}</span>
+      </div>
+      <div className="start-context-grid">
+        <div className={`start-context-item tone-${mode.tone}`}>
+          <span>模式</span>
+          <strong>{mode.label}</strong>
+          <small>{mode.detail}</small>
+        </div>
+        <div className={`start-context-item tone-${readiness.tone}`}>
+          <span>环境</span>
+          <strong>{readiness.label}</strong>
+          <small>{readiness.detail}</small>
+        </div>
+        <div className={`start-context-item tone-${economy.tone}`}>
+          <span>经济路由</span>
+          <strong>{economy.label}</strong>
+          <small>{economy.detail}</small>
+        </div>
+        <div className={`start-context-item tone-${route.tone}`}>
+          <span>writer/fix</span>
+          <strong>{route.label}</strong>
+          <small>{route.detail}</small>
+        </div>
+      </div>
+      <div className="start-context-actions" aria-label="启动前动作">
+        <button type="button" onClick={onOpenReadiness} disabled={!onOpenReadiness || setupBusy}>
+          <Search size={13} />
+          打开启动检查
+        </button>
+        <button type="button" onClick={onLocalSetup} disabled={!onLocalSetup || setupBusy}>
+          {setupBusy ? <RefreshCw size={13} /> : <ShieldCheck size={13} />}
+          {setupBusy ? "本地 setup 中" : "无 MCP setup"}
+        </button>
+        {shouldOfferStartEconomyAction(routing) ? (
+          <button className="primary" type="button" onClick={onApplyEconomy} disabled={!onApplyEconomy || profileBusy}>
+            {profileBusy ? <RefreshCw size={13} /> : <Play size={13} />}
+            启用经济路由
+          </button>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 function asRecord(value: unknown): ConfigRecord | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as ConfigRecord : null;
 }
@@ -2389,6 +2468,95 @@ function profileStatusToRouting(result: ConfigProfileStatus): RoutingEvidence {
   };
 }
 
+function doctorRoutingEvidence(report?: DoctorReport | null): RoutingEvidence | null {
+  if (report?.routing) return report.routing;
+  const profile = doctorProfileStatus(report);
+  if (!profile) return null;
+  return profileStatusToRouting({
+    profile: profile.profile,
+    economy: profile.economy,
+    phase_strategy: profile.phase_strategy,
+    recommendation: profile.recommendation
+  });
+}
+
+function responseRoutingEvidence(response?: AgentResponse | null): RoutingEvidence | null {
+  return (
+    response?.routing ??
+    response?.routing_evidence ??
+    response?.metrics?.routing_evidence ??
+    response?.setup?.routing ??
+    response?.setup?.doctor?.routing ??
+    response?.doctor?.routing ??
+    null
+  );
+}
+
+function startRoutingEvidence(report?: DoctorReport | null, response?: AgentResponse | null): RoutingEvidence | null {
+  return responseRoutingEvidence(response) ?? doctorRoutingEvidence(report);
+}
+
+function readinessSnapshot(report?: DoctorReport | null) {
+  if (!report) {
+    return { label: "未检查", detail: "打开就绪检查或运行本地 setup。", tone: "idle" };
+  }
+  const checks = Object.entries(report.checks ?? {});
+  const blocked = checks.filter(([, check]) => !doctorCheckIsReady(check));
+  const detail = blocked.length
+    ? blocked.slice(0, 3).map(([key, check]) => `${key}: ${doctorCheckStatusLabel(check)}`).join(" · ")
+    : report.root || "本地环境可用";
+  return {
+    label: report.ok === false || blocked.length ? "启动环境需处理" : "启动环境就绪",
+    detail,
+    tone: report.ok === false || blocked.length ? "blocked" : "success"
+  };
+}
+
+function routingHasCommandBlocker(routing?: RoutingEvidence | null) {
+  if (routing?.economy_command_ready === false) return true;
+  return ["write", "fix"].some((phase) => {
+    const command = routing?.phases?.[phase]?.command_status;
+    return command?.required && command.ready === false;
+  });
+}
+
+function economyStartSnapshot(routing?: RoutingEvidence | null) {
+  if (!routing) return { label: "待检查", detail: "运行就绪检查后显示 write/fix 路由。", tone: "idle" };
+  const health = economyHealthLabel(routing);
+  const commandBlocked = routingHasCommandBlocker(routing);
+  const detail = routing.recommendation ?? routing.summary ?? "等待 write/fix provider 证据。";
+  if (routing.economy_configured) {
+    return {
+      label: commandBlocked ? "路由启用，命令未就绪" : health || "经济路由已启用",
+      detail,
+      tone: commandBlocked ? "blocked" : "success"
+    };
+  }
+  return {
+    label: health || "经济路由未启用",
+    detail,
+    tone: "blocked"
+  };
+}
+
+function writeFixRouteSnapshot(routing?: RoutingEvidence | null) {
+  const write = routing?.phases?.write?.configured;
+  const fix = routing?.phases?.fix?.configured;
+  if (!write && !fix) return { label: "未配置", detail: "write/fix provider 未解析。", tone: "idle" };
+  const writeLabel = routeSummary(write);
+  const fixLabel = routeSummary(fix);
+  const sameRoute = writeLabel === fixLabel;
+  return {
+    label: sameRoute ? writeLabel : `${writeLabel} / ${fixLabel}`,
+    detail: sameRoute ? "write/fix 共用同一低成本路线。" : `write ${writeLabel} · fix ${fixLabel}`,
+    tone: routing?.economy_configured ? "success" : "idle"
+  };
+}
+
+function shouldOfferStartEconomyAction(routing?: RoutingEvidence | null) {
+  return !routing?.economy_configured;
+}
+
 function economyHealthCard(status: RunStatus | null) {
   const routing = status?.run_metrics?.routing_evidence ?? status?.routing_evidence;
   const health = routing?.economy_health;
@@ -2748,6 +2916,8 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const composerPlaceholder = selectedRun
     ? conversationState?.composer_placeholder ?? "输入“继续”，或写下本地备注"
     : "描述一个新任务，Patchbay Agent 会先生成计划";
+  const startDoctor = newTaskReply?.setup?.doctor ?? newTaskReply?.doctor ?? doctor;
+  const startRouting = startRoutingEvidence(startDoctor, newTaskReply);
 
   const loadContextNow = async (runId = selectedRun) => {
     if (!runId) return;
@@ -3579,7 +3749,19 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         </section>
 
         <form className="composer" onSubmit={(event) => void submitComposer(event)}>
-          {selectedRun && suggestions.length ? (
+          {!selectedRun ? (
+            <StartContextCard
+              report={startDoctor}
+              routing={startRouting}
+              localOnlyMode={localOnlyMode}
+              readinessHost={readinessHost}
+              setupBusy={setupInFlight}
+              profileBusy={profileInFlight}
+              onOpenReadiness={() => void openReadinessAction(true, readinessHost, localOnlyMode)}
+              onLocalSetup={() => void runSetupAction(readinessHost, setupWithoutMcpMessage(readinessHost))}
+              onApplyEconomy={() => void applyEconomyProfileAction()}
+            />
+          ) : selectedRun && suggestions.length ? (
             <div className="suggestions" aria-label="建议动作">
               {suggestionGroups.map((group) => (
                 <div className="suggestion-group" key={group.id}>

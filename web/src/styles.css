@@ -975,6 +975,98 @@ button.danger { color: #b42318; border-color: #f0b6b2; background: #fff8f7; }
 .suggestion-group { display: grid; gap: 4px; flex: 0 0 auto; }
 .suggestion-group > span { color: #647083; font-size: 11px; font-weight: 800; line-height: 1; }
 .suggestion-buttons { display: flex; gap: 7px; }
+.start-context-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #d9dee6;
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: #f8fafc;
+  color: #344255;
+}
+.start-context-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.start-context-head strong {
+  color: #172033;
+  font-size: 13px;
+}
+.start-context-head span {
+  margin-left: auto;
+  border: 1px solid #cfd7e3;
+  border-radius: 8px;
+  padding: 3px 7px;
+  color: #344255;
+  background: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+}
+.start-context-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+.start-context-item {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  border: 1px solid #dbe4ef;
+  border-radius: 8px;
+  padding: 7px 8px;
+  background: #ffffff;
+}
+.start-context-item.tone-success {
+  border-color: #b7e4c7;
+  background: #f1fbf6;
+}
+.start-context-item.tone-blocked {
+  border-color: #fed7aa;
+  background: #fff7ed;
+}
+.start-context-item span {
+  color: #647083;
+  font-size: 11px;
+  font-weight: 800;
+}
+.start-context-item strong {
+  min-width: 0;
+  color: #172033;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.start-context-item small {
+  color: #647083;
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.start-context-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.start-context-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  border: 1px solid #d9dee6;
+  border-radius: 8px;
+  padding: 0 9px;
+  color: #344255;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.start-context-actions button.primary {
+  color: #ffffff;
+  border-color: #2457c5;
+  background: #2457c5;
+}
 .composer-box {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 40px;
