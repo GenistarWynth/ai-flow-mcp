@@ -5448,7 +5448,7 @@ function ProviderCommandAction({
       {action.command ? (
         <button type="button" aria-label={`Copy command ${action.label}`} onClick={() => void copyCommand()}>
           {copyState === "copied" ? <Check size={13} /> : <Copy size={13} />}
-          {copyState === "copied" ? "Copied" : "Copy"}
+          {copyState === "copied" ? "Copied" : copyState === "failed" ? "Unavailable" : "Copy"}
         </button>
       ) : null}
     </form>

@@ -1016,6 +1016,52 @@ describe("Workbench", () => {
     expect(document.querySelector("textarea[readonly]")).toBeNull();
   });
 
+  it("shows provider command copy failures when clipboard fallbacks fail", async () => {
+    const command = "patchbay config --set-key providers.cheap_writer.command --set-value <command>";
+    const writeText = vi.fn().mockRejectedValue(new Error("clipboard denied"));
+    const execCommand = vi.fn(() => false);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: execCommand
+    });
+    const client = createClient({
+      listRuns: vi.fn().mockResolvedValue({ runs: [] }),
+      getDoctor: vi.fn().mockResolvedValue({
+        ok: false,
+        root: "C:/repo",
+        checks: { repo: { ok: true }, config: { ok: true }, skill: { ok: true } },
+        actions: [
+          {
+            id: "configure_economy_provider_command",
+            label: "Copy provider command",
+            kind: "command",
+            command,
+            safe: true,
+            reason: "Copy the command for the cheap_writer economy provider into .ai/patchbay.toml."
+          }
+        ]
+      })
+    });
+
+    render(<Workbench client={client} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.click(screen.getByRole("button", { name: "诊断" }));
+    await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
+    const details = screen.getByRole("complementary", { name: "诊断详情" });
+    const button = within(details).getByRole("button", { name: "Copy command Copy provider command" });
+    await userEvent.click(button);
+
+    expect(writeText).toHaveBeenCalledWith(command);
+    expect(execCommand).toHaveBeenCalledWith("copy");
+    expect(button).toHaveTextContent("Unavailable");
+    expect(document.querySelector("textarea[readonly]")).toBeNull();
+  });
+
   it("renders a Codex-style thread and keeps orchestration details in the closed diagnostics drawer", async () => {
     const client = createClient();
 
