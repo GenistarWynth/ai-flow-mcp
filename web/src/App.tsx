@@ -5452,10 +5452,13 @@ function ProviderCommandAction({
         Configure
       </button>
       {action.command ? (
-        <button type="button" aria-label={`Copy command ${action.label}`} onClick={() => void copyCommand()}>
-          {copyState === "copied" ? <Check size={13} /> : <Copy size={13} />}
-          {copyState === "copied" ? "Copied" : copyState === "failed" ? "Unavailable" : "Copy"}
-        </button>
+        <>
+          <code className="provider-command-copy-source">{action.command}</code>
+          <button type="button" aria-label={`Copy command ${action.label}`} onClick={() => void copyCommand()}>
+            {copyState === "copied" ? <Check size={13} /> : <Copy size={13} />}
+            {copyState === "copied" ? "Copied" : copyState === "failed" ? "Unavailable" : "Copy"}
+          </button>
+        </>
       ) : null}
     </form>
   );

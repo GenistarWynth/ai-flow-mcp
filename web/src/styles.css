@@ -1694,6 +1694,17 @@ button.danger { color: #b42318; border-color: #f0b6b2; background: #fff8f7; }
 }
 .reasonix-command-action button:hover { border-color: #9fb0c4; background: #f8fafc; }
 .reasonix-command-action button:disabled { color: #8b96a7; background: #eef2f7; cursor: not-allowed; }
+.provider-command-copy-source {
+  flex: 1 1 100%;
+  min-width: 0;
+  border: 1px solid #d9dee6;
+  border-radius: 7px;
+  padding: 5px 7px;
+  color: #344255;
+  background: #ffffff;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
 .provider-command-action.copied { border-color: #b7e4c7; background: #f1fbf6; }
 .provider-command-action.failed { border-color: #fed7aa; background: #fff7ed; }
 .economy-provider-form {

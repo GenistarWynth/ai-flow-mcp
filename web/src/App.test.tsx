@@ -913,6 +913,7 @@ describe("Workbench", () => {
     await userEvent.click(screen.getByRole("button", { name: "诊断" }));
     await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
     const details = screen.getByRole("complementary", { name: "诊断详情" });
+    expect(within(details).getByText("patchbay config --set-key providers.cheap_writer.command --set-value <command>")).toBeVisible();
     await userEvent.click(within(details).getByRole("button", { name: "Copy command Copy provider command" }));
 
     expect(writeText).toHaveBeenCalledWith("patchbay config --set-key providers.cheap_writer.command --set-value <command>");
@@ -1113,6 +1114,7 @@ describe("Workbench", () => {
     await userEvent.click(screen.getByRole("button", { name: "诊断" }));
     await userEvent.click(screen.getByRole("tab", { name: "就绪" }));
     const details = screen.getByRole("complementary", { name: "诊断详情" });
+    expect(within(details).getByText(firstCommand)).toBeVisible();
     const firstButton = within(details).getByRole("button", { name: "Copy command Copy provider command" });
     await userEvent.click(firstButton);
 
@@ -1124,6 +1126,8 @@ describe("Workbench", () => {
     await waitFor(() =>
       expect(within(details).getByRole("button", { name: "Copy command Copy provider command" })).toHaveTextContent(/^Copy$/)
     );
+    expect(within(details).getByText(nextCommand)).toBeVisible();
+    expect(within(details).queryByText(firstCommand)).not.toBeInTheDocument();
     await userEvent.click(within(details).getByRole("button", { name: "Copy command Copy provider command" }));
 
     expect(writeText).toHaveBeenLastCalledWith(nextCommand);
@@ -1895,6 +1899,7 @@ describe("Workbench", () => {
     await userEvent.click(screen.getByRole("button", { name: "诊断" }));
     const details = screen.getAllByRole("complementary")[1];
     expect(within(details).getByLabelText("Provider command path")).toBeVisible();
+    expect(within(details).getByText(command)).toBeVisible();
     await userEvent.click(within(details).getByRole("button", { name: "Copy command Copy provider command" }));
     await userEvent.type(within(details).getByLabelText("Provider command path"), "C:/Program Files/DeepSeek/deepseek-writer.cmd");
     await userEvent.click(within(details).getByRole("button", { name: "Configure" }));

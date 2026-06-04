@@ -126,6 +126,7 @@ class SkillInstallTest(unittest.TestCase):
         self.assertIn("configure DeepSeek provider", contract)
         self.assertIn("configure DeepSeek provider to <command>", contract)
         self.assertIn("configure economy provider command to <path>", contract)
+        self.assertIn("visible command text", contract)
         self.assertIn("fallback copy path", contract)
         self.assertIn("visible failed-copy state", contract)
         self.assertIn("reset copy status", contract)
