@@ -490,7 +490,8 @@ def _tool_schema(name: str) -> dict[str, Any]:
 
     if name.endswith("_agent"):
         properties["message"]["description"] += (
-            " Selected-run unattended approval phrases such as `don't ask me`, `full access`, `无需向我确认`, or `完全访问权限` can approve "
+            " Selected-run unattended approval phrases such as `don't ask me`, `full access`, `别找我`, `自己允许`, `无需向我确认`, "
+            "`完全访问权限`, or `我根本不在身边` can approve "
             "the plan only when run_id is supplied; without run_id they return missing_run guidance, and final apply still needs "
             "apply_approved confirmation."
         )
@@ -524,7 +525,8 @@ def _tool_schema(name: str) -> dict[str, Any]:
             "can target hosts like Claude Desktop, Claude 桌面, Gemini CLI, Gemini 命令行, install Codex Skill, register MCP for Claude Desktop, "
             "安装 Codex Skill, 注册 MCP 到 Gemini 命令行, or 帮我配置 Patchbay 到 Claude 桌面, while gate-changing prompts such as approve/continue/apply "
             "without run_id return local guidance instead of choosing a run automatically, and selected-run unattended phrases such as "
-            "`don't ask me`, `full access`, `无需向我确认`, or `完全访问权限` can approve the plan only when run_id is supplied; final apply still needs "
+            "`don't ask me`, `full access`, `别找我`, `自己允许`, `无需向我确认`, `完全访问权限`, or `我根本不在身边` can approve "
+            "the plan only when run_id is supplied; final apply still needs "
             "apply_approved confirmation."
         ),
         "patchbay_plan": (

@@ -420,8 +420,11 @@ class PublicVisibilityTest(unittest.TestCase):
         self.assertIn("capabilities[]", text)
         self.assertIn("Agent 能力面板", text)
         self.assertIn("gate_diagnosis.next_action", text)
+        self.assertIn("别找我", text)
+        self.assertIn("所有权限全都给你", text)
         self.assertIn("无需向我确认", text)
         self.assertIn("完全访问权限", text)
+        self.assertIn("我根本不在身边", text)
 
     def test_english_readme_quickstart_surfaces_custom_economy_provider_agent_prompts(self) -> None:
         text = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
@@ -435,6 +438,9 @@ class PublicVisibilityTest(unittest.TestCase):
         self.assertIn("selected-run `gate_diagnosis.next_action`", text)
         self.assertIn("full access", text)
         self.assertIn("approve yourself", text)
+        self.assertIn("别找我", text)
+        self.assertIn("所有权限全都给你", text)
+        self.assertIn("我根本不在身边", text)
 
     def test_background_plan_returns_job_metadata(self) -> None:
         from scripts.ai_flow import service
