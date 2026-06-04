@@ -751,6 +751,58 @@ def _print_agent_activity(value: Any) -> None:
             )
 
 
+def _print_background_job(value: Any, *, include_actions: bool = True) -> None:
+    if not isinstance(value, dict) or not value:
+        return
+    status = value.get("status") or ("running" if value.get("active") else "-")
+    phase = value.get("phase") or value.get("action") or "-"
+    active = bool(value.get("active"))
+    print("Background job:")
+    print(f"- status: {status} | phase: {phase} | active={active}")
+    for key in ("kind", "pid", "exit_code"):
+        item = value.get(key)
+        if item not in (None, ""):
+            print(f"- {key}: {item}")
+    duration = value.get("duration_ms")
+    if duration is not None:
+        print(f"- duration: {_duration_label(duration)}")
+    for key in ("error", "cancel_requested_at", "canceled_at"):
+        item = value.get(key)
+        if item:
+            print(f"- {key}: {_short_text(item, limit=220)}")
+    cancel_result = value.get("cancel_result") if isinstance(value.get("cancel_result"), dict) else {}
+    if cancel_result:
+        details = []
+        for key in ("attempted", "terminated", "already_exited", "reason", "error"):
+            item = cancel_result.get(key)
+            if item not in (None, ""):
+                details.append(f"{key}={item}")
+        if details:
+            print(f"- cancel_result: {', '.join(details)}")
+    actions = value.get("actions") if isinstance(value.get("actions"), list) else []
+    groups = value.get("action_groups") if isinstance(value.get("action_groups"), list) else []
+    if include_actions and actions:
+        _print_grouped_actions(actions, groups)
+
+
+def _print_agent_background_cancel_result(data: dict[str, Any]) -> None:
+    reply = str(data.get("reply") or "").strip()
+    if reply:
+        print(reply)
+        print("")
+    print(f"Patchbay background cancel: {data.get('run_id') or '-'}")
+    print(f"ok: {bool(data.get('ok'))}")
+    print(f"canceled: {bool(data.get('canceled'))}")
+    if data.get("error"):
+        print(f"error: {_short_text(data.get('error'), limit=220)}")
+    _print_background_job(data.get("background_job"), include_actions=True)
+    actions = data.get("actions") if isinstance(data.get("actions"), list) else []
+    groups = data.get("action_groups") if isinstance(data.get("action_groups"), list) else []
+    if actions:
+        print("")
+        _print_grouped_actions(actions, groups)
+
+
 def _print_status_result(data: dict[str, Any]) -> None:
     print(f"Patchbay status: {data.get('run_id') or '-'}")
     task = data.get("task")
@@ -762,6 +814,7 @@ def _print_status_result(data: dict[str, Any]) -> None:
     if data.get("suggested_next_action"):
         print(f"suggested_next_action: {_short_text(data.get('suggested_next_action'), limit=220)}")
     _print_gate_state(data.get("gate_state"))
+    _print_background_job(data.get("background_job"), include_actions=True)
     _print_failure_recovery(data.get("failure_recovery"))
     _print_routing_evidence(data.get("routing_evidence"))
     _print_efficiency(data.get("efficiency_summary"))
@@ -783,6 +836,7 @@ def _print_context_result(data: dict[str, Any]) -> None:
         print(f"summary: {_short_text(summary, limit=260)}")
     print(f"status: {payload.get('status') or '-'} | phase: {payload.get('current_phase') or '-'}")
     _print_gate_state(payload.get("gate_state"))
+    _print_background_job(payload.get("background_job"), include_actions=False)
     _print_agent_activity(payload.get("agent_activity"))
     _print_failure_recovery(payload.get("failure_recovery"))
     _print_routing_evidence(payload.get("routing_evidence"))
@@ -791,7 +845,9 @@ def _print_context_result(data: dict[str, Any]) -> None:
     _print_provider_trail(payload.get("provider_trail"))
     _print_artifacts_brief(payload.get("artifacts"))
     _print_next_actions(payload)
-    actions = payload.get("next_actions") if isinstance(payload.get("next_actions"), list) else []
+    actions = payload.get("actions") if isinstance(payload.get("actions"), list) else []
+    if not actions:
+        actions = payload.get("next_actions") if isinstance(payload.get("next_actions"), list) else []
     groups = payload.get("action_groups") if isinstance(payload.get("action_groups"), list) else []
     if actions:
         print("")
@@ -1404,7 +1460,15 @@ def main(argv: list[str] | None = None) -> int:
         and getattr(args, "agent_command", "") == "message"
         and not as_json
         and isinstance(result, dict)
-        and result.get("action") in {"help", "local_mode", "next_step", "gate_status"}
+        and result.get("action") == "background_cancel"
+    ):
+        _print_agent_background_cancel_result(result)
+    elif (
+        args.command == "agent"
+        and getattr(args, "agent_command", "") == "message"
+        and not as_json
+        and isinstance(result, dict)
+        and result.get("action") in {"help", "local_mode", "next_step", "gate_status", "missing_run"}
     ):
         _print_agent_guidance_result(result)
     elif (

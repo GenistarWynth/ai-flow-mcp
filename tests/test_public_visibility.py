@@ -280,6 +280,7 @@ class PublicVisibilityTest(unittest.TestCase):
             ["python", str(self.script), "agent", "message", "why can't I apply", "--run-id", planned["run_id"]],
             self.repo,
         )
+        missing_run = run(["python", str(self.script), "agent", "message", "所有权限都给你了，不要再询问我"], self.repo)
         structured = self.cli_json("agent", "message", "help")
 
         self.assertIn("Patchbay help:", help_view.stdout)
@@ -290,8 +291,11 @@ class PublicVisibilityTest(unittest.TestCase):
         self.assertIn("Agent inbox:", next_step.stdout)
         self.assertIn("Patchbay gate status:", gate_status.stdout)
         self.assertIn("Gate diagnosis:", gate_status.stdout)
+        self.assertIn("Patchbay missing run:", missing_run.stdout)
+        self.assertIn("Run reference:", missing_run.stdout)
+        self.assertIn("Next actions:", missing_run.stdout)
 
-        for completed in (help_view, local_mode, next_step, gate_status):
+        for completed in (help_view, local_mode, next_step, gate_status, missing_run):
             self.assertEqual(completed.returncode, 0, completed.stderr)
             self.assertNotIn("capabilities: [{", completed.stdout)
             self.assertNotIn("local_mode: {", completed.stdout)
@@ -334,6 +338,59 @@ class PublicVisibilityTest(unittest.TestCase):
 
         self.assertIn("gate_state", structured_status)
         self.assertIn("agent_activity", structured_context)
+
+    def test_background_text_views_render_controls_without_payload_dump(self) -> None:
+        from scripts.ai_flow import service
+
+        run_id = "20260604-background-text-view"
+        run_path = self.repo / ".ai" / "runs" / run_id
+        run_path.mkdir(parents=True)
+        service._record_job(
+            run_path,
+            {
+                "background": True,
+                "kind": "agent",
+                "phase": "agent",
+                "action": "continue",
+                "pid": None,
+                "run_id": run_id,
+                "task": "background text view",
+                "started_at": "2026-06-04T00:00:00+00:00",
+                "started_at_epoch": 0,
+                "root": str(self.repo),
+                "run_dir": str(run_path),
+                "events_path": str(run_path / "events.jsonl"),
+                "trace_path": str(run_path / "trace.jsonl"),
+                "actions": service.background_followup_actions(run_id),
+            },
+        )
+        (run_path / "events.jsonl").write_text("", encoding="utf-8")
+        (run_path / "trace.jsonl").write_text("", encoding="utf-8")
+
+        status = run(["python", str(self.script), "status", run_id], self.repo)
+        context = run(["python", str(self.script), "context", run_id], self.repo)
+        cancel = run(["python", str(self.script), "agent", "message", "cancel background job", "--run-id", run_id], self.repo)
+
+        for completed in (status, context, cancel):
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("Background job:", completed.stdout)
+            self.assertNotIn("background_job: {", completed.stdout)
+            self.assertNotIn("actions: [{", completed.stdout)
+            self.assertNotIn("action_groups: [{", completed.stdout)
+
+        self.assertIn("Patchbay status:", status.stdout)
+        self.assertIn("Background polling:", status.stdout)
+        self.assertIn("Background control:", status.stdout)
+        self.assertIn("Cancel background job (safe)", status.stdout)
+
+        self.assertIn("Patchbay context:", context.stdout)
+        self.assertIn("Next actions:", context.stdout)
+        self.assertIn("Background polling:", context.stdout)
+        self.assertIn("Background control:", context.stdout)
+
+        self.assertIn("Patchbay background cancel:", cancel.stdout)
+        self.assertIn("canceled: True", cancel.stdout)
+        self.assertIn("cancel_result:", cancel.stdout)
 
     def test_diagnostic_view_text_views_summarize_events_trace_and_artifacts(self) -> None:
         planned = self.cli_json("plan", "--task", "diagnostic views text view", "--mock")

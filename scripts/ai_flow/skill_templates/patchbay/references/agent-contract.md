@@ -74,9 +74,9 @@ Non-JSON `scripts/patchbay config profile show/apply` and Agent profile/routing 
 
 Non-JSON `scripts/patchbay metrics <run_id>` and Agent metrics replies should render efficiency summary, tier usage, provider usage, routing health, and grouped safe actions. Use `--json` for automation and exact evidence.
 
-Non-JSON Agent guidance replies (`help`, local/no-MCP mode, `next step`, and gate-status prompts) should render capabilities, selected/latest run references, gate diagnostics, next actions, and grouped safe actions instead of dumping nested payloads. Use `--json` for hosts that need every structured field.
+Non-JSON Agent guidance replies (`help`, local/no-MCP mode, missing-run handoffs, `next step`, and gate-status prompts) should render capabilities, selected/latest run references, gate diagnostics, next actions, and grouped safe actions instead of dumping nested payloads. Use `--json` for hosts that need every structured field.
 
-Non-JSON `scripts/patchbay status <run_id>`, `scripts/patchbay context <run_id>`, and run-bound Agent status/context replies should render run state, gate state, failure recovery, Agent activity, health cards, routing/efficiency evidence, metrics, provider trail, artifacts, and grouped safe actions. Use `--json` for exact handoff payloads.
+Non-JSON `scripts/patchbay status <run_id>`, `scripts/patchbay context <run_id>`, and run-bound Agent status/context replies should render run state, gate state, failure recovery, background job summaries, Agent activity, health cards, routing/efficiency evidence, metrics, provider trail, artifacts, and grouped safe actions. Active background outputs should expose `Background polling` and `Background control` groups for poll/cancel controls instead of requiring users to inspect `JOB.json`. Non-JSON selected-run background cancellation should render a concise cancellation summary, background job state, and safe follow-up actions. Use `--json` for exact handoff payloads.
 
 Non-JSON `scripts/patchbay events <run_id>`, `scripts/patchbay trace <run_id>`, `scripts/patchbay artifact <run_id> <path>`, and Agent diagnostic view replies should render timelines, artifact previews, requested diagnostic tabs, recovery hints, and grouped safe actions instead of dumping nested payloads. Use `--json` for automation or exact event/artifact data.
 
