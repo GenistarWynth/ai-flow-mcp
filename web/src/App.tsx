@@ -173,6 +173,8 @@ const setupHostPreferenceKey = "patchbay.setupHost";
 const selectedRunPreferenceKey = "patchbay.selectedRun";
 const diagnosticsOpenPreferenceKey = "patchbay.diagnosticsOpen";
 const diagnosticsTabPreferenceKey = "patchbay.diagnosticsTab";
+const composerDraftPreferencePrefix = "patchbay.composerDraft.";
+const newTaskRunKey = "__new__";
 const setupHostLabels = new Map(setupHostOptions.map((host) => [host.id, host.label]));
 const setupHostAliases: Record<string, string[]> = {
   codex: ["codex desktop", "codex 桌面"],
@@ -305,6 +307,18 @@ function readDiagnosticsTabPreference() {
 
 function writeDiagnosticsTabPreference(tab: TabName) {
   writeStringPreference(diagnosticsTabPreferenceKey, tab);
+}
+
+function composerDraftPreferenceKey(runKey: string) {
+  return `${composerDraftPreferencePrefix}${encodeURIComponent(runKey || newTaskRunKey)}`;
+}
+
+function readComposerDraft(runKey: string) {
+  return readStringPreference(composerDraftPreferenceKey(runKey));
+}
+
+function writeComposerDraft(runKey: string, value: string) {
+  writeStringPreference(composerDraftPreferenceKey(runKey), value);
 }
 
 function setupMessageForMode(host: SetupHostOption, message: string, localOnlyMode: boolean) {
@@ -2846,7 +2860,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(readDiagnosticsOpenPreference);
   const [confirm, setConfirm] = useState<ConfirmState>(null);
   const [error, setError] = useState("");
-  const [composer, setComposer] = useState("");
+  const [composer, setComposer] = useState(() => readComposerDraft(newTaskRunKey));
   const [readinessHost, setReadinessHost] = useState(readSetupHostPreference);
   const [submitting, setSubmitting] = useState(false);
   const [actionInFlight, setActionInFlight] = useState(false);
@@ -3061,13 +3075,26 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       : "";
   const failureRecovery = loadedStatus === "FAILED" ? activeContext?.failure_recovery ?? activeStatus?.failure_recovery ?? undefined : undefined;
   const selectedTask = conversationState?.task ?? activeStatus?.task ?? selectedSummary?.task ?? "";
-  const runKey = selectedRun || "__new__";
+  const runKey = selectedRun || newTaskRunKey;
   const localRunMessages = visibleLocalMessages(localMessages[runKey] ?? [], messages);
   const composerPlaceholder = selectedRun
     ? conversationState?.composer_placeholder ?? "输入“继续”，或写下本地备注"
     : "描述一个新任务，Patchbay Agent 会先生成计划";
   const startDoctor = newTaskReply?.setup?.doctor ?? newTaskReply?.doctor ?? doctor;
   const startRouting = startRoutingEvidence(startDoctor, newTaskReply);
+
+  useEffect(() => {
+    setComposer(readComposerDraft(runKey));
+  }, [runKey]);
+
+  const setPersistentComposer = (value: string, targetRunKey = runKey) => {
+    if (targetRunKey === runKey) setComposer(value);
+    writeComposerDraft(targetRunKey, value);
+  };
+
+  const clearComposerDraft = (targetRunKey = runKey) => {
+    setPersistentComposer("", targetRunKey);
+  };
 
   const loadContextNow = async (runId = selectedRun) => {
     if (!runId) return;
@@ -3638,13 +3665,14 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
     event?.preventDefault();
     const text = composer.trim();
     if (!text || interactionBusy) return;
+    const submittedRunKey = runKey;
     setError("");
     setSubmitting(true);
     try {
       if (!selectedRun) {
         const created = await client.agentMessage(text, { include: { plan: true }, background: true });
         if (selectsLocalOnlyMode(created)) setPersistentLocalOnlyMode(true);
-        setComposer("");
+        clearComposerDraft(submittedRunKey);
         setNewTaskReply(null);
         if (isLatestRunReadOnlyResponse(created)) {
           appendLocalMessage(text, created.run_id);
@@ -3671,17 +3699,18 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
         return;
       }
       const intent = resolveComposerIntent(text, suggestions, primaryAction);
-      setComposer("");
       if (intent) {
+        clearComposerDraft(submittedRunKey);
         handleAction(intent);
       } else {
-        appendLocalMessage(text);
         const response = await client.agentMessage(text, {
           runId: selectedRun,
           include: { diff: true, review: true },
           background: true
         });
         if (selectsLocalOnlyMode(response)) setPersistentLocalOnlyMode(true);
+        clearComposerDraft(submittedRunKey);
+        appendLocalMessage(text);
         appendLocalAgentReply(response);
         await refreshRun(selectedRun, response);
       }
@@ -3702,7 +3731,6 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   const startNewTask = () => {
     setNewTaskMode(true);
     setPersistentSelectedRun("");
-    setComposer("");
     setError("");
     setNewTaskReply(null);
   };
@@ -3949,7 +3977,7 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
               aria-label="给 Patchbay Agent 输入消息"
               value={composer}
               rows={2}
-              onChange={(event) => setComposer(event.target.value)}
+              onChange={(event) => setPersistentComposer(event.target.value)}
               onKeyDown={handleComposerKeyDown}
               placeholder={composerPlaceholder}
               disabled={interactionBusy}

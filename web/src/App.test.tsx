@@ -1892,6 +1892,99 @@ describe("Workbench", () => {
     expect(window.localStorage.getItem("patchbay.selectedRun")).toBe("run-ready");
   });
 
+  it("keeps composer drafts isolated per selected run", async () => {
+    const client = createClient();
+
+    render(<Workbench client={client} pollIntervalMs={0} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    const composer = screen.getByLabelText("给 Patchbay Agent 输入消息");
+    await userEvent.type(composer, "check the apply gate");
+
+    expect(window.localStorage.getItem("patchbay.composerDraft.run-ready")).toBe("check the apply gate");
+
+    const runList = screen.getByLabelText("运行线程");
+    await userEvent.click(within(runList).getByRole("button", { name: /Needs fix/ }));
+
+    expect(await screen.findByRole("heading", { name: "Needs fix" })).toBeInTheDocument();
+    expect(composer).toHaveValue("");
+    await userEvent.type(composer, "fix review comments");
+
+    expect(window.localStorage.getItem("patchbay.composerDraft.run-fix")).toBe("fix review comments");
+
+    await userEvent.click(within(runList).getByRole("button", { name: /Ship dashboard/ }));
+
+    expect(await screen.findByRole("heading", { name: "Ship dashboard" })).toBeInTheDocument();
+    expect(composer).toHaveValue("check the apply gate");
+  });
+
+  it("restores the new-task composer draft after remount", async () => {
+    const client = createClient({ listRuns: vi.fn().mockResolvedValue({ runs: [] }) });
+    const { unmount } = render(<Workbench client={client} pollIntervalMs={0} />);
+
+    await screen.findByRole("heading", { name: "新任务" });
+    await userEvent.type(screen.getByLabelText("给 Patchbay Agent 输入消息"), "Build offline workbench mode");
+
+    expect(window.localStorage.getItem("patchbay.composerDraft.__new__")).toBe("Build offline workbench mode");
+    unmount();
+
+    render(<Workbench client={createClient({ listRuns: vi.fn().mockResolvedValue({ runs: [] }) })} pollIntervalMs={0} />);
+
+    expect(await screen.findByRole("heading", { name: "新任务" })).toBeInTheDocument();
+    expect(screen.getByLabelText("给 Patchbay Agent 输入消息")).toHaveValue("Build offline workbench mode");
+  });
+
+  it("clears the matching composer draft after a successful submit", async () => {
+    const agentMessage = vi.fn().mockResolvedValue({
+      run_id: "run-ready",
+      reply: "Run run-ready is through the technical gates.",
+      context: readyContext,
+      status: {
+        run_id: "run-ready",
+        task: "Ship dashboard",
+        status: "REVIEWED_PASS",
+        current_phase: "apply",
+        gate_state: { approved: true, tests_passed: true, review_result: "PASS", ready_to_apply: true },
+        artifacts: []
+      }
+    });
+    const client = createClient({ agentMessage });
+
+    render(<Workbench client={client} pollIntervalMs={0} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await userEvent.type(screen.getByLabelText("给 Patchbay Agent 输入消息"), "why is apply blocked");
+
+    expect(window.localStorage.getItem("patchbay.composerDraft.run-ready")).toBe("why is apply blocked");
+
+    await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await waitFor(() =>
+      expect(agentMessage).toHaveBeenCalledWith("why is apply blocked", {
+        runId: "run-ready",
+        include: { diff: true, review: true },
+        background: true
+      })
+    );
+    expect(window.localStorage.getItem("patchbay.composerDraft.run-ready")).toBeNull();
+    expect(screen.getByLabelText("给 Patchbay Agent 输入消息")).toHaveValue("");
+  });
+
+  it("preserves a selected-run composer draft when submit fails", async () => {
+    const agentMessage = vi.fn().mockRejectedValue(new Error("network unavailable"));
+    const client = createClient({ agentMessage });
+
+    render(<Workbench client={client} pollIntervalMs={0} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await userEvent.type(screen.getByLabelText("给 Patchbay Agent 输入消息"), "keep this note");
+    await userEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await screen.findByText("Error: network unavailable");
+    expect(window.localStorage.getItem("patchbay.composerDraft.run-ready")).toBe("keep this note");
+    expect(screen.getByLabelText("给 Patchbay Agent 输入消息")).toHaveValue("keep this note");
+  });
+
   it("renders structured runs inbox state in the sidebar", async () => {
     const client = createClient();
 
