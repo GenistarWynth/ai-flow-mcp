@@ -3218,8 +3218,11 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
   };
 
   useEffect(() => {
-    void loadRuns().catch((err) => setError(String(err)));
-    void client.getDoctor(doctorOptions(readinessHost, localOnlyMode)).then(setDoctor).catch((err) => setError(String(err)));
+    void loadRuns().catch((err) => setError(namedFailureMessage("加载运行列表", err)));
+    void client
+      .getDoctor(doctorOptions(readinessHost, localOnlyMode))
+      .then(setDoctor)
+      .catch((err) => setError(namedFailureMessage(`${readinessHost.label} readiness`, err)));
   }, []);
 
   useEffect(() => {
@@ -3309,15 +3312,15 @@ export function Workbench({ client = defaultClient, pollIntervalMs = 4000 }: { c
       }
     }
 
-    void loadSelectedRun().catch((err) => setError(String(err)));
+    void loadSelectedRun().catch((err) => setError(namedFailureMessage("加载运行详情", err)));
     const refreshVisibleRun = () => {
-      if (!documentIsHidden()) void loadContextUpdate().catch((err) => setError(String(err)));
+      if (!documentIsHidden()) void loadContextUpdate().catch((err) => setError(namedFailureMessage("轮询运行更新", err)));
     };
     const timer =
       pollIntervalMs > 0
         ? window.setInterval(() => {
             if (documentIsHidden() && !backgroundWasActive) return;
-            void loadContextUpdate().catch((err) => setError(String(err)));
+            void loadContextUpdate().catch((err) => setError(namedFailureMessage("轮询运行更新", err)));
           }, pollIntervalMs)
         : undefined;
     if (pollIntervalMs > 0 && typeof document !== "undefined") {

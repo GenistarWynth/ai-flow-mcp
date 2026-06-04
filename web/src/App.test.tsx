@@ -1074,6 +1074,28 @@ describe("Workbench", () => {
     expect(client.getDoctor).toHaveBeenCalledWith({ include_mcp: false, host: "codex" });
   });
 
+  it("shows a named error when the initial run list load fails", async () => {
+    const client = createClient({
+      listRuns: vi.fn().mockRejectedValue(new Error("list unavailable"))
+    });
+
+    render(<Workbench client={client} pollIntervalMs={0} />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("加载运行列表失败：list unavailable");
+    expect(screen.getByRole("heading", { name: "新任务" })).toBeInTheDocument();
+    expect(client.getStatus).not.toHaveBeenCalled();
+  });
+
+  it("shows a named error when selected run details fail to load", async () => {
+    const getContext = vi.fn().mockRejectedValue(new Error("context unavailable"));
+    const client = createClient({ getContext });
+
+    render(<Workbench client={client} pollIntervalMs={0} />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("加载运行详情失败：context unavailable");
+    await waitFor(() => expect(getContext).toHaveBeenCalledWith("run-ready"));
+  });
+
   it("renders the Trace diagnostics drawer as readable timeline summaries", async () => {
     const client = createClient();
 
@@ -6910,6 +6932,19 @@ describe("Workbench", () => {
     });
     const thread = screen.getByLabelText("Patchbay Agent 对话线程");
     expect(within(thread).getAllByText("等待批准")).toHaveLength(1);
+  });
+
+  it("shows a named error when selected-run polling fails", async () => {
+    const client = createClient({
+      getContext: vi.fn().mockResolvedValueOnce(readyContext).mockRejectedValueOnce(new Error("poll unavailable"))
+    });
+
+    render(<Workbench client={client} pollIntervalMs={10} />);
+
+    await screen.findByRole("heading", { name: "Ship dashboard" });
+    await waitFor(() => expect(client.getContext).toHaveBeenCalledWith("run-ready", { since_event: 1 }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("轮询运行更新失败：poll unavailable");
   });
 
   it("skips idle selected-run polling while the document is hidden", async () => {
